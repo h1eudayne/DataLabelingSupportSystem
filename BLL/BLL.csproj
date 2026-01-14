@@ -7,17 +7,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Interfaces\**" />
-    <Compile Remove="Services\**" />
-    <EmbeddedResource Remove="Interfaces\**" />
-    <EmbeddedResource Remove="Services\**" />
-    <None Remove="Interfaces\**" />
-    <None Remove="Services\**" />
+    <ProjectReference Include="..\DAL\DAL.csproj" />
+    <ProjectReference Include="..\DTOs\DTOs.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DAL\DAL.csproj" />
-    <ProjectReference Include="..\DTOs\DTOs.csproj" />
+    <Folder Include="Interfaces\" />
+    <Folder Include="Services\" />
   </ItemGroup>
 
 </Project>
