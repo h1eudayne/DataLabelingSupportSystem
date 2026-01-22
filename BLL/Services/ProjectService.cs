@@ -122,9 +122,27 @@ namespace BLL.Services
             var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
             if (project == null) return null;
 
+            var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
+
             int total = project.DataItems.Count;
             int done = project.DataItems.Count(d => d.Status == "Done" || d.Status == "Completed" || d.Status == "Approved");
             int progressPercent = (total > 0) ? (int)((double)done / total * 100) : 0;
+
+            var members = allAssignments
+                .Where(a => a.Annotator != null)
+                .GroupBy(a => a.AnnotatorId)
+                .Select(g => new MemberResponse
+                {
+                    Id = g.Key,
+                    FullName = g.First().Annotator.FullName ?? g.First().Annotator.Email,
+                    Email = g.First().Annotator.Email,
+                    Role = g.First().Annotator.Role,
+                    TasksAssigned = g.Count(),
+                    TasksCompleted = g.Count(a => a.Status == "Completed" || a.Status == "Approved" || a.Status == "Done"),
+                    Progress = g.Count() > 0
+                        ? Math.Round((decimal)g.Count(a => a.Status == "Completed" || a.Status == "Approved" || a.Status == "Done") / g.Count() * 100, 2)
+                        : 0
+                }).ToList();
 
             return new ProjectDetailResponse
             {
@@ -147,13 +165,7 @@ namespace BLL.Services
                 TotalDataItems = total,
                 ProcessedItems = done,
                 Progress = progressPercent,
-                Members = project.UserProjectStats?.Select(s => new MemberResponse
-                {
-                    Id = s.User.Id,
-                    FullName = !string.IsNullOrEmpty(s.User.FullName) ? s.User.FullName : s.User.Email,
-                    Email = s.User.Email,
-                    Role = s.User.Role
-                }).ToList() ?? new List<MemberResponse>()
+                Members = members
             };
         }
 

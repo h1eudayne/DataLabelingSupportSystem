@@ -13,8 +13,8 @@ namespace DAL.Repositories
                 .Include(p => p.Manager)
                 .Include(p => p.LabelClasses)
                 .Include(p => p.DataItems)
-                .Include(p => p.UserProjectStats)
-                    .ThenInclude(s => s.User)
+                    .ThenInclude(d => d.Assignments)
+                        .ThenInclude(a => a.Annotator)
                 .FirstOrDefaultAsync(p => p.Id == id);
         }
         public async Task<Project?> GetProjectForExportAsync(int id)
