@@ -37,5 +37,6 @@
         public string Status { get; set; } = "Active";
         public int TotalDataItems { get; set; }
         public decimal Progress { get; set; }
+        public int TotalMembers { get; set; }
     }
 }

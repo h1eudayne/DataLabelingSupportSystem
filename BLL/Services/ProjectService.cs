@@ -180,10 +180,14 @@ namespace BLL.Services
                 Status = DateTime.UtcNow > p.Deadline ? "Expired" : "Active",
                 Progress = p.DataItems.Count > 0
                            ? (decimal)p.DataItems.Count(d => d.Status == "Done") / p.DataItems.Count * 100
-                           : 0
+                           : 0,
+                TotalMembers = p.DataItems
+                                .SelectMany(d => d.Assignments)
+                                .Select(a => a.AnnotatorId)
+                                .Distinct()
+                                .Count()
             }).ToList();
         }
-
         public async Task UpdateProjectAsync(int projectId, UpdateProjectRequest request)
         {
             var project = await _projectRepository.GetByIdAsync(projectId);

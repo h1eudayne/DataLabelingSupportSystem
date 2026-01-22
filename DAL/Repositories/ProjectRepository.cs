@@ -44,6 +44,7 @@ namespace DAL.Repositories
         {
             return await _context.Projects
                 .Include(p => p.DataItems)
+                    .ThenInclude(d => d.Assignments) 
                 .Where(p => p.ManagerId == managerId)
                 .OrderByDescending(p => p.Id)
                 .ToListAsync();
