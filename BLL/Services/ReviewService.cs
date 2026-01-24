@@ -1,6 +1,5 @@
 ﻿using BLL.Interfaces;
 using DAL.Interfaces;
-using DTOs.Constants;
 using DTOs.Entities;
 using DTOs.Requests;
 using DTOs.Responses;
@@ -52,25 +51,11 @@ namespace BLL.Services
                 };
                 await _statsRepo.AddAsync(stats);
             }
-
-            if (!request.IsApproved)
-            {
-                if (string.IsNullOrEmpty(request.ErrorCategory) || !ErrorCategories.IsValid(request.ErrorCategory))
-                {
-                    throw new Exception($"Invalid Error Category. Allowed values are: {string.Join(", ", ErrorCategories.All)}");
-                }
-
-                if (request.ErrorCategory == ErrorCategories.Other && string.IsNullOrWhiteSpace(request.Comment))
-                {
-                    throw new Exception("Comment is required when Error Category is 'Other'.");
-                }
-            }
-
             var log = new ReviewLog
             {
                 AssignmentId = assignment.Id,
                 ReviewerId = reviewerId,
-                Decision = request.IsApproved ? "Approve" : "Reject",
+                Verdict = request.IsApproved ? "Approved" : "Rejected",
                 Comment = request.Comment,
                 ErrorCategory = request.IsApproved ? null : request.ErrorCategory,
                 CreatedAt = DateTime.UtcNow
@@ -118,6 +103,7 @@ namespace BLL.Services
                 StorageUrl = a.DataItem?.StorageUrl ?? "",
                 ProjectName = a.Project?.Name ?? "",
                 Status = a.Status,
+                Deadline = a.Project?.Deadline ?? DateTime.MinValue,
                 Labels = a.Project?.LabelClasses.Select(l => new LabelResponse
                 {
                     Id = l.Id,
