@@ -5,8 +5,7 @@ namespace DTOs.Entities
 {
     public class UserProjectStat
     {
-
-        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        [Key]
         public int Id { get; set; }
 
         public string UserId { get; set; } = string.Empty;
