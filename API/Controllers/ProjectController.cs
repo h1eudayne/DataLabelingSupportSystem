@@ -143,13 +143,13 @@ namespace API.Controllers
         }
 
         /// <summary>
-        /// Gets projects assigned to the current annotator.
+        /// Gets projects assigned to the current annotator with progress stats.
         /// </summary>
-        /// <returns>A list of projects assigned to the user.</returns>
-        /// <response code="200">Returns list of projects.</response>
+        /// <returns>A list of projects with task counts and status.</returns>
+        /// <response code="200">Returns list of assigned projects.</response>
         /// <response code="401">If user is unauthorized.</response>
         [HttpGet("annotator/assigned")]
-        [ProducesResponseType(typeof(IEnumerable<ProjectSummaryResponse>), 200)]
+        [ProducesResponseType(typeof(IEnumerable<AnnotatorProjectStatsResponse>), 200)]
         [ProducesResponseType(typeof(void), 401)]
         public async Task<IActionResult> GetAssignedProjects()
         {
