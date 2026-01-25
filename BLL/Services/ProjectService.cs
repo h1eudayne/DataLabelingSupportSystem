@@ -213,8 +213,11 @@ namespace BLL.Services
                 TotalDataItems = p.DataItems.Count,
                 Status = DateTime.UtcNow > p.Deadline ? "Expired" : "Active",
                 Progress = p.DataItems.Count > 0
-                            ? (decimal)p.DataItems.Count(d => d.Status == "Done" || d.Status == "Completed") / p.DataItems.Count * 100
-                            : 0,
+                    ? (decimal)p.DataItems.Count(d =>
+                        d.Status == "Done" || d.Status == "Completed" || d.Status == "Approved" ||
+                        d.Assignments.Any(a => a.Status == "Submitted" || a.Status == "Completed" || a.Status == "Approved")
+                      ) / p.DataItems.Count * 100
+                    : 0,
                 TotalMembers = p.DataItems
                                 .SelectMany(d => d.Assignments)
                                 .Select(a => a.AnnotatorId)
