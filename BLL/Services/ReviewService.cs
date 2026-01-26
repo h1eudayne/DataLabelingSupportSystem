@@ -111,11 +111,20 @@ namespace BLL.Services
                     Color = l.Color,
                     GuideLine = l.GuideLine
                 }).ToList() ?? new List<LabelResponse>(),
-                ExistingAnnotations = a.Annotations.Select(an => new
+
+                ExistingAnnotations = a.Annotations.Select(an =>
                 {
-                    an.ClassId,
-                    Value = JsonDocument.Parse(an.Value).RootElement
-                }).ToList<object>()
+                    if (!string.IsNullOrEmpty(an.DataJSON))
+                    {
+                        return (object)JsonDocument.Parse(an.DataJSON).RootElement;
+                    }
+                    else if (!string.IsNullOrEmpty(an.Value))
+                    {
+                        return (object)JsonDocument.Parse(an.Value).RootElement;
+                    }
+                    return null;
+                }).Where(x => x != null).ToList()
+                // --------------------
             }).ToList();
         }
     }

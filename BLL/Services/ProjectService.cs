@@ -287,12 +287,10 @@ namespace BLL.Services
         {
             var project = await _projectRepository.GetProjectForExportAsync(projectId);
             if (project == null) throw new Exception("Project not found");
-
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new Exception("User not found");
             if (user.Role != UserRoles.Admin && project.ManagerId != userId)
                 throw new Exception("Unauthorized to export this project.");
-
             var dataItems = project.DataItems
                 .Where(d => d.Status == "Done" || d.Status == "Completed" || d.Status == "Approved")
                 .Select(d => new
@@ -300,13 +298,17 @@ namespace BLL.Services
                     DataItemId = d.Id,
                     StorageUrl = d.StorageUrl,
                     Annotations = d.Assignments
-                        .Where(a => a.Status == "Completed" || a.Status == "Submitted")
+                        .Where(a => a.Status == "Completed" || a.Status == "Submitted" || a.Status == "Approved")
                         .SelectMany(a => a.Annotations)
                         .Select(an => new
                         {
                             ClassId = an.ClassId,
-                            ClassName = project.LabelClasses.FirstOrDefault(l => l.Id == an.ClassId)?.Name ?? "Unknown",
-                            Value = JsonDocument.Parse(an.Value).RootElement
+                            ClassName = an.ClassId.HasValue
+                                ? project.LabelClasses.FirstOrDefault(l => l.Id == an.ClassId)?.Name
+                                : "See DataJSON",
+                            Value = !string.IsNullOrEmpty(an.DataJSON)
+                                ? JsonDocument.Parse(an.DataJSON).RootElement
+                                : (!string.IsNullOrEmpty(an.Value) ? JsonDocument.Parse(an.Value).RootElement : default)
                         })
                         .ToList()
                 })
@@ -317,13 +319,13 @@ namespace BLL.Services
                 ProjectId = project.Id,
                 ProjectName = project.Name,
                 ExportedAt = DateTime.UtcNow,
+                TotalImages = dataItems.Count,
                 Data = dataItems
             };
 
             var json = JsonSerializer.Serialize(exportData, new JsonSerializerOptions { WriteIndented = true });
             return Encoding.UTF8.GetBytes(json);
         }
-
         public async Task<ProjectStatisticsResponse> GetProjectStatisticsAsync(int projectId)
         {
             var project = await _projectRepository.GetProjectWithStatsDataAsync(projectId);
@@ -378,6 +380,7 @@ namespace BLL.Services
                 }).ToList();
             var allAnnotations = allAssignments.SelectMany(a => a.Annotations).ToList();
             var labelCounts = allAnnotations
+                .Where(an => an.ClassId.HasValue)
                 .GroupBy(an => an.ClassId)
                 .ToDictionary(g => g.Key, g => g.Count());
 
