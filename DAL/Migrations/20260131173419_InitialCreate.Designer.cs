@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260131153142_InitialCreate")]
+    [Migration("20260131173419_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -80,6 +80,9 @@ namespace DAL.Migrations
                     b.Property<int>("ProjectId")
                         .HasColumnType("int");
 
+                    b.Property<string>("ReviewerId")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -94,6 +97,8 @@ namespace DAL.Migrations
                     b.HasIndex("DataItemId");
 
                     b.HasIndex("ProjectId");
+
+                    b.HasIndex("ReviewerId");
 
                     b.ToTable("Assignments");
                 });
@@ -252,6 +257,9 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("AnnotationGuide")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
 
@@ -268,6 +276,9 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<int>("MaxTaskDurationHours")
+                        .HasColumnType("int");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -276,6 +287,9 @@ namespace DAL.Migrations
                     b.Property<decimal>("PricePerLabel")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ReviewChecklist")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("StartDate")
                         .HasColumnType("datetime2");
@@ -468,11 +482,17 @@ namespace DAL.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("DTOs.Entities.User", "Reviewer")
+                        .WithMany()
+                        .HasForeignKey("ReviewerId");
+
                     b.Navigation("Annotator");
 
                     b.Navigation("DataItem");
 
                     b.Navigation("Project");
+
+                    b.Navigation("Reviewer");
                 });
 
             modelBuilder.Entity("DTOs.Entities.DataItem", b =>

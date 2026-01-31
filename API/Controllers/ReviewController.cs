@@ -123,35 +123,18 @@ namespace API.Controllers
         [ProducesResponseType(typeof(object), 400)]
         public async Task<IActionResult> GetTasksForReview(int projectId)
         {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
             try
             {
-                var tasks = await _reviewService.GetTasksForReviewAsync(projectId);
+                var tasks = await _reviewService.GetTasksForReviewAsync(projectId, userId);
                 return Ok(tasks);
             }
             catch (Exception ex)
             {
                 return BadRequest(new { Message = ex.Message });
             }
-        }
-
-        // ======================================================
-        // REFERENCE DATA
-        // ======================================================
-
-        /// <summary>
-        /// Get all available error categories.
-        /// </summary>
-        /// <remarks>
-        /// Used by Reviewer UI to select standardized error codes
-        /// such as TE-01, LU-01, etc.
-        /// </remarks>
-        /// <returns>List of error categories.</returns>
-        /// <response code="200">Error categories retrieved successfully.</response>
-        [HttpGet("error-categories")]
-        [ProducesResponseType(typeof(IEnumerable<string>), 200)]
-        public IActionResult GetErrorCategories()
-        {
-            return Ok(ErrorCategories.All);
         }
     }
 }

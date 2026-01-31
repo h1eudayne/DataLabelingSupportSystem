@@ -34,6 +34,10 @@ namespace BLL.Services
         {
             var assignment = await _assignmentRepo.GetByIdAsync(request.AssignmentId);
             if (assignment == null) throw new Exception("Assignment not found");
+
+            if (assignment.ReviewerId != reviewerId)
+                throw new Exception("You are not assigned to review this task.");
+
             if (assignment.Status != "Submitted")
                 throw new Exception("This task is not ready for review.");
 
@@ -83,11 +87,20 @@ namespace BLL.Services
             {
                 assignment.Status = "Rejected";
                 stats.TotalRejected++;
-
                 int weight = 0;
-                if (!string.IsNullOrEmpty(request.ErrorCategory))
+
+                if (!string.IsNullOrEmpty(project.ReviewChecklist) && !string.IsNullOrEmpty(request.ErrorCategory))
                 {
-                    weight = ErrorCategories.GetSeverityWeight(request.ErrorCategory);
+                    try
+                    {
+                        var checklistItems = JsonSerializer.Deserialize<List<ChecklistItemRequest>>(project.ReviewChecklist);
+                        var item = checklistItems?.FirstOrDefault(c => c.Code == request.ErrorCategory);
+                        if (item != null)
+                        {
+                            weight = item.Weight;
+                        }
+                    }
+                    catch { }
                 }
 
                 if (weight >= 10)
@@ -126,6 +139,7 @@ namespace BLL.Services
 
             await _assignmentRepo.SaveChangesAsync();
         }
+
         public async Task AuditReviewAsync(string managerId, AuditReviewRequest request)
         {
             var log = await _reviewLogRepo.GetByIdAsync(request.ReviewLogId);
@@ -172,11 +186,14 @@ namespace BLL.Services
             _statsRepo.Update(reviewerStats);
             await _statsRepo.SaveChangesAsync();
         }
-        public async Task<List<TaskResponse>> GetTasksForReviewAsync(int projectId)
+
+        public async Task<List<TaskResponse>> GetTasksForReviewAsync(int projectId, string reviewerId)
         {
             var assignments = await _assignmentRepo.GetAssignmentsForReviewerAsync(projectId);
 
-            return assignments.Select(a => new TaskResponse
+            var myAssignments = assignments.Where(a => a.ReviewerId == reviewerId).ToList();
+
+            return myAssignments.Select(a => new TaskResponse
             {
                 AssignmentId = a.Id,
                 DataItemId = a.DataItemId,

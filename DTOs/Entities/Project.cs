@@ -25,6 +25,10 @@ namespace DTOs.Entities
         [Column(TypeName = "decimal(18,2)")]
         public decimal TotalBudget { get; set; }
 
+        public string? AnnotationGuide { get; set; }
+        public string? ReviewChecklist { get; set; }
+        public int MaxTaskDurationHours { get; set; } = 24;
+
         public DateTime Deadline { get; set; }
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }

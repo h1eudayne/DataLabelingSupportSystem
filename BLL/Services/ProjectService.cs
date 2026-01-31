@@ -53,8 +53,15 @@ namespace BLL.Services
                 EndDate = endDate,
                 Deadline = endDate,
                 CreatedDate = DateTime.UtcNow,
-                AllowGeometryTypes = request.AllowGeometryTypes ?? "Rectangle"
+                AllowGeometryTypes = request.AllowGeometryTypes ?? "Rectangle",
+                AnnotationGuide = request.AnnotationGuide,
+                MaxTaskDurationHours = request.MaxTaskDurationHours
             };
+
+            if (request.ReviewChecklist != null && request.ReviewChecklist.Any())
+            {
+                project.ReviewChecklist = JsonSerializer.Serialize(request.ReviewChecklist);
+            }
 
             foreach (var label in request.LabelClasses)
             {
@@ -91,7 +98,6 @@ namespace BLL.Services
                 ProcessedItems = 0
             };
         }
-
         public async Task<List<AnnotatorProjectStatsResponse>> GetAssignedProjectsAsync(string annotatorId)
         {
             var projects = await _projectRepository.GetProjectsByAnnotatorAsync(annotatorId);
@@ -225,7 +231,6 @@ namespace BLL.Services
                                 .Count()
             }).ToList();
         }
-
         public async Task UpdateProjectAsync(int projectId, UpdateProjectRequest request)
         {
             var project = await _projectRepository.GetByIdAsync(projectId);
@@ -239,6 +244,21 @@ namespace BLL.Services
             project.Deadline = request.Deadline;
             if (request.StartDate.HasValue) project.StartDate = request.StartDate.Value;
             if (request.EndDate.HasValue) project.EndDate = request.EndDate.Value;
+
+            if (request.AnnotationGuide != null)
+            {
+                project.AnnotationGuide = request.AnnotationGuide;
+            }
+
+            if (request.ReviewChecklist != null)
+            {
+                project.ReviewChecklist = JsonSerializer.Serialize(request.ReviewChecklist);
+            }
+
+            if (request.MaxTaskDurationHours.HasValue)
+            {
+                project.MaxTaskDurationHours = request.MaxTaskDurationHours.Value;
+            }
 
             _projectRepository.Update(project);
             await _projectRepository.SaveChangesAsync();
@@ -326,6 +346,7 @@ namespace BLL.Services
             var json = JsonSerializer.Serialize(exportData, new JsonSerializerOptions { WriteIndented = true });
             return Encoding.UTF8.GetBytes(json);
         }
+
         public async Task<ProjectStatisticsResponse> GetProjectStatisticsAsync(int projectId)
         {
             var project = await _projectRepository.GetProjectWithStatsDataAsync(projectId);

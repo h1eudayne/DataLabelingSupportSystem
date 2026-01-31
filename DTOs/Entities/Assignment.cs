@@ -15,7 +15,10 @@ namespace DTOs.Entities
         public int DataItemId { get; set; }
         [ForeignKey("DataItemId")]
         public virtual DataItem DataItem { get; set; } = null!;
+        public string? ReviewerId { get; set; }
 
+        [ForeignKey("ReviewerId")]
+        public virtual User? Reviewer { get; set; }
         public string AnnotatorId { get; set; } = string.Empty;
         [ForeignKey("AnnotatorId")]
         public virtual User Annotator { get; set; } = null!;

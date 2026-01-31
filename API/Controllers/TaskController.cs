@@ -28,10 +28,10 @@ namespace API.Controllers
         // ======================================================
 
         /// <summary>
-        /// (Manager) Assign annotation tasks to an Annotator.
+        /// (Manager) Assign annotation tasks to an Annotator and a Reviewer.
         /// </summary>
         /// <param name="request">
-        /// Assignment information including ProjectId, AnnotatorId, and number of images.
+        /// Assignment information including ProjectId, AnnotatorId, ReviewerId, and number of images.
         /// </param>
         /// <returns>Assignment result message.</returns>
         /// <response code="200">Tasks assigned successfully.</response>

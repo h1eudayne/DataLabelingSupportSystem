@@ -61,6 +61,9 @@ namespace DAL.Migrations
                     ManagerId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     PricePerLabel = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     TotalBudget = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    AnnotationGuide = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ReviewChecklist = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    MaxTaskDurationHours = table.Column<int>(type: "int", nullable: false),
                     Deadline = table.Column<DateTime>(type: "datetime2", nullable: false),
                     StartDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     EndDate = table.Column<DateTime>(type: "datetime2", nullable: true),
@@ -203,6 +206,7 @@ namespace DAL.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     ProjectId = table.Column<int>(type: "int", nullable: false),
                     DataItemId = table.Column<int>(type: "int", nullable: false),
+                    ReviewerId = table.Column<string>(type: "nvarchar(450)", nullable: true),
                     AnnotatorId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     AssignedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     SubmittedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
@@ -229,6 +233,11 @@ namespace DAL.Migrations
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Assignments_Users_ReviewerId",
+                        column: x => x.ReviewerId,
+                        principalTable: "Users",
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -307,6 +316,11 @@ namespace DAL.Migrations
                 name: "IX_Assignments_ProjectId",
                 table: "Assignments",
                 column: "ProjectId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Assignments_ReviewerId",
+                table: "Assignments",
+                column: "ReviewerId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_DataItems_ProjectId",
