@@ -341,5 +341,57 @@ namespace BLL.Services
             _assignmentRepo.Update(assignment);
             await _assignmentRepo.SaveChangesAsync();
         }
+        public async Task<SubmitMultipleTasksResponse> SubmitMultipleTasksAsync(string userId, SubmitMultipleTasksRequest request)
+        {
+            var response = new SubmitMultipleTasksResponse();
+
+            foreach (var id in request.AssignmentIds)
+            {
+                var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(id);
+
+                if (assignment == null)
+                {
+                    response.FailureCount++;
+                    response.Errors.Add($"Task ID {id}: Not found.");
+                    continue;
+                }
+
+                if (assignment.AnnotatorId != userId)
+                {
+                    response.FailureCount++;
+                    response.Errors.Add($"Task ID {id}: Unauthorized access.");
+                    continue;
+                }
+
+                if (assignment.Status == TaskStatusConstants.Submitted || assignment.Status == TaskStatusConstants.Approved)
+                {
+                    response.FailureCount++;
+                    response.Errors.Add($"Task ID {id}: Task is already submitted or approved.");
+                    continue;
+                }
+
+                var latestAnnotation = assignment.Annotations?.OrderByDescending(a => a.CreatedAt).FirstOrDefault();
+
+                if (latestAnnotation == null || string.IsNullOrEmpty(latestAnnotation.DataJSON) || latestAnnotation.DataJSON == "[]")
+                {
+                    response.FailureCount++;
+                    response.Errors.Add($"Task ID {id}: Missing annotation data. Please save draft before submitting.");
+                    continue;
+                }
+
+                assignment.Status = TaskStatusConstants.Submitted;
+                assignment.SubmittedAt = DateTime.UtcNow;
+
+                _assignmentRepo.Update(assignment);
+                response.SuccessCount++;
+            }
+
+            if (response.SuccessCount > 0)
+            {
+                await _assignmentRepo.SaveChangesAsync();
+            }
+
+            return response;
+        }
     }
 }

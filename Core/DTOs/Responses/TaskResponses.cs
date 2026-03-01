@@ -103,30 +103,36 @@ namespace Core.DTOs.Responses
         /// The total number of projects managed.
         /// </summary>
         /// <example>5</example>
-        public int TotalProjects { get; set; }   
+        public int TotalProjects { get; set; }
 
         /// <summary>
         /// The number of currently active projects.
         /// </summary>
         /// <example>2</example>
-        public int ActiveProjects { get; set; }    
+        public int ActiveProjects { get; set; }
 
         /// <summary>
         /// The total number of data items across all projects.
         /// </summary>
         /// <example>5000</example>
-        public int TotalDataItems { get; set; }     
+        public int TotalDataItems { get; set; }
 
         /// <summary>
         /// The total budget managed.
         /// </summary>
         /// <example>10000.00</example>
-        public decimal TotalBudget { get; set; }    
+        public decimal TotalBudget { get; set; }
 
         /// <summary>
         /// The total number of members managed.
         /// </summary>
         /// <example>20</example>
-        public int TotalMembers { get; set; }  
+        public int TotalMembers { get; set; }
+    }
+    public class SubmitMultipleTasksResponse
+    {
+        public int SuccessCount { get; set; }
+        public int FailureCount { get; set; }
+        public List<string> Errors { get; set; } = new List<string>();
     }
 }

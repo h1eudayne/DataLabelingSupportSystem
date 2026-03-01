@@ -14,5 +14,6 @@ namespace BLL.Interfaces
         Task SubmitTaskAsync(string userId, SubmitAnnotationRequest request);
         Task<AssignmentResponse> JumpToDataItemAsync(int projectId, int dataItemId, string userId);
         Task<List<AssignmentResponse>> GetTasksByBucketAsync(int projectId, int bucketId, string userId);
+        Task<SubmitMultipleTasksResponse> SubmitMultipleTasksAsync(string userId, SubmitMultipleTasksRequest request);
     }
 }
