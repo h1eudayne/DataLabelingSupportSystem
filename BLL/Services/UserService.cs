@@ -1,5 +1,6 @@
 ﻿using BLL.Interfaces;
 using Core.DTOs.Requests;
+using Core.DTOs.Responses;
 using DAL.Interfaces;
 using Core.Constants;
 using Core.Entities;
@@ -8,6 +9,13 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Http;
+using ClosedXML.Excel;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using System;
 
 namespace BLL.Services
 {
@@ -15,11 +23,16 @@ namespace BLL.Services
     {
         private readonly IUserRepository _userRepository;
         private readonly IConfiguration _configuration;
+        private readonly IActivityLogService _logService;
 
-        public UserService(IUserRepository userRepository, IConfiguration configuration)
+        public UserService(
+            IUserRepository userRepository,
+            IConfiguration configuration,
+            IActivityLogService logService)
         {
             _userRepository = userRepository;
             _configuration = configuration;
+            _logService = logService;
         }
 
         public async Task<User> RegisterAsync(string fullName, string email, string password, string role)
@@ -177,6 +190,79 @@ namespace BLL.Services
 
             _userRepository.Update(user);
             await _userRepository.SaveChangesAsync();
+        }
+
+        public async Task<ImportUserResponse> ImportUsersFromExcelAsync(IFormFile file, string adminId)
+        {
+            var response = new ImportUserResponse();
+            var defaultPassword = BCrypt.Net.BCrypt.HashPassword("Password@123");
+
+            using var stream = new MemoryStream();
+            await file.CopyToAsync(stream);
+
+            using var workbook = new XLWorkbook(stream);
+            var worksheet = workbook.Worksheet(1);
+            var rows = worksheet.RangeUsed().RowsUsed().Skip(1);
+
+            int rowNumber = 1;
+
+            foreach (var row in rows)
+            {
+                rowNumber++;
+
+                var email = row.Cell(1).GetValue<string>()?.Trim();
+                var fullName = row.Cell(2).GetValue<string>()?.Trim();
+                var role = row.Cell(3).GetValue<string>()?.Trim();
+
+                if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(fullName) || string.IsNullOrEmpty(role))
+                {
+                    response.FailureCount++;
+                    response.Errors.Add($"Row {rowNumber}: Missing Email, FullName or Role.");
+                    continue;
+                }
+
+                if (!UserRoles.IsValid(role))
+                {
+                    response.FailureCount++;
+                    response.Errors.Add($"Row {rowNumber}: Role '{role}' is invalid.");
+                    continue;
+                }
+
+                if (await _userRepository.IsEmailExistsAsync(email))
+                {
+                    response.FailureCount++;
+                    response.Errors.Add($"Row {rowNumber}: Email '{email}' already exists.");
+                    continue;
+                }
+
+                var user = new User
+                {
+                    Email = email,
+                    FullName = fullName,
+                    Role = role,
+                    PasswordHash = defaultPassword,
+                    PaymentInfo = new PaymentInfo()
+                };
+
+                await _userRepository.AddAsync(user);
+                await _userRepository.SaveChangesAsync();
+
+                user.PaymentInfo.UserId = user.Id;
+                _userRepository.Update(user);
+                await _userRepository.SaveChangesAsync();
+
+                response.SuccessCount++;
+            }
+
+            await _logService.LogActionAsync(
+                adminId,
+                "Import",
+                "User",
+                "Bulk Import",
+                $"Imported {response.SuccessCount} users, failed {response.FailureCount} rows."
+            );
+
+            return response;
         }
 
         private string GenerateJwtToken(User user)

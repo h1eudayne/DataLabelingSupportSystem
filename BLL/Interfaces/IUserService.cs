@@ -1,5 +1,7 @@
 ﻿using Core.DTOs.Requests;
+using Core.DTOs.Responses;
 using Core.Entities;
+using Microsoft.AspNetCore.Http;
 
 namespace BLL.Interfaces
 {
@@ -17,5 +19,6 @@ namespace BLL.Interfaces
         Task DeleteUserAsync(string userId);
         Task ToggleUserStatusAsync(string userId, bool isActive);
         Task UpdateAvatarAsync(string userId, string avatarUrl);
+        Task<ImportUserResponse> ImportUsersFromExcelAsync(IFormFile file, string adminId);
     }
 }

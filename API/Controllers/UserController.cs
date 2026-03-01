@@ -189,6 +189,22 @@ namespace API.Controllers
         // ADMIN / MANAGER MANAGEMENT
         // ======================================================
 
+        [HttpPost("import")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> ImportUsers(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("Vui lòng đính kèm file Excel.");
+
+            if (!file.FileName.EndsWith(".xlsx"))
+                return BadRequest("Hệ thống chỉ hỗ trợ định dạng file Excel (.xlsx).");
+
+            var adminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            var result = await _userService.ImportUsersFromExcelAsync(file, adminId);
+
+            return Ok(result);
+        }
         /// <summary>
         /// Get all users in the system.
         /// </summary>
