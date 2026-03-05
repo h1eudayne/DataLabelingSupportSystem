@@ -39,6 +39,9 @@ namespace DAL.Repositories
                 .Include(p => p.DataItems)
                     .ThenInclude(d => d.Assignments)
                         .ThenInclude(a => a.Annotator)
+                .Include(p => p.DataItems)
+                    .ThenInclude(d => d.Assignments)
+                        .ThenInclude(a => a.Reviewer)
                 .FirstOrDefaultAsync(p => p.Id == id);
         }
 

@@ -32,7 +32,31 @@ namespace BLL.Services
             _projectRepo = projectRepo;
             _userRepo = userRepo;
         }
+        public async Task<List<AssignedProjectResponse>> GetReviewerProjectsAsync(string reviewerId)
+        {
+            var allAssignments = await _assignmentRepo.GetAllAsync();
 
+            var reviewerAssignments = allAssignments
+                .Where(a => a.ReviewerId == reviewerId ||
+                            (a.ReviewLogs != null && a.ReviewLogs.Any(r => r.ReviewerId == reviewerId)))
+                .ToList();
+
+            return reviewerAssignments
+                .GroupBy(a => a.ProjectId)
+                .Select(g => new AssignedProjectResponse
+                {
+                    ProjectId = g.Key,
+                    ProjectName = g.First().Project?.Name ?? "Unknown Project",
+                    Description = g.First().Project?.Description ?? "",
+                    ThumbnailUrl = g.First().DataItem?.StorageUrl ?? "",
+                    AssignedDate = g.Min(a => a.AssignedDate),
+                    Deadline = g.First().Project?.Deadline ?? DateTime.MinValue,
+                    TotalImages = g.Count(),
+                    CompletedImages = g.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected),
+                    Status = g.All(a => a.Status == TaskStatusConstants.Approved) ? "Completed" : "InProgress"
+                })
+                .ToList();
+        }
         public async Task ReviewAssignmentAsync(string reviewerId, ReviewRequest request)
         {
             var assignment = await _assignmentRepo.GetByIdAsync(request.AssignmentId);

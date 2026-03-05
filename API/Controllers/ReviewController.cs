@@ -27,7 +27,25 @@ namespace API.Controllers
         // ======================================================
         // REVIEWER – TASK REVIEW
         // ======================================================
+        [HttpGet("projects")]
+        [Authorize(Roles = "Reviewer,Manager,Admin")]
+        [ProducesResponseType(typeof(IEnumerable<AssignedProjectResponse>), 200)]
+        [ProducesResponseType(typeof(object), 400)]
+        public async Task<IActionResult> GetReviewerProjects()
+        {
+            var reviewerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(reviewerId)) return Unauthorized();
 
+            try
+            {
+                var projects = await _reviewService.GetReviewerProjectsAsync(reviewerId);
+                return Ok(projects);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { Message = ex.Message });
+            }
+        }
         /// <summary>
         /// Submit a review decision for an assignment.
         /// </summary>

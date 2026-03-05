@@ -30,7 +30,42 @@ namespace BLL.Services
             _invoiceRepo = invoiceRepo;
             _assignmentRepo = assignmentRepo;
         }
+        public async Task<int> UploadDirectDataItemsAsync(int projectId, List<Microsoft.AspNetCore.Http.IFormFile> files, string webRootPath)
+        {
+            var project = await _projectRepository.GetByIdAsync(projectId);
+            if (project == null) throw new Exception("Project not found");
 
+            if (files == null || !files.Any()) throw new Exception("No files provided.");
+
+            var uploadFolder = Path.Combine(webRootPath, "uploads", projectId.ToString());
+            if (!Directory.Exists(uploadFolder))
+            {
+                Directory.CreateDirectory(uploadFolder);
+            }
+
+            var storageUrls = new List<string>();
+
+            foreach (var file in files)
+            {
+                if (file.Length > 0)
+                {
+                    var fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
+                    var filePath = Path.Combine(uploadFolder, fileName);
+
+                    using (var stream = new FileStream(filePath, FileMode.Create))
+                    {
+                        await file.CopyToAsync(stream);
+                    }
+
+                    var fileUrl = $"/uploads/{projectId}/{fileName}";
+                    storageUrls.Add(fileUrl);
+                }
+            }
+
+            await ImportDataItemsAsync(projectId, storageUrls);
+
+            return storageUrls.Count;
+        }
         public async Task<ProjectDetailResponse> CreateProjectAsync(string managerId, CreateProjectRequest request)
         {
             var manager = await _userRepository.GetByIdAsync(managerId);
@@ -240,7 +275,7 @@ namespace BLL.Services
             int done = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
             int progressPercent = (total > 0) ? (int)((double)done / total * 100) : 0;
 
-            var members = allAssignments
+            var annotators = allAssignments
                 .Where(a => a.Annotator != null)
                 .GroupBy(a => a.AnnotatorId)
                 .Select(g => new MemberResponse
@@ -255,6 +290,27 @@ namespace BLL.Services
                         ? Math.Round((decimal)g.Count(a => a.Status == TaskStatusConstants.Approved) / g.Count() * 100, 2)
                         : 0
                 }).ToList();
+
+            var reviewers = allAssignments
+                .Where(a => a.Reviewer != null)
+                .GroupBy(a => a.ReviewerId)
+                .Select(g => new MemberResponse
+                {
+                    Id = g.Key!,
+                    FullName = g.First().Reviewer!.FullName ?? g.First().Reviewer!.Email,
+                    Email = g.First().Reviewer!.Email,
+                    Role = g.First().Reviewer!.Role,
+                    TasksAssigned = g.Count(),
+                    TasksCompleted = g.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected),
+                    Progress = g.Count() > 0
+                        ? Math.Round((decimal)g.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected) / g.Count() * 100, 2)
+                        : 0
+                }).ToList();
+
+            var members = annotators.Concat(reviewers)
+                .GroupBy(m => m.Id)
+                .Select(g => g.First())
+                .ToList();
 
             return new ProjectDetailResponse
             {
@@ -283,7 +339,6 @@ namespace BLL.Services
                 Members = members
             };
         }
-
         public async Task<List<ProjectSummaryResponse>> GetProjectsByManagerAsync(string managerId)
         {
             var projects = await _projectRepository.GetProjectsByManagerIdAsync(managerId);
@@ -358,26 +413,48 @@ namespace BLL.Services
                 throw new Exception("Unauthorized to export this project.");
 
             var dataItems = project.DataItems
-                .Where(d => d.Status == TaskStatusConstants.Approved)
                 .Select(d => new
                 {
                     DataItemId = d.Id,
                     StorageUrl = d.StorageUrl,
-                    Annotations = d.Assignments
-                        .Where(a => a.Status == TaskStatusConstants.Approved)
-                        .SelectMany(a => a.Annotations)
-                        .Select(an => new
-                        {
-                            ClassId = an.ClassId,
-                            ClassName = an.ClassId.HasValue
-                                ? project.LabelClasses.FirstOrDefault(l => l.Id == an.ClassId)?.Name
-                                : "See DataJSON",
-                            Value = !string.IsNullOrEmpty(an.DataJSON)
-                                ? JsonDocument.Parse(an.DataJSON).RootElement
-                                : (!string.IsNullOrEmpty(an.Value) ? JsonDocument.Parse(an.Value).RootElement : default)
-                        })
-                        .ToList()
+                    ItemStatus = d.Status,
+                    Assignments = d.Assignments.Select(a => new
+                    {
+                        AssignmentId = a.Id,
+                        Annotator = a.Annotator?.Email ?? "Unknown",
+                        Reviewer = a.Reviewer?.Email ?? "None",
+                        TaskStatus = a.Status,
+                        AssignedDate = a.AssignedDate,
+                        SubmittedAt = a.SubmittedAt,
+                        ReviewComment = a.ReviewLogs?
+                            .OrderByDescending(r => r.CreatedAt)
+                            .FirstOrDefault()?.Comment,
+                        Annotation = a.Annotations?
+                            .OrderByDescending(an => an.CreatedAt)
+                            .Select(an => new
+                            {
+                                ClassId = an.ClassId,
+                                ClassName = an.ClassId.HasValue
+                                    ? project.LabelClasses.FirstOrDefault(l => l.Id == an.ClassId)?.Name
+                                    : "See DataJSON",
+                                Data = !string.IsNullOrEmpty(an.DataJSON)
+                                    ? JsonDocument.Parse(an.DataJSON).RootElement
+                                    : (!string.IsNullOrEmpty(an.Value) ? JsonDocument.Parse(an.Value).RootElement : default)
+                            }).FirstOrDefault()
+                    }).ToList()
                 })
+                .ToList();
+
+            int totalItems = project.DataItems.Count;
+            int completedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
+            double progressPercent = totalItems > 0 ? Math.Round((double)completedItems / totalItems * 100, 2) : 0;
+            string currentStatus = DateTime.UtcNow > project.Deadline ? "Expired" : (totalItems > 0 && totalItems == completedItems ? "Completed" : "Active");
+
+            var projectMembers = project.DataItems
+                .SelectMany(d => d.Assignments)
+                .Where(a => a.Annotator != null)
+                .Select(a => new { UserId = a.AnnotatorId, Role = a.Annotator.Role, Email = a.Annotator.Email })
+                .Distinct()
                 .ToList();
 
             var exportData = new
@@ -385,6 +462,13 @@ namespace BLL.Services
                 ProjectId = project.Id,
                 ProjectName = project.Name,
                 ExportedAt = DateTime.UtcNow,
+                Description = project.Description,
+                Status = currentStatus,
+                Deadline = project.Deadline,
+                Progress = progressPercent,
+                TotalDataItems = totalItems,
+                Labels = project.LabelClasses.Select(l => new { l.Id, l.Name, l.Color }),
+                Members = projectMembers,
                 TotalImages = dataItems.Count,
                 Data = dataItems
             };
