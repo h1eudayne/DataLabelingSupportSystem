@@ -4,7 +4,10 @@ using Core.DTOs.Responses;
 using DAL.Interfaces;
 using Core.Constants;
 using Core.Entities;
-using System.Text.Json;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace BLL.Services
 {
@@ -16,6 +19,7 @@ namespace BLL.Services
         private readonly IStatisticService _statisticService;
         private readonly IUserRepository _userRepo;
         private readonly IProjectRepository _projectRepo;
+        private readonly IActivityLogRepository _activityLogRepo;
 
         public TaskService(
             IAssignmentRepository assignmentRepo,
@@ -23,7 +27,8 @@ namespace BLL.Services
             IRepository<Annotation> annotationRepo,
             IStatisticService statisticService,
             IUserRepository userRepo,
-            IProjectRepository projectRepo)
+            IProjectRepository projectRepo,
+            IActivityLogRepository activityLogRepo)
         {
             _assignmentRepo = assignmentRepo;
             _dataItemRepo = dataItemRepo;
@@ -31,11 +36,11 @@ namespace BLL.Services
             _statisticService = statisticService;
             _userRepo = userRepo;
             _projectRepo = projectRepo;
+            _activityLogRepo = activityLogRepo;
         }
 
         public async Task<List<AssignmentResponse>> GetTasksByBucketAsync(int projectId, int bucketId, string userId)
         {
-
             var existingAssignments = await _assignmentRepo.GetAssignmentsByBucketAsync(projectId, bucketId, userId);
             if (existingAssignments.Any())
             {
@@ -57,6 +62,7 @@ namespace BLL.Services
 
             if (!dataItems.Any())
                 return new List<AssignmentResponse>();
+
             var newAssignments = new List<Assignment>();
             foreach (var item in dataItems)
             {
@@ -76,6 +82,7 @@ namespace BLL.Services
                 await _assignmentRepo.AddAsync(assign);
             }
             await _assignmentRepo.SaveChangesAsync();
+
             return newAssignments.Select(a => new AssignmentResponse
             {
                 Id = a.Id,
@@ -88,9 +95,12 @@ namespace BLL.Services
 
         public async Task AssignTasksToAnnotatorAsync(AssignTaskRequest request)
         {
-            var reviewer = await _userRepo.GetByIdAsync(request.ReviewerId);
-            if (reviewer == null)
-                throw new Exception("Reviewer not found");
+            if (!string.IsNullOrEmpty(request.ReviewerId))
+            {
+                var reviewer = await _userRepo.GetByIdAsync(request.ReviewerId);
+                if (reviewer == null)
+                    throw new Exception("Reviewer not found");
+            }
 
             var annotator = await _userRepo.GetByIdAsync(request.AnnotatorId);
             if (annotator == null)
@@ -114,9 +124,6 @@ namespace BLL.Services
                     AssignedDate = DateTime.UtcNow
                 };
 
-                item.Status = TaskStatusConstants.Assigned;
-
-                _dataItemRepo.Update(item);
                 await _assignmentRepo.AddAsync(assignment);
             }
 
@@ -139,13 +146,11 @@ namespace BLL.Services
             if (assignment.AnnotatorId != userId)
                 throw new UnauthorizedAccessException("Unauthorized access to this task");
 
-            var taskDeadline =
-                assignment.AssignedDate.AddHours(assignment.Project.MaxTaskDurationHours);
+            var taskDeadline = assignment.AssignedDate.AddHours(assignment.Project.MaxTaskDurationHours);
 
-            var effectiveDeadline =
-                taskDeadline < assignment.Project.Deadline
-                    ? taskDeadline
-                    : assignment.Project.Deadline;
+            var effectiveDeadline = taskDeadline < assignment.Project.Deadline
+                ? taskDeadline
+                : assignment.Project.Deadline;
 
             return new AssignmentResponse
             {
@@ -159,13 +164,12 @@ namespace BLL.Services
                     ?.DataJSON,
                 AssignedDate = assignment.AssignedDate,
                 Deadline = effectiveDeadline,
-                RejectionReason =
-                    assignment.Status == TaskStatusConstants.Rejected
-                        ? assignment.ReviewLogs?
-                            .OrderByDescending(r => r.CreatedAt)
-                            .FirstOrDefault()
-                            ?.Comment
-                        : null
+                RejectionReason = assignment.Status == TaskStatusConstants.Rejected
+                    ? assignment.ReviewLogs?
+                        .OrderByDescending(r => r.CreatedAt)
+                        .FirstOrDefault()
+                        ?.Comment
+                    : null
             };
         }
 
@@ -176,8 +180,7 @@ namespace BLL.Services
 
         public async Task<List<AssignedProjectResponse>> GetAssignedProjectsAsync(string annotatorId)
         {
-            var allAssignments =
-                await _assignmentRepo.GetAssignmentsByAnnotatorAsync(annotatorId);
+            var allAssignments = await _assignmentRepo.GetAssignmentsByAnnotatorAsync(annotatorId);
 
             return allAssignments
                 .GroupBy(a => a.ProjectId)
@@ -193,34 +196,25 @@ namespace BLL.Services
                     CompletedImages = g.Count(a =>
                         a.Status == TaskStatusConstants.Submitted ||
                         a.Status == TaskStatusConstants.Approved),
-                    Status =
-                        g.All(a => a.Status == TaskStatusConstants.Approved)
-                            ? "Completed"
-                            : g.Any(a => a.Status != TaskStatusConstants.Assigned)
-                                ? "InProgress"
-                                : "Assigned"
+                    Status = g.All(a => a.Status == TaskStatusConstants.Approved)
+                        ? "Completed"
+                        : g.Any(a => a.Status != TaskStatusConstants.Assigned)
+                            ? "InProgress"
+                            : "Assigned"
                 })
                 .ToList();
         }
 
-        public async Task<List<AssignmentResponse>> GetTaskImagesAsync(
-            int projectId,
-            string annotatorId)
+        public async Task<List<AssignmentResponse>> GetTaskImagesAsync(int projectId, string annotatorId)
         {
-            var assignments =
-                await _assignmentRepo.GetAssignmentsByAnnotatorAsync(
-                    annotatorId,
-                    projectId);
+            var assignments = await _assignmentRepo.GetAssignmentsByAnnotatorAsync(annotatorId, projectId);
 
             return assignments.Select(a =>
             {
-                var taskDeadline =
-                    a.AssignedDate.AddHours(a.Project.MaxTaskDurationHours);
-
-                var effectiveDeadline =
-                    taskDeadline < a.Project.Deadline
-                        ? taskDeadline
-                        : a.Project.Deadline;
+                var taskDeadline = a.AssignedDate.AddHours(a.Project.MaxTaskDurationHours);
+                var effectiveDeadline = taskDeadline < a.Project.Deadline
+                    ? taskDeadline
+                    : a.Project.Deadline;
 
                 return new AssignmentResponse
                 {
@@ -234,21 +228,17 @@ namespace BLL.Services
                         ?.DataJSON,
                     AssignedDate = a.AssignedDate,
                     Deadline = effectiveDeadline,
-                    RejectionReason =
-                        a.Status == TaskStatusConstants.Rejected
-                            ? a.ReviewLogs?
-                                .OrderByDescending(r => r.CreatedAt)
-                                .FirstOrDefault()
-                                ?.Comment
-                            : null
+                    RejectionReason = a.Status == TaskStatusConstants.Rejected
+                        ? a.ReviewLogs?
+                            .OrderByDescending(r => r.CreatedAt)
+                            .FirstOrDefault()
+                            ?.Comment
+                        : null
                 };
             }).ToList();
         }
 
-        public async Task<AssignmentResponse> JumpToDataItemAsync(
-            int projectId,
-            int dataItemId,
-            string userId)
+        public async Task<AssignmentResponse> JumpToDataItemAsync(int projectId, int dataItemId, string userId)
         {
             var assignments = await _assignmentRepo.GetAllAsync();
 
@@ -268,8 +258,7 @@ namespace BLL.Services
             if (string.IsNullOrEmpty(request.DataJSON) || request.DataJSON == "[]")
                 return;
 
-            var assignment =
-                await _assignmentRepo.GetAssignmentWithDetailsAsync(request.AssignmentId);
+            var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(request.AssignmentId);
 
             if (assignment == null)
                 throw new KeyNotFoundException("Task not found");
@@ -317,14 +306,16 @@ namespace BLL.Services
 
         public async Task SubmitTaskAsync(string userId, SubmitAnnotationRequest request)
         {
-            var assignment =
-                await _assignmentRepo.GetAssignmentWithDetailsAsync(request.AssignmentId);
+            var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(request.AssignmentId);
 
             if (assignment == null)
                 throw new KeyNotFoundException("Task not found");
 
             if (assignment.AnnotatorId != userId)
                 throw new UnauthorizedAccessException("Unauthorized");
+
+            if (string.IsNullOrEmpty(request.DataJSON) || request.DataJSON == "[]")
+                throw new InvalidOperationException("Annotation data is empty. Please save a draft before submitting.");
 
             var annotation = new Annotation
             {
@@ -339,11 +330,24 @@ namespace BLL.Services
             assignment.SubmittedAt = DateTime.UtcNow;
 
             _assignmentRepo.Update(assignment);
+            var log = new ActivityLog
+            {
+                UserId = userId,
+                ActionType = "SubmitTask",
+                EntityName = "Project",
+                EntityId = assignment.ProjectId.ToString(),
+                Description = $"Annotator submitted task {assignment.Id} for review.",
+                Timestamp = DateTime.UtcNow
+            };
+            await _activityLogRepo.AddAsync(log);
+
             await _assignmentRepo.SaveChangesAsync();
         }
+
         public async Task<SubmitMultipleTasksResponse> SubmitMultipleTasksAsync(string userId, SubmitMultipleTasksRequest request)
         {
             var response = new SubmitMultipleTasksResponse();
+            int? lastProjectId = null;
 
             foreach (var id in request.AssignmentIds)
             {
@@ -384,10 +388,25 @@ namespace BLL.Services
 
                 _assignmentRepo.Update(assignment);
                 response.SuccessCount++;
+                lastProjectId = assignment.ProjectId;
             }
 
             if (response.SuccessCount > 0)
             {
+                if (lastProjectId.HasValue)
+                {
+                    var log = new ActivityLog
+                    {
+                        UserId = userId,
+                        ActionType = "SubmitBatchTasks",
+                        EntityName = "Project",
+                        EntityId = lastProjectId.Value.ToString(),
+                        Description = $"Annotator batch submitted {response.SuccessCount} tasks for review.",
+                        Timestamp = DateTime.UtcNow
+                    };
+                    await _activityLogRepo.AddAsync(log);
+                }
+
                 await _assignmentRepo.SaveChangesAsync();
             }
 

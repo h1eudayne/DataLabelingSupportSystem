@@ -38,7 +38,7 @@ namespace BLL.Services
         public async Task<User> RegisterAsync(string fullName, string email, string password, string role)
         {
             if (!UserRoles.IsValid(role))
-                throw new Exception($"Invalid role.");
+                throw new Exception("Invalid role.");
 
             if (await _userRepository.IsEmailExistsAsync(email))
                 throw new Exception("Email already exists.");
@@ -56,6 +56,14 @@ namespace BLL.Services
             await _userRepository.AddAsync(user);
             await _userRepository.SaveChangesAsync();
 
+            await _logService.LogActionAsync(
+                user.Id,
+                "CreateUser",
+                "User",
+                user.Id,
+                $"Account created with role {role}."
+            );
+
             return user;
         }
         public async Task UpdateAvatarAsync(string userId, string avatarUrl)
@@ -66,7 +74,9 @@ namespace BLL.Services
             user.AvatarUrl = avatarUrl;
             _userRepository.Update(user);
             await _userRepository.SaveChangesAsync();
+            await _logService.LogActionAsync(userId, "UpdateAvatar", "User", userId, "User updated their avatar.");
         }
+
         public async Task<string?> LoginAsync(string email, string password)
         {
             var user = await _userRepository.GetUserByEmailAsync(email);
@@ -115,6 +125,7 @@ namespace BLL.Services
 
             _userRepository.Update(user);
             await _userRepository.SaveChangesAsync();
+            await _logService.LogActionAsync(userId, "UpdatePaymentInfo", "User", userId, "User updated their payment info.");
         }
 
         public async Task<List<User>> GetAllUsersAsync()
@@ -147,19 +158,22 @@ namespace BLL.Services
 
             _userRepository.Update(user);
             await _userRepository.SaveChangesAsync();
+            await _logService.LogActionAsync(userId, "UpdateUser", "User", userId, "Admin updated user details.");
         }
+
         public async Task ChangePasswordAsync(string userId, string oldPassword, string newPassword)
         {
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new Exception("User not found");
             if (!BCrypt.Net.BCrypt.Verify(oldPassword, user.PasswordHash))
             {
-                throw new Exception("Old password is incorrect");
+                throw new Exception("Old password is incorrect.");
             }
 
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
             _userRepository.Update(user);
             await _userRepository.SaveChangesAsync();
+            await _logService.LogActionAsync(userId, "ChangePassword", "User", userId, "User changed their password.");
         }
 
         public async Task UpdateProfileAsync(string userId, UpdateProfileRequest request)
@@ -172,24 +186,32 @@ namespace BLL.Services
 
             _userRepository.Update(user);
             await _userRepository.SaveChangesAsync();
+            await _logService.LogActionAsync(userId, "UpdateProfile", "User", userId, "User updated their profile information.");
         }
+
         public async Task DeleteUserAsync(string userId)
         {
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new Exception("User not found");
+
             user.IsActive = false;
             _userRepository.Update(user);
             await _userRepository.SaveChangesAsync();
+
+            await _logService.LogActionAsync(userId, "DeleteUser", "User", userId, "Admin deactivated the user account.");
         }
 
         public async Task ToggleUserStatusAsync(string userId, bool isActive)
         {
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new Exception("User not found");
-            user.IsActive = isActive;
 
+            user.IsActive = isActive;
             _userRepository.Update(user);
             await _userRepository.SaveChangesAsync();
+
+            var statusStr = isActive ? "activated" : "deactivated";
+            await _logService.LogActionAsync(userId, "ToggleUserStatus", "User", userId, $"Admin {statusStr} the user account.");
         }
 
         public async Task<ImportUserResponse> ImportUsersFromExcelAsync(IFormFile file, string adminId)
@@ -256,10 +278,10 @@ namespace BLL.Services
 
             await _logService.LogActionAsync(
                 adminId,
-                "Import",
+                "ImportUsers",
                 "User",
                 "Bulk Import",
-                $"Imported {response.SuccessCount} users, failed {response.FailureCount} rows."
+                $"Admin imported {response.SuccessCount} users, failed {response.FailureCount} rows."
             );
 
             return response;

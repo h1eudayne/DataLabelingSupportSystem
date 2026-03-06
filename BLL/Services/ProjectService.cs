@@ -6,6 +6,11 @@ using System.Text.Json;
 using System.Text;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace BLL.Services
 {
@@ -16,20 +21,24 @@ namespace BLL.Services
         private readonly IRepository<UserProjectStat> _statsRepo;
         private readonly IRepository<Invoice> _invoiceRepo;
         private readonly IAssignmentRepository _assignmentRepo;
+        private readonly IActivityLogRepository _activityLogRepo;
 
         public ProjectService(
             IProjectRepository projectRepository,
             IUserRepository userRepository,
             IRepository<UserProjectStat> statsRepo,
             IRepository<Invoice> invoiceRepo,
-            IAssignmentRepository assignmentRepo)
+            IAssignmentRepository assignmentRepo,
+            IActivityLogRepository activityLogRepo)
         {
             _projectRepository = projectRepository;
             _userRepository = userRepository;
             _statsRepo = statsRepo;
             _invoiceRepo = invoiceRepo;
             _assignmentRepo = assignmentRepo;
+            _activityLogRepo = activityLogRepo;
         }
+
         public async Task<int> UploadDirectDataItemsAsync(int projectId, List<Microsoft.AspNetCore.Http.IFormFile> files, string webRootPath)
         {
             var project = await _projectRepository.GetByIdAsync(projectId);
@@ -66,6 +75,7 @@ namespace BLL.Services
 
             return storageUrls.Count;
         }
+
         public async Task<ProjectDetailResponse> CreateProjectAsync(string managerId, CreateProjectRequest request)
         {
             var manager = await _userRepository.GetByIdAsync(managerId);
@@ -125,6 +135,17 @@ namespace BLL.Services
 
             await _projectRepository.AddAsync(project);
             await _projectRepository.SaveChangesAsync();
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = managerId,
+                ActionType = "CreateProject",
+                EntityName = "Project",
+                EntityId = project.Id.ToString(),
+                Description = $"Created a new project: {project.Name}",
+                Timestamp = DateTime.UtcNow
+            });
+            await _activityLogRepo.SaveChangesAsync();
 
             return new ProjectDetailResponse
             {
@@ -199,6 +220,17 @@ namespace BLL.Services
 
             _projectRepository.Update(project);
             await _projectRepository.SaveChangesAsync();
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = project.ManagerId,
+                ActionType = "UpdateProject",
+                EntityName = "Project",
+                EntityId = project.Id.ToString(),
+                Description = $"Updated project details: {project.Name}",
+                Timestamp = DateTime.UtcNow
+            });
+            await _activityLogRepo.SaveChangesAsync();
         }
 
         public async Task<List<AnnotatorProjectStatsResponse>> GetAssignedProjectsAsync(string annotatorId)
@@ -263,6 +295,17 @@ namespace BLL.Services
                 project.DataItems.Add(dataItem);
             }
             await _projectRepository.SaveChangesAsync();
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = project.ManagerId,
+                ActionType = "ImportData",
+                EntityName = "Project",
+                EntityId = project.Id.ToString(),
+                Description = $"Imported {storageUrls.Count} data items into project {project.Name}",
+                Timestamp = DateTime.UtcNow
+            });
+            await _activityLogRepo.SaveChangesAsync();
         }
 
         public async Task<ProjectDetailResponse?> GetProjectDetailsAsync(int projectId)
@@ -339,6 +382,7 @@ namespace BLL.Services
                 Members = members
             };
         }
+
         public async Task<List<ProjectSummaryResponse>> GetProjectsByManagerAsync(string managerId)
         {
             var projects = await _projectRepository.GetProjectsByManagerIdAsync(managerId);
@@ -369,8 +413,22 @@ namespace BLL.Services
             var project = await _projectRepository.GetByIdAsync(projectId);
             if (project == null) throw new Exception("Project not found");
 
+            var managerId = project.ManagerId;
+            var projectName = project.Name;
+
             _projectRepository.Delete(project);
             await _projectRepository.SaveChangesAsync();
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = managerId,
+                ActionType = "DeleteProject",
+                EntityName = "Project",
+                EntityId = projectId.ToString(),
+                Description = $"Deleted project: {projectName}",
+                Timestamp = DateTime.UtcNow
+            });
+            await _activityLogRepo.SaveChangesAsync();
         }
 
         public async Task GenerateInvoicesAsync(int projectId)
@@ -401,6 +459,17 @@ namespace BLL.Services
                 }
             }
             await _invoiceRepo.SaveChangesAsync();
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = project.ManagerId,
+                ActionType = "GenerateInvoices",
+                EntityName = "Project",
+                EntityId = projectId.ToString(),
+                Description = $"Generated invoices for project: {project.Name}",
+                Timestamp = DateTime.UtcNow
+            });
+            await _activityLogRepo.SaveChangesAsync();
         }
 
         public async Task<byte[]> ExportProjectDataAsync(int projectId, string userId)
@@ -474,6 +543,18 @@ namespace BLL.Services
             };
 
             var json = JsonSerializer.Serialize(exportData, new JsonSerializerOptions { WriteIndented = true });
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = userId,
+                ActionType = "ExportProject",
+                EntityName = "Project",
+                EntityId = projectId.ToString(),
+                Description = $"Exported data for project: {project.Name}",
+                Timestamp = DateTime.UtcNow
+            });
+            await _activityLogRepo.SaveChangesAsync();
+
             return Encoding.UTF8.GetBytes(json);
         }
 
@@ -562,6 +643,7 @@ namespace BLL.Services
                                        .Count()
             };
         }
+
         public async Task<List<Core.DTOs.Responses.BucketResponse>> GetBucketsAsync(int projectId, string userId)
         {
             var dataItems = await _projectRepository.GetProjectDataItemsAsync(projectId);
