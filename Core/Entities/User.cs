@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Core.Entities
 {
@@ -18,7 +19,17 @@ namespace Core.Entities
         public string PasswordHash { get; set; } = string.Empty;
         public string? AvatarUrl { get; set; }
         [Required]
-        public string Role { get; set; } = "Annotator"; 
+        public string Role { get; set; } = "Annotator";
+
+        public string? ManagerId { get; set; }
+
+        [ForeignKey("ManagerId")]
+        [InverseProperty("ManagedUsers")]
+        public virtual User? Manager { get; set; }
+
+        [InverseProperty("Manager")]
+        public virtual ICollection<User> ManagedUsers { get; set; } = new List<User>();
+
         public virtual PaymentInfo? PaymentInfo { get; set; }
         public virtual ICollection<Project> ManagedProjects { get; set; } = new List<Project>();
         public virtual ICollection<Assignment> Assignments { get; set; } = new List<Assignment>();

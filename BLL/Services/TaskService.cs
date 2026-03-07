@@ -4,6 +4,7 @@ using Core.DTOs.Responses;
 using DAL.Interfaces;
 using Core.Constants;
 using Core.Entities;
+using System.Text.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -37,6 +38,51 @@ namespace BLL.Services
             _userRepo = userRepo;
             _projectRepo = projectRepo;
             _activityLogRepo = activityLogRepo;
+        }
+
+        private int? ExtractClassIdFromJSON(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    if (root.TryGetProperty("classId", out var prop) || root.TryGetProperty("ClassId", out prop))
+                    {
+                        if (prop.ValueKind == JsonValueKind.Number && prop.TryGetInt32(out int id))
+                            return id;
+
+                        if (prop.ValueKind == JsonValueKind.String && int.TryParse(prop.GetString(), out int parsedId))
+                            return parsedId;
+                    }
+                }
+                else if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+                {
+                    foreach (var element in root.EnumerateArray())
+                    {
+                        if (element.ValueKind == JsonValueKind.Object)
+                        {
+                            if (element.TryGetProperty("classId", out var prop) || element.TryGetProperty("ClassId", out prop))
+                            {
+                                if (prop.ValueKind == JsonValueKind.Number && prop.TryGetInt32(out int id))
+                                    return id;
+
+                                if (prop.ValueKind == JsonValueKind.String && int.TryParse(prop.GetString(), out int parsedId))
+                                    return parsedId;
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return null;
         }
 
         public async Task<List<AssignmentResponse>> GetTasksByBucketAsync(int projectId, int bucketId, string userId)
@@ -279,6 +325,7 @@ namespace BLL.Services
             {
                 latestAnnotation.DataJSON = request.DataJSON;
                 latestAnnotation.CreatedAt = DateTime.UtcNow;
+                latestAnnotation.ClassId = ExtractClassIdFromJSON(request.DataJSON);
                 _annotationRepo.Update(latestAnnotation);
             }
             else
@@ -287,7 +334,8 @@ namespace BLL.Services
                 {
                     AssignmentId = assignment.Id,
                     DataJSON = request.DataJSON,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    ClassId = ExtractClassIdFromJSON(request.DataJSON)
                 };
                 await _annotationRepo.AddAsync(annotation);
             }
@@ -321,7 +369,8 @@ namespace BLL.Services
             {
                 AssignmentId = assignment.Id,
                 DataJSON = request.DataJSON,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                ClassId = ExtractClassIdFromJSON(request.DataJSON)
             };
 
             await _annotationRepo.AddAsync(annotation);
@@ -330,6 +379,7 @@ namespace BLL.Services
             assignment.SubmittedAt = DateTime.UtcNow;
 
             _assignmentRepo.Update(assignment);
+
             var log = new ActivityLog
             {
                 UserId = userId,

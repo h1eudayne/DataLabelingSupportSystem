@@ -3,6 +3,10 @@ using DAL.Interfaces;
 using Core.Constants;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace DAL.Repositories
 {
@@ -75,6 +79,7 @@ namespace DAL.Repositories
                 .Include(a => a.Project)
                     .ThenInclude(p => p.LabelClasses)
                 .Include(a => a.Annotations)
+                .Include(a => a.Reviewer) // Thêm dòng này để lấy thông tin Reviewer
                 .Where(a => a.ProjectId == projectId &&
                             a.Status == TaskStatusConstants.Submitted)
                 .OrderBy(a => a.SubmittedAt)

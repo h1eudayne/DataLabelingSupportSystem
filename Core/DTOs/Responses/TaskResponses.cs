@@ -48,6 +48,16 @@ namespace Core.DTOs.Responses
         public DateTime Deadline { get; set; }
 
         /// <summary>
+        /// The ID of the reviewer assigned to this task.
+        /// </summary>
+        public string? ReviewerId { get; set; }
+
+        /// <summary>
+        /// The name of the reviewer assigned to this task.
+        /// </summary>
+        public string? ReviewerName { get; set; }
+
+        /// <summary>
         /// The list of available label definitions for this task.
         /// </summary>
         public List<LabelResponse> Labels { get; set; } = new List<LabelResponse>();

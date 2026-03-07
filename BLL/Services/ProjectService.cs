@@ -402,7 +402,8 @@ namespace BLL.Services
                     : 0,
                 TotalMembers = p.DataItems
                                 .SelectMany(d => d.Assignments)
-                                .Select(a => a.AnnotatorId)
+                                .SelectMany(a => new[] { a.AnnotatorId, a.ReviewerId })
+                                .Where(id => !string.IsNullOrEmpty(id))
                                 .Distinct()
                                 .Count()
             }).ToList();
@@ -578,7 +579,7 @@ namespace BLL.Services
                 TotalItems = project.DataItems.Count,
                 CompletedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved),
                 TotalAssignments = allAssignments.Count,
-                PendingAssignments = allAssignments.Count(a => a.Status == TaskStatusConstants.Assigned || a.Status == TaskStatusConstants.InProgress),
+                PendingAssignments = allAssignments.Count(a => a.Status == TaskStatusConstants.New || a.Status == TaskStatusConstants.Assigned || a.Status == TaskStatusConstants.InProgress),
                 SubmittedAssignments = allAssignments.Count(a => a.Status == TaskStatusConstants.Submitted),
                 ApprovedAssignments = allAssignments.Count(a => a.Status == TaskStatusConstants.Approved),
                 RejectedAssignments = allAssignments.Count(a => a.Status == TaskStatusConstants.Rejected),
@@ -629,6 +630,18 @@ namespace BLL.Services
         public async Task<ManagerStatsResponse> GetManagerStatsAsync(string managerId)
         {
             var projects = await _projectRepository.GetProjectsByManagerIdAsync(managerId);
+            var allUsers = await _userRepository.GetAllAsync();
+
+            var directSubordinates = allUsers.Where(u => u.ManagerId == managerId).Select(u => u.Id).ToList();
+
+            var projectMembers = projects.SelectMany(p => p.DataItems)
+                                         .SelectMany(d => d.Assignments)
+                                         .SelectMany(a => new[] { a.AnnotatorId, a.ReviewerId })
+                                         .Where(id => !string.IsNullOrEmpty(id))
+                                         .Distinct()
+                                         .ToList();
+
+            var totalMembers = directSubordinates.Union(projectMembers).Distinct().Count();
 
             return new ManagerStatsResponse
             {
@@ -636,11 +649,7 @@ namespace BLL.Services
                 ActiveProjects = projects.Count(p => p.Deadline >= DateTime.UtcNow),
                 TotalBudget = projects.Sum(p => p.TotalBudget),
                 TotalDataItems = projects.Sum(p => p.DataItems.Count),
-                TotalMembers = projects.SelectMany(p => p.DataItems)
-                                       .SelectMany(d => d.Assignments)
-                                       .Select(a => a.AnnotatorId)
-                                       .Distinct()
-                                       .Count()
+                TotalMembers = totalMembers
             };
         }
 

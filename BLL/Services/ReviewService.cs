@@ -237,6 +237,8 @@ namespace BLL.Services
                     ProjectName = a.Project?.Name ?? "",
                     Status = a.Status,
                     Deadline = a.Project?.Deadline ?? DateTime.MinValue,
+                    ReviewerId = a.ReviewerId,
+                    ReviewerName = a.Reviewer?.FullName ?? "Unknown",
                     Labels = a.Project?.LabelClasses.Select(l => new LabelResponse
                     {
                         Id = l.Id,
