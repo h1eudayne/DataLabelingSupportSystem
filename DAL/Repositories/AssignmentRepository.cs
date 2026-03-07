@@ -79,7 +79,7 @@ namespace DAL.Repositories
                 .Include(a => a.Project)
                     .ThenInclude(p => p.LabelClasses)
                 .Include(a => a.Annotations)
-                .Include(a => a.Reviewer) // Thêm dòng này để lấy thông tin Reviewer
+                .Include(a => a.Reviewer)
                 .Where(a => a.ProjectId == projectId &&
                             a.Status == TaskStatusConstants.Submitted)
                 .OrderBy(a => a.SubmittedAt)
