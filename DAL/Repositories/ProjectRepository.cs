@@ -16,6 +16,7 @@ namespace DAL.Repositories
                 .Include(p => p.ChecklistItems)
                 .FirstOrDefaultAsync(p => p.Id == (int)id);
         }
+
         public async Task<List<DataItem>> GetProjectDataItemsAsync(int projectId)
         {
             return await _context.DataItems
@@ -23,6 +24,7 @@ namespace DAL.Repositories
                                  .Select(d => new DataItem { Id = d.Id, BucketId = d.BucketId })
                                  .ToListAsync();
         }
+
         public async Task<List<DataItem>> GetDataItemsByBucketIdAsync(int projectId, int bucketId)
         {
             return await _context.DataItems
@@ -42,6 +44,7 @@ namespace DAL.Repositories
                 .Include(p => p.DataItems)
                     .ThenInclude(d => d.Assignments)
                         .ThenInclude(a => a.Reviewer)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(p => p.Id == id);
         }
 
@@ -52,6 +55,16 @@ namespace DAL.Repositories
                 .Include(p => p.DataItems)
                     .ThenInclude(d => d.Assignments)
                         .ThenInclude(a => a.Annotations)
+                .Include(p => p.DataItems)
+                    .ThenInclude(d => d.Assignments)
+                        .ThenInclude(a => a.Annotator)
+                .Include(p => p.DataItems)
+                    .ThenInclude(d => d.Assignments)
+                        .ThenInclude(a => a.Reviewer)
+                .Include(p => p.DataItems)
+                    .ThenInclude(d => d.Assignments)
+                        .ThenInclude(a => a.ReviewLogs)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(p => p.Id == id);
         }
 
@@ -94,7 +107,8 @@ namespace DAL.Repositories
                         Assignments = d.Assignments.Select(a => new Assignment
                         {
                             Status = a.Status,
-                            AnnotatorId = a.AnnotatorId
+                            AnnotatorId = a.AnnotatorId,
+                            ReviewerId = a.ReviewerId
                         }).ToList()
                     }).ToList()
                 })
@@ -104,11 +118,16 @@ namespace DAL.Repositories
 
         public async Task<List<Project>> GetProjectsByAnnotatorAsync(string annotatorId)
         {
-            return await _context.Assignments
+            var projectIds = await _context.Assignments
                 .Where(a => a.AnnotatorId == annotatorId)
-                .Include(a => a.Project)
-                .Select(a => a.Project)
+                .Select(a => a.ProjectId)
                 .Distinct()
+                .ToListAsync();
+
+            return await _context.Projects
+                .Where(p => projectIds.Contains(p.Id))
+                .Include(p => p.DataItems)
+                    .ThenInclude(d => d.Assignments)
                 .OrderByDescending(p => p.Id)
                 .ToListAsync();
         }
