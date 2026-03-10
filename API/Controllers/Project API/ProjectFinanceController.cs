@@ -2,8 +2,6 @@
 using Core.DTOs.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System;
-using System.Threading.Tasks;
 
 namespace API.Controllers
 {

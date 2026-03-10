@@ -5,10 +5,6 @@ using DAL.Interfaces;
 using Core.Constants;
 using Core.Entities;
 using System.Text.Json;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace BLL.Services
 {
@@ -18,7 +14,7 @@ namespace BLL.Services
         private readonly IRepository<ReviewLog> _reviewLogRepo;
         private readonly IRepository<DataItem> _dataItemRepo;
         private readonly IStatisticService _statisticService;
-        private readonly IRepository<Project> _projectRepo;
+        private readonly IProjectRepository _projectRepo;
         private readonly IUserRepository _userRepo;
         private readonly IActivityLogRepository _activityLogRepo;
 
@@ -27,7 +23,7 @@ namespace BLL.Services
             IRepository<ReviewLog> reviewLogRepo,
             IRepository<DataItem> dataItemRepo,
             IStatisticService statisticService,
-            IRepository<Project> projectRepo,
+            IProjectRepository projectRepo,
             IUserRepository userRepo,
             IActivityLogRepository activityLogRepo)
         {
@@ -49,21 +45,28 @@ namespace BLL.Services
                             (a.ReviewLogs != null && a.ReviewLogs.Any(r => r.ReviewerId == reviewerId)))
                 .ToList();
 
-            return reviewerAssignments
-                .GroupBy(a => a.ProjectId)
-                .Select(g => new AssignedProjectResponse
+            var response = new List<AssignedProjectResponse>();
+            var grouped = reviewerAssignments.GroupBy(a => a.ProjectId);
+
+            foreach (var g in grouped)
+            {
+                var project = await _projectRepo.GetProjectWithDetailsAsync(g.Key);
+
+                response.Add(new AssignedProjectResponse
                 {
                     ProjectId = g.Key,
-                    ProjectName = g.First().Project?.Name ?? "Unknown Project",
-                    Description = g.First().Project?.Description ?? "",
-                    ThumbnailUrl = g.First().DataItem?.StorageUrl ?? "",
+                    ProjectName = project?.Name ?? "Unknown Project",
+                    Description = project?.Description ?? "",
+                    ThumbnailUrl = project?.DataItems?.FirstOrDefault()?.StorageUrl ?? "",
                     AssignedDate = g.Min(a => a.AssignedDate),
-                    Deadline = g.First().Project?.Deadline ?? DateTime.MinValue,
+                    Deadline = project?.Deadline ?? DateTime.MinValue,
                     TotalImages = g.Count(),
                     CompletedImages = g.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected),
                     Status = g.All(a => a.Status == TaskStatusConstants.Approved) ? "Completed" : "InProgress"
-                })
-                .ToList();
+                });
+            }
+
+            return response;
         }
 
         public async Task ReviewAssignmentAsync(string reviewerId, ReviewRequest request)

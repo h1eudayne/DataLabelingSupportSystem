@@ -1,13 +1,9 @@
 using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
-using Core.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System;
-using System.Collections.Generic;
 using System.Security.Claims;
-using System.Threading.Tasks;
 
 namespace API.Controllers
 {

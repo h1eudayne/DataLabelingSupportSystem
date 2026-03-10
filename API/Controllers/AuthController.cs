@@ -2,8 +2,6 @@ using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Microsoft.AspNetCore.Mvc;
-using System;
-using System.Threading.Tasks;
 
 namespace API.Controllers
 {
