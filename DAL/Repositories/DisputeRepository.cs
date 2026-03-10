@@ -18,6 +18,8 @@ namespace DAL.Repositories
                 .Include(d => d.Annotator)
                 .Include(d => d.Assignment)
                     .ThenInclude(a => a.DataItem)
+                .Include(d => d.Assignment)
+                    .ThenInclude(a => a.Reviewer)
                 .Where(d => d.Assignment.ProjectId == projectId)
                 .OrderByDescending(d => d.CreatedAt)
                 .ToListAsync();
@@ -28,6 +30,8 @@ namespace DAL.Repositories
             return await AppContext.Disputes
                 .Include(d => d.Assignment)
                     .ThenInclude(a => a.DataItem)
+                .Include(d => d.Assignment)
+                    .ThenInclude(a => a.Project)
                 .Where(d => d.AnnotatorId == annotatorId)
                 .OrderByDescending(d => d.CreatedAt)
                 .ToListAsync();
@@ -38,6 +42,9 @@ namespace DAL.Repositories
             return await AppContext.Disputes
                 .Include(d => d.Annotator)
                 .Include(d => d.Assignment)
+                    .ThenInclude(a => a.DataItem)
+                .Include(d => d.Assignment)
+                    .ThenInclude(a => a.ReviewLogs)
                 .FirstOrDefaultAsync(d => d.Id == disputeId);
         }
     }

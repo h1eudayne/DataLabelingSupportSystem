@@ -5,7 +5,10 @@ using DAL.Interfaces;
 using Core.Constants;
 using Core.Entities;
 using System.Text.Json;
-
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace BLL.Services
 {
@@ -97,7 +100,7 @@ namespace BLL.Services
                     AnnotationData = a.Annotations?
                         .OrderByDescending(an => an.CreatedAt)
                         .FirstOrDefault()
-                        ?.DataJSON
+                        ?.DataJSON ?? ""
                 }).ToList();
             }
 
@@ -132,7 +135,8 @@ namespace BLL.Services
                 DataItemId = a.DataItemId,
                 DataItemUrl = dataItems.First(d => d.Id == a.DataItemId).StorageUrl,
                 Status = a.Status,
-                AssignedDate = a.AssignedDate
+                AssignedDate = a.AssignedDate,
+                AnnotationData = ""
             }).ToList();
         }
 
@@ -204,15 +208,15 @@ namespace BLL.Services
                 AnnotationData = assignment.Annotations?
                     .OrderByDescending(an => an.CreatedAt)
                     .FirstOrDefault()
-                    ?.DataJSON,
+                    ?.DataJSON ?? "",
                 AssignedDate = assignment.AssignedDate,
                 Deadline = effectiveDeadline,
                 RejectionReason = assignment.Status == TaskStatusConstants.Rejected
-                    ? assignment.ReviewLogs?
+                    ? (assignment.ReviewLogs?
                         .OrderByDescending(r => r.CreatedAt)
                         .FirstOrDefault()
-                        ?.Comment
-                    : null
+                        ?.Comment ?? "")
+                    : ""
             };
         }
 
@@ -268,15 +272,15 @@ namespace BLL.Services
                     AnnotationData = a.Annotations?
                         .OrderByDescending(an => an.CreatedAt)
                         .FirstOrDefault()
-                        ?.DataJSON,
+                        ?.DataJSON ?? "",
                     AssignedDate = a.AssignedDate,
                     Deadline = effectiveDeadline,
                     RejectionReason = a.Status == TaskStatusConstants.Rejected
-                        ? a.ReviewLogs?
+                        ? (a.ReviewLogs?
                             .OrderByDescending(r => r.CreatedAt)
                             .FirstOrDefault()
-                            ?.Comment
-                        : null
+                            ?.Comment ?? "")
+                        : ""
                 };
             }).ToList();
         }

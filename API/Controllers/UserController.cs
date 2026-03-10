@@ -31,9 +31,9 @@ namespace API.Controllers
         /// Retrieves the profile of the currently logged-in user.
         /// </summary>
         /// <remarks>
-        /// Returns basic user information and payment details (if available).
+        /// Returns basic user information and payment details if available.
         /// </remarks>
-        /// <returns>User profile data.</returns>
+        /// <returns>User profile information.</returns>
         /// <response code="200">Profile retrieved successfully.</response>
         /// <response code="401">User is not authenticated.</response>
         /// <response code="404">User not found.</response>
@@ -63,17 +63,19 @@ namespace API.Controllers
                         user.PaymentInfo.BankAccountNumber,
                         user.PaymentInfo.TaxCode
                     }
-                    : null
+                    : new
+                    {
+                        BankName = "",
+                        BankAccountNumber = "",
+                        TaxCode = ""
+                    }
             });
         }
 
         /// <summary>
         /// Updates the profile information of the current user.
         /// </summary>
-        /// <remarks>
-        /// Allows updating the full name and avatar URL.
-        /// </remarks>
-        /// <param name="request">Profile update payload.</param>
+        /// <param name="request">Profile update request.</param>
         /// <response code="200">Profile updated successfully.</response>
         /// <response code="400">Update failed.</response>
         /// <response code="401">User is not authenticated.</response>
@@ -101,13 +103,13 @@ namespace API.Controllers
         /// Uploads an avatar image for the current user.
         /// </summary>
         /// <remarks>
-        /// Saves the image to the server and updates the user's AvatarUrl.
+        /// The image will be saved to the server and the avatar URL will be updated in the database.
         /// </remarks>
-        /// <param name="file">The image file to upload.</param>
+        /// <param name="file">Image file to upload.</param>
         /// <response code="200">Avatar uploaded successfully.</response>
         /// <response code="400">No file selected or invalid file.</response>
         /// <response code="401">User is not authenticated.</response>
-        /// <response code="500">Internal server error during upload.</response>
+        /// <response code="500">Internal server error.</response>
         [HttpPost("me/avatar")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -147,9 +149,9 @@ namespace API.Controllers
         }
 
         /// <summary>
-        /// Updates the payment information of the current user.
+        /// Updates payment information for the current user.
         /// </summary>
-        /// <param name="request">Payment information update request.</param>
+        /// <param name="request">Payment information payload.</param>
         /// <response code="200">Payment information updated successfully.</response>
         /// <response code="400">Update failed.</response>
         /// <response code="401">User is not authenticated.</response>
@@ -170,6 +172,7 @@ namespace API.Controllers
                     request.BankAccountNumber,
                     request.TaxCode
                 );
+
                 return Ok(new { Message = "Payment info updated successfully." });
             }
             catch (Exception ex)
@@ -185,9 +188,9 @@ namespace API.Controllers
         /// <summary>
         /// Changes the password of the current user.
         /// </summary>
-        /// <param name="request">Payload containing the old and new passwords.</param>
+        /// <param name="request">Request containing old password and new password.</param>
         /// <response code="200">Password changed successfully.</response>
-        /// <response code="400">Password change failed (e.g., incorrect old password).</response>
+        /// <response code="400">Password change failed.</response>
         /// <response code="401">User is not authenticated.</response>
         [HttpPut("me/password")]
         [ProducesResponseType(typeof(object), 200)]
@@ -205,6 +208,7 @@ namespace API.Controllers
                     request.OldPassword,
                     request.NewPassword
                 );
+
                 return Ok(new { Message = "Password changed successfully." });
             }
             catch (Exception ex)
@@ -218,14 +222,14 @@ namespace API.Controllers
         // ======================================================
 
         /// <summary>
-        /// Imports users from an uploaded Excel file.
+        /// Imports users from an Excel file.
         /// </summary>
         /// <remarks>
-        /// Admin only. Reads an .xlsx file and batch-creates user accounts.
+        /// Only Admin users are allowed to import accounts in bulk.
         /// </remarks>
-        /// <param name="file">The Excel file (.xlsx) containing user data.</param>
+        /// <param name="file">Excel file (.xlsx) containing user data.</param>
         /// <response code="200">Users imported successfully.</response>
-        /// <response code="400">Invalid file format or missing file.</response>
+        /// <response code="400">Invalid or missing file.</response>
         /// <response code="401">User is not authorized.</response>
         [HttpPost("import")]
         [Authorize(Roles = "Admin")]
@@ -259,12 +263,11 @@ namespace API.Controllers
         /// <remarks>
         /// Accessible by Admin and Manager roles.
         /// </remarks>
-        /// <returns>A list of all users.</returns>
         /// <response code="200">Users retrieved successfully.</response>
         /// <response code="401">User is not authorized.</response>
         [HttpGet]
         [Authorize(Roles = "Admin,Manager")]
-        [ProducesResponseType(typeof(object), 200)] // Consider replacing 'object' with your specific DTO list
+        [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> GetAllUsers()
         {
@@ -278,9 +281,9 @@ namespace API.Controllers
         /// <remarks>
         /// Admin only.
         /// </remarks>
-        /// <param name="request">User registration data.</param>
+        /// <param name="request">User registration information.</param>
         /// <response code="200">User created successfully.</response>
-        /// <response code="400">User creation failed (e.g., email already exists).</response>
+        /// <response code="400">Creation failed.</response>
         /// <response code="401">User is not authorized.</response>
         [HttpPost]
         [Authorize(Roles = "Admin")]
@@ -311,21 +314,15 @@ namespace API.Controllers
         }
 
         /// <summary>
-        /// Updates an existing user's details.
+        /// Updates an existing user.
         /// </summary>
-        /// <remarks>
-        /// Admin only.
-        /// </remarks>
-        /// <param name="id">The target user ID.</param>
-        /// <param name="request">Update payload.</param>
+        /// <param name="id">User ID.</param>
+        /// <param name="request">User update payload.</param>
         /// <response code="200">User updated successfully.</response>
         /// <response code="400">Update failed.</response>
         /// <response code="401">User is not authorized.</response>
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin")]
-        [ProducesResponseType(typeof(object), 200)]
-        [ProducesResponseType(typeof(ErrorResponse), 400)]
-        [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> UpdateUser(string id, [FromBody] UpdateUserRequest request)
         {
             try
@@ -342,19 +339,13 @@ namespace API.Controllers
         /// <summary>
         /// Activates or deactivates a user account.
         /// </summary>
-        /// <remarks>
-        /// Admin only.
-        /// </remarks>
-        /// <param name="id">The target user ID.</param>
-        /// <param name="isActive">The desired account status boolean.</param>
-        /// <response code="200">User status updated successfully.</response>
+        /// <param name="id">User ID.</param>
+        /// <param name="isActive">Account status flag.</param>
+        /// <response code="200">Status updated successfully.</response>
         /// <response code="400">Operation failed.</response>
         /// <response code="401">User is not authorized.</response>
         [HttpPatch("{id}/status")]
         [Authorize(Roles = "Admin")]
-        [ProducesResponseType(typeof(object), 200)]
-        [ProducesResponseType(typeof(ErrorResponse), 400)]
-        [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> ToggleUserStatus(string id, [FromQuery] bool isActive)
         {
             try
@@ -372,18 +363,12 @@ namespace API.Controllers
         /// <summary>
         /// Deletes (deactivates) a user account.
         /// </summary>
-        /// <remarks>
-        /// Admin only. This is typically a soft delete in the system.
-        /// </remarks>
-        /// <param name="id">The target user ID.</param>
-        /// <response code="200">User deleted successfully.</response>
+        /// <param name="id">User ID.</param>
+        /// <response code="200">User deactivated successfully.</response>
         /// <response code="400">Deletion failed.</response>
         /// <response code="401">User is not authorized.</response>
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
-        [ProducesResponseType(typeof(object), 200)]
-        [ProducesResponseType(typeof(ErrorResponse), 400)]
-        [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> DeleteUser(string id)
         {
             try
