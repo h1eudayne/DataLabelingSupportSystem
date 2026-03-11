@@ -1,4 +1,4 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using DAL.Interfaces;
 using Core.Entities;
 
@@ -68,9 +68,11 @@ namespace BLL.Services
         {
             var annotatorStat = await GetOrCreateStatAsync(annotatorId, projectId);
 
+            annotatorStat.TotalManagerDecisions++;
             if (isApproved)
             {
                 annotatorStat.TotalApproved++;
+                annotatorStat.TotalCorrectByManager++;
                 annotatorStat.EstimatedEarnings = annotatorStat.TotalApproved * pricePerLabel;
             }
             else
@@ -96,6 +98,7 @@ namespace BLL.Services
             await _statsRepo.SaveChangesAsync();
         }
 
+
         public async Task TrackAuditResultAsync(string reviewerId, int projectId, bool isCorrectDecision)
         {
             var reviewerStat = await GetOrCreateStatAsync(reviewerId, projectId, isReviewer: true);
@@ -115,5 +118,55 @@ namespace BLL.Services
 
             await _statsRepo.SaveChangesAsync();
         }
+
+        public async Task TrackDisputeResolutionAsync(
+            string annotatorId,
+            List<(string reviewerId, bool wasCorrect)> reviewerResults,
+            int projectId,
+            bool annotatorWasCorrect,
+            decimal pricePerLabel)
+        {
+            var annotatorStat = await GetOrCreateStatAsync(annotatorId, projectId);
+            annotatorStat.TotalManagerDecisions++;
+            if (annotatorWasCorrect)
+            {
+                annotatorStat.TotalCorrectByManager++;
+                annotatorStat.TotalApproved++;
+                annotatorStat.EstimatedEarnings = annotatorStat.TotalApproved * pricePerLabel;
+            }
+            else
+            {
+                annotatorStat.TotalRejected++;
+            }
+            annotatorStat.Date = DateTime.UtcNow;
+
+            foreach (var (reviewerId, wasCorrect) in reviewerResults)
+            {
+                var reviewerStat = await GetOrCreateStatAsync(reviewerId, projectId, isReviewer: true);
+                reviewerStat.TotalReviewerManagerDecisions++;
+                if (wasCorrect)
+                {
+                    reviewerStat.TotalReviewerCorrectByManager++;
+                }
+                reviewerStat.Date = DateTime.UtcNow;
+            }
+
+            await _statsRepo.SaveChangesAsync();
+        }
+
+        public async Task TrackFirstPassCorrectAsync(string annotatorId, string reviewerId, int projectId)
+        {
+            var annotatorStat = await GetOrCreateStatAsync(annotatorId, projectId);
+            annotatorStat.TotalFirstPassCorrect++;
+            annotatorStat.Date = DateTime.UtcNow;
+
+            var reviewerStat = await GetOrCreateStatAsync(reviewerId, projectId, isReviewer: true);
+            reviewerStat.TotalReviewerManagerDecisions++;
+            reviewerStat.TotalReviewerCorrectByManager++;
+            reviewerStat.Date = DateTime.UtcNow;
+
+            await _statsRepo.SaveChangesAsync();
+        }
+
     }
 }

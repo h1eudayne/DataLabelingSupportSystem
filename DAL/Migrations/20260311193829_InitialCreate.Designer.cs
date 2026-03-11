@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260307170328_InitialCreate")]
+    [Migration("20260311193829_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -205,6 +205,9 @@ namespace DAL.Migrations
                     b.Property<string>("ManagerComment")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ManagerId")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -221,6 +224,8 @@ namespace DAL.Migrations
                     b.HasIndex("AnnotatorId");
 
                     b.HasIndex("AssignmentId");
+
+                    b.HasIndex("ManagerId");
 
                     b.ToTable("Disputes");
                 });
@@ -555,16 +560,31 @@ namespace DAL.Migrations
                     b.Property<int>("TotalAuditedReviews")
                         .HasColumnType("int");
 
+                    b.Property<int>("TotalCorrectByManager")
+                        .HasColumnType("int");
+
                     b.Property<int>("TotalCorrectDecisions")
                         .HasColumnType("int");
 
                     b.Property<int>("TotalCriticalErrors")
                         .HasColumnType("int");
 
+                    b.Property<int>("TotalFirstPassCorrect")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalManagerDecisions")
+                        .HasColumnType("int");
+
                     b.Property<int>("TotalRejected")
                         .HasColumnType("int");
 
                     b.Property<int>("TotalReviewedTasks")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalReviewerCorrectByManager")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalReviewerManagerDecisions")
                         .HasColumnType("int");
 
                     b.Property<int>("TotalReviewsDone")
@@ -667,9 +687,15 @@ namespace DAL.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Core.Entities.User", "Manager")
+                        .WithMany()
+                        .HasForeignKey("ManagerId");
+
                     b.Navigation("Annotator");
 
                     b.Navigation("Assignment");
+
+                    b.Navigation("Manager");
                 });
 
             modelBuilder.Entity("Core.Entities.Invoice", b =>

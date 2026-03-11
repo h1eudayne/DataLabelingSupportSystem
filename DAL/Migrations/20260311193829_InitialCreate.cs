@@ -235,7 +235,12 @@ namespace DAL.Migrations
                     TotalReviewsDone = table.Column<int>(type: "int", nullable: false),
                     TotalCorrectDecisions = table.Column<int>(type: "int", nullable: false),
                     TotalAuditedReviews = table.Column<int>(type: "int", nullable: false),
-                    EstimatedEarnings = table.Column<decimal>(type: "decimal(18,2)", nullable: false)
+                    EstimatedEarnings = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TotalFirstPassCorrect = table.Column<int>(type: "int", nullable: false),
+                    TotalManagerDecisions = table.Column<int>(type: "int", nullable: false),
+                    TotalCorrectByManager = table.Column<int>(type: "int", nullable: false),
+                    TotalReviewerCorrectByManager = table.Column<int>(type: "int", nullable: false),
+                    TotalReviewerManagerDecisions = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -336,6 +341,7 @@ namespace DAL.Migrations
                     Reason = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     ManagerComment = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ManagerId = table.Column<string>(type: "nvarchar(450)", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ResolvedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
                 },
@@ -354,6 +360,11 @@ namespace DAL.Migrations
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_Disputes_Users_ManagerId",
+                        column: x => x.ManagerId,
+                        principalTable: "Users",
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -439,6 +450,11 @@ namespace DAL.Migrations
                 name: "IX_Disputes_AssignmentId",
                 table: "Disputes",
                 column: "AssignmentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Disputes_ManagerId",
+                table: "Disputes",
+                column: "ManagerId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Invoices_ProjectId",

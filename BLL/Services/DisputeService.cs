@@ -1,4 +1,4 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using Core.Constants;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
@@ -11,11 +11,25 @@ namespace BLL.Services
     {
         private readonly IDisputeRepository _disputeRepo;
         private readonly IAssignmentRepository _assignmentRepo;
+        private readonly IStatisticService _statisticService;
+        private readonly IRepository<ReviewLog> _reviewLogRepo;
+        private readonly IProjectRepository _projectRepo;
+        private readonly IRepository<DataItem> _dataItemRepo;
 
-        public DisputeService(IDisputeRepository disputeRepo, IAssignmentRepository assignmentRepo)
+        public DisputeService(
+            IDisputeRepository disputeRepo,
+            IAssignmentRepository assignmentRepo,
+            IStatisticService statisticService,
+            IRepository<ReviewLog> reviewLogRepo,
+            IProjectRepository projectRepo,
+            IRepository<DataItem> dataItemRepo)
         {
             _disputeRepo = disputeRepo;
             _assignmentRepo = assignmentRepo;
+            _statisticService = statisticService;
+            _reviewLogRepo = reviewLogRepo;
+            _projectRepo = projectRepo;
+            _dataItemRepo = dataItemRepo;
         }
 
         public async Task CreateDisputeAsync(string annotatorId, CreateDisputeRequest request)
@@ -46,7 +60,7 @@ namespace BLL.Services
             await _disputeRepo.SaveChangesAsync();
         }
 
-        public async Task ResolveDisputeAsync(ResolveDisputeRequest request)
+        public async Task ResolveDisputeAsync(string managerId, ResolveDisputeRequest request)
         {
             var dispute = await _disputeRepo.GetDisputeWithDetailsAsync(request.DisputeId);
             if (dispute == null) throw new Exception("Dispute not found");
@@ -54,19 +68,63 @@ namespace BLL.Services
             if (dispute.Status != "Pending") throw new Exception("This dispute has already been resolved.");
 
             dispute.ManagerComment = request.ManagerComment;
+            dispute.ManagerId = managerId;
             dispute.ResolvedAt = DateTime.UtcNow;
+
+            var assignment = dispute.Assignment;
+            if (assignment == null) throw new Exception("Related assignment not found");
+
+            var project = await _projectRepo.GetByIdAsync(assignment.ProjectId);
+            if (project == null) throw new Exception("Project not found");
+
+            var reviewLogs = assignment.ReviewLogs?.ToList() ?? new List<ReviewLog>();
 
             if (request.IsAccepted)
             {
                 dispute.Status = "Accepted";
-                if (dispute.Assignment != null)
+                assignment.Status = TaskStatusConstants.Approved;
+
+                if (assignment.DataItemId > 0)
                 {
-                    dispute.Assignment.Status = TaskStatusConstants.Approved;
+                    var dataItem = await _dataItemRepo.GetByIdAsync(assignment.DataItemId);
+                    if (dataItem != null)
+                    {
+                        dataItem.Status = TaskStatusConstants.Approved;
+                        _dataItemRepo.Update(dataItem);
+                    }
                 }
+
+                var reviewerResults = reviewLogs
+                    .Select(r => (
+                        reviewerId: r.ReviewerId,
+                        wasCorrect: r.Verdict == "Approved"
+                    ))
+                    .ToList();
+
+                await _statisticService.TrackDisputeResolutionAsync(
+                    assignment.AnnotatorId,
+                    reviewerResults,
+                    assignment.ProjectId,
+                    annotatorWasCorrect: true,
+                    project.PricePerLabel);
             }
             else
             {
                 dispute.Status = "Rejected";
+
+                var reviewerResults = reviewLogs
+                    .Select(r => (
+                        reviewerId: r.ReviewerId,
+                        wasCorrect: r.Verdict == "Rejected" || r.Verdict == "Reject"
+                    ))
+                    .ToList();
+
+                await _statisticService.TrackDisputeResolutionAsync(
+                    assignment.AnnotatorId,
+                    reviewerResults,
+                    assignment.ProjectId,
+                    annotatorWasCorrect: false,
+                    project.PricePerLabel);
             }
 
             await _disputeRepo.SaveChangesAsync();

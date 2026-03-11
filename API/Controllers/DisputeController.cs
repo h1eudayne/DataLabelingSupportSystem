@@ -1,4 +1,4 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Microsoft.AspNetCore.Authorization;
@@ -62,7 +62,10 @@ namespace API.Controllers
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> ResolveDispute([FromBody] ResolveDisputeRequest request)
         {
-            await _disputeService.ResolveDisputeAsync(request);
+            var managerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(managerId)) return Unauthorized();
+
+            await _disputeService.ResolveDisputeAsync(managerId, request);
             return Ok(new { Message = "Dispute resolved." });
         }
 

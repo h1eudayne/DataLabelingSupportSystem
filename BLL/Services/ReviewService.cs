@@ -1,4 +1,4 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using DAL.Interfaces;
@@ -154,6 +154,21 @@ namespace BLL.Services
                 project.PricePerLabel,
                 isCritical
             );
+
+            if (request.IsApproved)
+            {
+                var existingReviewLogs = await _reviewLogRepo.GetAllAsync();
+                var hasBeenReviewedBefore = existingReviewLogs
+                    .Any(rl => rl.AssignmentId == assignment.Id);
+
+                if (!hasBeenReviewedBefore)
+                {
+                    await _statisticService.TrackFirstPassCorrectAsync(
+                        assignment.AnnotatorId,
+                        reviewerId,
+                        assignment.ProjectId);
+                }
+            }
 
             var log = new ReviewLog
             {
