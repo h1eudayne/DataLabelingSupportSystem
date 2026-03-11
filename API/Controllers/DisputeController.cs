@@ -82,11 +82,18 @@ namespace API.Controllers
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> GetDisputes([FromQuery] int projectId)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var role = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            var disputes = await _disputeService.GetDisputesAsync(projectId, userId, role);
-            return Ok(disputes);
+                var disputes = await _disputeService.GetDisputesAsync(projectId, userId, role);
+                return Ok(disputes);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
         }
     }
 }

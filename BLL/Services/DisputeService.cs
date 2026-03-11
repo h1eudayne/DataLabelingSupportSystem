@@ -1,6 +1,7 @@
 ﻿using BLL.Interfaces;
 using Core.Constants;
 using Core.DTOs.Requests;
+using Core.DTOs.Responses;
 using Core.Entities;
 using DAL.Interfaces;
 
@@ -71,16 +72,44 @@ namespace BLL.Services
             await _disputeRepo.SaveChangesAsync();
         }
 
-        public async Task<List<Dispute>> GetDisputesAsync(int projectId, string userId, string role)
+        public async Task<List<DisputeResponse>> GetDisputesAsync(int projectId, string userId, string role)
         {
+            List<Dispute> disputes;
+
             if (role == UserRoles.Manager || role == UserRoles.Admin)
             {
-                return await _disputeRepo.GetDisputesByProjectAsync(projectId);
+                disputes = await _disputeRepo.GetDisputesByProjectAsync(projectId);
             }
             else
             {
-                return await _disputeRepo.GetDisputesByAnnotatorAsync(userId);
+                disputes = await _disputeRepo.GetDisputesByAnnotatorAsync(userId);
             }
+
+            return disputes.Select(MapToResponse).ToList();
+        }
+
+        /// <summary>
+        /// Maps a Dispute entity to a flat DisputeResponse DTO (no circular references).
+        /// </summary>
+        private static DisputeResponse MapToResponse(Dispute d)
+        {
+            return new DisputeResponse
+            {
+                Id = d.Id,
+                AssignmentId = d.AssignmentId,
+                AnnotatorId = d.AnnotatorId,
+                AnnotatorName = d.Annotator?.FullName ?? d.Annotator?.Email,
+                Reason = d.Reason,
+                Status = d.Status,
+                ManagerComment = d.ManagerComment,
+                CreatedAt = d.CreatedAt,
+                ResolvedAt = d.ResolvedAt,
+                ProjectId = d.Assignment?.ProjectId,
+                ProjectName = d.Assignment?.Project?.Name,
+                DataItemUrl = d.Assignment?.DataItem?.StorageUrl,
+                AssignmentStatus = d.Assignment?.Status,
+                ReviewerName = d.Assignment?.Reviewer?.FullName ?? d.Assignment?.Reviewer?.Email,
+            };
         }
     }
 }
