@@ -72,164 +72,165 @@
                 return storageUrls.Count;
             }
 
-            public async Task<ProjectDetailResponse> CreateProjectAsync(string managerId, CreateProjectRequest request)
+        public async Task<ProjectDetailResponse> CreateProjectAsync(string managerId, CreateProjectRequest request)
+        {
+            var manager = await _userRepository.GetByIdAsync(managerId);
+            if (manager == null) throw new Exception("User not found");
+
+            if (manager.Role != UserRoles.Manager && manager.Role != UserRoles.Admin)
+                throw new Exception("Only Manager or Admin can create projects.");
+
+            var startDate = request.StartDate ?? DateTime.UtcNow;
+            var deadline = request.Deadline ?? DateTime.UtcNow.AddDays(30);
+            var endDate = request.EndDate ?? deadline;
+
+            int penaltyUnit = request.PenaltyUnit > 0 ? request.PenaltyUnit : 10;
+
+            var project = new Project
             {
-                var manager = await _userRepository.GetByIdAsync(managerId);
-                if (manager == null) throw new Exception("User not found");
+                ManagerId = managerId,
+                Name = request.Name,
+                Description = request.Description ?? "",
+                PricePerLabel = request.PricePerLabel,
+                TotalBudget = request.TotalBudget,
+                StartDate = startDate,
+                EndDate = endDate,
+                Deadline = deadline,
+                CreatedDate = DateTime.UtcNow,
+                AllowGeometryTypes = request.AllowGeometryTypes ?? "Rectangle",
+                AnnotationGuide = request.AnnotationGuide ?? "",
+                MaxTaskDurationHours = request.MaxTaskDurationHours > 0 ? request.MaxTaskDurationHours : 24,
+                PenaltyUnit = penaltyUnit
+            };
 
-                if (manager.Role != UserRoles.Manager && manager.Role != UserRoles.Admin)
-                    throw new Exception("Only Manager or Admin can create projects.");
-
-                var startDate = request.StartDate ?? DateTime.UtcNow;
-                var endDate = request.EndDate ?? DateTime.UtcNow.AddDays(30);
-
-                int penaltyUnit = request.PenaltyUnit > 0 ? request.PenaltyUnit : 10;
-
-                var project = new Project
+            if (request.ReviewChecklist != null && request.ReviewChecklist.Any())
+            {
+                foreach (var item in request.ReviewChecklist)
                 {
-                    ManagerId = managerId,
-                    Name = request.Name,
-                    Description = request.Description,
-                    PricePerLabel = request.PricePerLabel,
-                    TotalBudget = request.TotalBudget,
-                    StartDate = startDate,
-                    EndDate = endDate,
-                    Deadline = endDate,
-                    CreatedDate = DateTime.UtcNow,
-                    AllowGeometryTypes = request.AllowGeometryTypes ?? "Rectangle",
-                    AnnotationGuide = request.AnnotationGuide,
-                    MaxTaskDurationHours = request.MaxTaskDurationHours,
-                    PenaltyUnit = penaltyUnit
-                };
-
-                if (request.ReviewChecklist != null && request.ReviewChecklist.Any())
-                {
-                    foreach (var item in request.ReviewChecklist)
+                    project.ChecklistItems.Add(new ReviewChecklistItem
                     {
-                        project.ChecklistItems.Add(new ReviewChecklistItem
-                        {
-                            Code = item.Code,
-                            Description = item.Description,
-                            Weight = item.Weight,
-                            IsCritical = item.Weight >= 3
-                        });
-                    }
-                }
-
-                foreach (var label in request.LabelClasses)
-                {
-                    project.LabelClasses.Add(new LabelClass
-                    {
-                        Name = label.Name,
-                        Color = label.Color,
-                        GuideLine = label.GuideLine,
-                        DefaultChecklist = (label.Checklist != null && label.Checklist.Any())
-                                                ? JsonSerializer.Serialize(label.Checklist)
-                                                : "[]"
+                        Code = item.Code,
+                        Description = item.Description,
+                        Weight = item.Weight,
+                        IsCritical = item.Weight >= 3
                     });
                 }
-
-                await _projectRepository.AddAsync(project);
-                await _projectRepository.SaveChangesAsync();
-
-                await _activityLogRepo.AddAsync(new ActivityLog
-                {
-                    UserId = managerId,
-                    ActionType = "CreateProject",
-                    EntityName = "Project",
-                    EntityId = project.Id.ToString(),
-                    Description = $"Created a new project: {project.Name}",
-                    Timestamp = DateTime.UtcNow
-                });
-                await _activityLogRepo.SaveChangesAsync();
-
-                return new ProjectDetailResponse
-                {
-                    Id = project.Id,
-                    Name = project.Name,
-                    Description = project.Description,
-                    PricePerLabel = project.PricePerLabel,
-                    TotalBudget = project.TotalBudget,
-                    Deadline = project.Deadline,
-                    ManagerId = project.ManagerId,
-                    ManagerName = manager.FullName,
-                    ManagerEmail = manager.Email,
-                    Labels = project.LabelClasses.Select(l => new LabelResponse
-                    {
-                        Id = l.Id,
-                        Name = l.Name,
-                        Color = l.Color,
-                        GuideLine = l.GuideLine,
-                        Checklist = !string.IsNullOrEmpty(l.DefaultChecklist)
-                                    ? JsonSerializer.Deserialize<List<string>>(l.DefaultChecklist, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<string>()
-                                    : new List<string>()
-                    }).ToList(),
-                    TotalDataItems = 0,
-                    ProcessedItems = 0
-                };
             }
 
-            public async Task UpdateProjectAsync(int projectId, UpdateProjectRequest request)
+            foreach (var label in request.LabelClasses)
             {
-                var project = await _projectRepository.GetByIdAsync(projectId);
-                if (project == null) throw new Exception("Project not found");
-
-                project.Name = request.Name;
-                if (!string.IsNullOrEmpty(request.Description)) project.Description = request.Description;
-
-                project.PricePerLabel = request.PricePerLabel;
-                project.TotalBudget = request.TotalBudget;
-                project.Deadline = request.Deadline;
-                if (request.StartDate.HasValue) project.StartDate = request.StartDate.Value;
-                if (request.EndDate.HasValue) project.EndDate = request.EndDate.Value;
-
-                if (request.AnnotationGuide != null)
+                project.LabelClasses.Add(new LabelClass
                 {
-                    project.AnnotationGuide = request.AnnotationGuide;
-                }
-
-                if (request.MaxTaskDurationHours.HasValue)
-                {
-                    project.MaxTaskDurationHours = request.MaxTaskDurationHours.Value;
-                }
-
-                if (request.PenaltyUnit > 0)
-                {
-                    project.PenaltyUnit = request.PenaltyUnit;
-                }
-
-                if (request.ReviewChecklist != null)
-                {
-                    project.ChecklistItems.Clear();
-                    foreach (var item in request.ReviewChecklist)
-                    {
-                        project.ChecklistItems.Add(new ReviewChecklistItem
-                        {
-                            ProjectId = projectId,
-                            Code = item.Code,
-                            Description = item.Description,
-                            Weight = item.Weight,
-                            IsCritical = item.Weight >= 3
-                        });
-                    }
-                }
-
-                _projectRepository.Update(project);
-                await _projectRepository.SaveChangesAsync();
-
-                await _activityLogRepo.AddAsync(new ActivityLog
-                {
-                    UserId = project.ManagerId,
-                    ActionType = "UpdateProject",
-                    EntityName = "Project",
-                    EntityId = project.Id.ToString(),
-                    Description = $"Updated project details: {project.Name}",
-                    Timestamp = DateTime.UtcNow
+                    Name = label.Name,
+                    Color = label.Color,
+                    GuideLine = label.GuideLine,
+                    DefaultChecklist = (label.Checklist != null && label.Checklist.Any())
+                                            ? JsonSerializer.Serialize(label.Checklist)
+                                            : "[]"
                 });
-                await _activityLogRepo.SaveChangesAsync();
             }
 
-            public async Task<List<AnnotatorProjectStatsResponse>> GetAssignedProjectsAsync(string annotatorId)
+            await _projectRepository.AddAsync(project);
+            await _projectRepository.SaveChangesAsync();
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = managerId,
+                ActionType = "CreateProject",
+                EntityName = "Project",
+                EntityId = project.Id.ToString(),
+                Description = $"Created a new project: {project.Name}",
+                Timestamp = DateTime.UtcNow
+            });
+            await _activityLogRepo.SaveChangesAsync();
+
+            return new ProjectDetailResponse
+            {
+                Id = project.Id,
+                Name = project.Name,
+                Description = project.Description,
+                PricePerLabel = project.PricePerLabel,
+                TotalBudget = project.TotalBudget,
+                Deadline = project.Deadline,
+                ManagerId = project.ManagerId,
+                ManagerName = manager.FullName,
+                ManagerEmail = manager.Email,
+                Labels = project.LabelClasses.Select(l => new LabelResponse
+                {
+                    Id = l.Id,
+                    Name = l.Name,
+                    Color = l.Color,
+                    GuideLine = l.GuideLine,
+                    Checklist = !string.IsNullOrEmpty(l.DefaultChecklist)
+                                ? JsonSerializer.Deserialize<List<string>>(l.DefaultChecklist, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<string>()
+                                : new List<string>()
+                }).ToList(),
+                TotalDataItems = 0,
+                ProcessedItems = 0
+            };
+        }
+
+        public async Task UpdateProjectAsync(int projectId, UpdateProjectRequest request)
+        {
+            var project = await _projectRepository.GetByIdAsync(projectId);
+            if (project == null) throw new Exception("Project not found");
+
+            project.Name = request.Name;
+            if (!string.IsNullOrEmpty(request.Description)) project.Description = request.Description;
+
+            project.PricePerLabel = request.PricePerLabel;
+            project.TotalBudget = request.TotalBudget;
+
+            if (request.Deadline.HasValue) project.Deadline = request.Deadline.Value;
+            if (request.StartDate.HasValue) project.StartDate = request.StartDate.Value;
+            if (request.EndDate.HasValue) project.EndDate = request.EndDate.Value;
+
+            if (request.AnnotationGuide != null)
+            {
+                project.AnnotationGuide = request.AnnotationGuide;
+            }
+
+            if (request.MaxTaskDurationHours.HasValue)
+            {
+                project.MaxTaskDurationHours = request.MaxTaskDurationHours.Value;
+            }
+
+            if (request.PenaltyUnit > 0)
+            {
+                project.PenaltyUnit = request.PenaltyUnit;
+            }
+
+            if (request.ReviewChecklist != null)
+            {
+                project.ChecklistItems.Clear();
+                foreach (var item in request.ReviewChecklist)
+                {
+                    project.ChecklistItems.Add(new ReviewChecklistItem
+                    {
+                        ProjectId = projectId,
+                        Code = item.Code,
+                        Description = item.Description,
+                        Weight = item.Weight,
+                        IsCritical = item.Weight >= 3
+                    });
+                }
+            }
+
+            _projectRepository.Update(project);
+            await _projectRepository.SaveChangesAsync();
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = project.ManagerId,
+                ActionType = "UpdateProject",
+                EntityName = "Project",
+                EntityId = project.Id.ToString(),
+                Description = $"Updated project details: {project.Name}",
+                Timestamp = DateTime.UtcNow
+            });
+            await _activityLogRepo.SaveChangesAsync();
+        }
+        public async Task<List<AnnotatorProjectStatsResponse>> GetAssignedProjectsAsync(string annotatorId)
             {
                 var projects = await _projectRepository.GetProjectsByAnnotatorAsync(annotatorId);
                 var result = new List<AnnotatorProjectStatsResponse>();
