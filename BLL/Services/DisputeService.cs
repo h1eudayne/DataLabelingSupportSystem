@@ -61,6 +61,15 @@ namespace BLL.Services
 
             await _disputeRepo.AddAsync(dispute);
             await _disputeRepo.SaveChangesAsync();
+
+            var project = await _projectRepo.GetByIdAsync(assignment.ProjectId);
+            if (project != null)
+            {
+                await _notification.SendNotificationAsync(
+                    project.ManagerId,
+                    $"An annotator has just submitted a dispute for task #{assignment.Id}. Please review it!",
+                    "Warning");
+            }
         }
 
         public async Task ResolveDisputeAsync(string managerId, ResolveDisputeRequest request)
