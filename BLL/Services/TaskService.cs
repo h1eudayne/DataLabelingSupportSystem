@@ -5,10 +5,7 @@ using DAL.Interfaces;
 using Core.Constants;
 using Core.Entities;
 using System.Text.Json;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+
 
 namespace BLL.Services
 {
@@ -21,6 +18,7 @@ namespace BLL.Services
         private readonly IUserRepository _userRepo;
         private readonly IProjectRepository _projectRepo;
         private readonly IActivityLogRepository _activityLogRepo;
+        private readonly IAppNotificationService _notification;
 
         public TaskService(
             IAssignmentRepository assignmentRepo,
@@ -29,6 +27,7 @@ namespace BLL.Services
             IStatisticService statisticService,
             IUserRepository userRepo,
             IProjectRepository projectRepo,
+            IAppNotificationService notification,
             IActivityLogRepository activityLogRepo)
         {
             _assignmentRepo = assignmentRepo;
@@ -38,6 +37,7 @@ namespace BLL.Services
             _userRepo = userRepo;
             _projectRepo = projectRepo;
             _activityLogRepo = activityLogRepo;
+            _notification = notification;
         }
 
         private int? ExtractClassIdFromJSON(string? json)
@@ -180,7 +180,18 @@ namespace BLL.Services
                 dataItems.Count
             );
 
-            await _assignmentRepo.SaveChangesAsync();
+            await _notification.SendNotificationAsync(
+                request.AnnotatorId,
+                $"Manager has assigned you {request.Quantity} new tasks in the project!",
+                "Success");
+
+            if (!string.IsNullOrEmpty(request.ReviewerId))
+            {
+                await _notification.SendNotificationAsync(
+                    request.ReviewerId,
+                    $"You have been assigned as a Reviewer for {request.Quantity} new tasks!",
+                    "Info");
+            }
         }
 
         public async Task<AssignmentResponse> GetAssignmentByIdAsync(int assignmentId, string userId)
@@ -392,6 +403,14 @@ namespace BLL.Services
             await _activityLogRepo.AddAsync(log);
 
             await _assignmentRepo.SaveChangesAsync();
+ 
+            if (!string.IsNullOrEmpty(assignment.ReviewerId))
+            {
+                await _notification.SendNotificationAsync(
+                    assignment.ReviewerId,
+                    $"Task #{assignment.Id} has been submitted and is waiting for your review!",
+                    "Info");
+            }
         }
 
         public async Task<SubmitMultipleTasksResponse> SubmitMultipleTasksAsync(string userId, SubmitMultipleTasksRequest request)
