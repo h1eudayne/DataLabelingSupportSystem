@@ -29,6 +29,8 @@ namespace Core.DTOs.Responses
         /// <example>2024-01-31T23:59:59</example>
         public DateTime Deadline { get; set; }
 
+        public string AllowGeometryTypes { get; set; } = string.Empty;
+
         /// <summary>
         /// The unique identifier of the project manager.
         /// </summary>
