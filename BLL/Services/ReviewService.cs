@@ -17,6 +17,7 @@ namespace BLL.Services
         private readonly IProjectRepository _projectRepo;
         private readonly IUserRepository _userRepo;
         private readonly IActivityLogRepository _activityLogRepo;
+        private readonly IAppNotificationService _notification;
 
         public ReviewService(
             IAssignmentRepository assignmentRepo,
@@ -25,6 +26,7 @@ namespace BLL.Services
             IStatisticService statisticService,
             IProjectRepository projectRepo,
             IUserRepository userRepo,
+            IAppNotificationService notification,
             IActivityLogRepository activityLogRepo)
         {
             _assignmentRepo = assignmentRepo;
@@ -34,6 +36,7 @@ namespace BLL.Services
             _projectRepo = projectRepo;
             _userRepo = userRepo;
             _activityLogRepo = activityLogRepo;
+            _notification = notification;
         }
 
         public async Task<List<AssignedProjectResponse>> GetReviewerProjectsAsync(string reviewerId)
@@ -151,7 +154,6 @@ namespace BLL.Services
                 assignment.ProjectId,
                 request.IsApproved,
                 currentTaskScore,
-                project.PricePerLabel,
                 isCritical
             );
 
@@ -197,6 +199,21 @@ namespace BLL.Services
 
             await _assignmentRepo.SaveChangesAsync();
             await _activityLogRepo.SaveChangesAsync();
+
+            if (request.IsApproved)
+            {
+                await _notification.SendNotificationAsync(
+                    assignment.AnnotatorId,
+                    $"Great job! Your task #{assignment.Id} has been Approved.",
+                    "Success");
+            }
+            else
+            {
+                await _notification.SendNotificationAsync(
+                    assignment.AnnotatorId,
+                    $"Your task #{assignment.Id} has been Rejected. Reason: {request.Comment}",
+                    "Error");
+            }
         }
 
         public async Task AuditReviewAsync(string managerId, AuditReviewRequest request)

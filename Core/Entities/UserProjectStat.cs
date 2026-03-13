@@ -29,8 +29,6 @@ namespace Core.Entities
         public int TotalReviewsDone { get; set; } = 0;        
         public int TotalCorrectDecisions { get; set; } = 0;    
         public int TotalAuditedReviews { get; set; } = 0;      
-        [Column(TypeName = "decimal(18,2)")]
-        public decimal EstimatedEarnings { get; set; }
 
         public int TotalFirstPassCorrect { get; set; } = 0;
         public int TotalManagerDecisions { get; set; } = 0;

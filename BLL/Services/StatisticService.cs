@@ -63,7 +63,6 @@ namespace BLL.Services
               int projectId,
               bool isApproved,
               double taskScore,
-              decimal pricePerLabel,
               bool isCriticalError)
         {
             var annotatorStat = await GetOrCreateStatAsync(annotatorId, projectId);
@@ -73,7 +72,6 @@ namespace BLL.Services
             {
                 annotatorStat.TotalApproved++;
                 annotatorStat.TotalCorrectByManager++;
-                annotatorStat.EstimatedEarnings = annotatorStat.TotalApproved * pricePerLabel;
             }
             else
             {
@@ -123,8 +121,7 @@ namespace BLL.Services
             string annotatorId,
             List<(string reviewerId, bool wasCorrect)> reviewerResults,
             int projectId,
-            bool annotatorWasCorrect,
-            decimal pricePerLabel)
+            bool annotatorWasCorrect)
         {
             var annotatorStat = await GetOrCreateStatAsync(annotatorId, projectId);
             annotatorStat.TotalManagerDecisions++;
@@ -132,7 +129,6 @@ namespace BLL.Services
             {
                 annotatorStat.TotalCorrectByManager++;
                 annotatorStat.TotalApproved++;
-                annotatorStat.EstimatedEarnings = annotatorStat.TotalApproved * pricePerLabel;
             }
             else
             {

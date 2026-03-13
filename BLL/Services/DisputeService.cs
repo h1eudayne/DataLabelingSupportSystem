@@ -15,6 +15,7 @@ namespace BLL.Services
         private readonly IRepository<ReviewLog> _reviewLogRepo;
         private readonly IProjectRepository _projectRepo;
         private readonly IRepository<DataItem> _dataItemRepo;
+        private readonly IAppNotificationService _notification;
 
         public DisputeService(
             IDisputeRepository disputeRepo,
@@ -22,6 +23,7 @@ namespace BLL.Services
             IStatisticService statisticService,
             IRepository<ReviewLog> reviewLogRepo,
             IProjectRepository projectRepo,
+            IAppNotificationService notification,
             IRepository<DataItem> dataItemRepo)
         {
             _disputeRepo = disputeRepo;
@@ -30,6 +32,7 @@ namespace BLL.Services
             _reviewLogRepo = reviewLogRepo;
             _projectRepo = projectRepo;
             _dataItemRepo = dataItemRepo;
+            _notification = notification;
         }
 
         public async Task CreateDisputeAsync(string annotatorId, CreateDisputeRequest request)
@@ -58,6 +61,15 @@ namespace BLL.Services
 
             await _disputeRepo.AddAsync(dispute);
             await _disputeRepo.SaveChangesAsync();
+
+            var project = await _projectRepo.GetByIdAsync(assignment.ProjectId);
+            if (project != null)
+            {
+                await _notification.SendNotificationAsync(
+                    project.ManagerId,
+                    $"An annotator has just submitted a dispute for task #{assignment.Id}. Please review it!",
+                    "Warning");
+            }
         }
 
         public async Task ResolveDisputeAsync(string managerId, ResolveDisputeRequest request)
@@ -105,8 +117,7 @@ namespace BLL.Services
                     assignment.AnnotatorId,
                     reviewerResults,
                     assignment.ProjectId,
-                    annotatorWasCorrect: true,
-                    project.PricePerLabel);
+                    annotatorWasCorrect: true);
             }
             else
             {
@@ -123,11 +134,25 @@ namespace BLL.Services
                     assignment.AnnotatorId,
                     reviewerResults,
                     assignment.ProjectId,
-                    annotatorWasCorrect: false,
-                    project.PricePerLabel);
+                    annotatorWasCorrect: false);
             }
 
             await _disputeRepo.SaveChangesAsync();
+
+            if (request.IsAccepted)
+            {
+                await _notification.SendNotificationAsync(
+                    assignment.AnnotatorId,
+                    $"Your dispute for task #{assignment.Id} has been Accepted! Your score has been restored.",
+                    "Success");
+            }
+            else
+            {
+                await _notification.SendNotificationAsync(
+                    assignment.AnnotatorId,
+                    $"Your dispute for task #{assignment.Id} has been Rejected. Manager's note: {request.ManagerComment}",
+                    "Error");
+            }
         }
 
         public async Task<List<DisputeResponse>> GetDisputesAsync(int projectId, string userId, string role)

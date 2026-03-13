@@ -15,7 +15,6 @@
             private readonly IProjectRepository _projectRepository;
             private readonly IUserRepository _userRepository;
             private readonly IRepository<UserProjectStat> _statsRepo;
-            private readonly IRepository<Invoice> _invoiceRepo;
             private readonly IAssignmentRepository _assignmentRepo;
             private readonly IActivityLogRepository _activityLogRepo;
 
@@ -23,14 +22,12 @@
                 IProjectRepository projectRepository,
                 IUserRepository userRepository,
                 IRepository<UserProjectStat> statsRepo,
-                IRepository<Invoice> invoiceRepo,
                 IAssignmentRepository assignmentRepo,
                 IActivityLogRepository activityLogRepo)
             {
                 _projectRepository = projectRepository;
                 _userRepository = userRepository;
                 _statsRepo = statsRepo;
-                _invoiceRepo = invoiceRepo;
                 _assignmentRepo = assignmentRepo;
                 _activityLogRepo = activityLogRepo;
             }
@@ -91,8 +88,6 @@
                 ManagerId = managerId,
                 Name = request.Name,
                 Description = request.Description ?? "",
-                PricePerLabel = request.PricePerLabel,
-                TotalBudget = request.TotalBudget,
                 StartDate = startDate,
                 EndDate = endDate,
                 Deadline = deadline,
@@ -150,8 +145,6 @@
                 Id = project.Id,
                 Name = project.Name,
                 Description = project.Description,
-                PricePerLabel = project.PricePerLabel,
-                TotalBudget = project.TotalBudget,
                 Deadline = project.Deadline,
                 ManagerId = project.ManagerId,
                 ManagerName = manager.FullName,
@@ -180,8 +173,6 @@
             project.Name = request.Name;
             if (!string.IsNullOrEmpty(request.Description)) project.Description = request.Description;
 
-            project.PricePerLabel = request.PricePerLabel;
-            project.TotalBudget = request.TotalBudget;
 
             if (request.Deadline.HasValue) project.Deadline = request.Deadline.Value;
             if (request.StartDate.HasValue) project.StartDate = request.StartDate.Value;
@@ -359,8 +350,6 @@
                     Id = project.Id,
                     Name = project.Name,
                     Description = project.Description,
-                    PricePerLabel = project.PricePerLabel,
-                    TotalBudget = project.TotalBudget,
                     Deadline = project.Deadline,
                     ManagerId = project.ManagerId,
                     ManagerName = project.Manager?.FullName ?? "Unknown",
@@ -428,47 +417,6 @@
                     EntityName = "Project",
                     EntityId = projectId.ToString(),
                     Description = $"Deleted project: {projectName}",
-                    Timestamp = DateTime.UtcNow
-                });
-                await _activityLogRepo.SaveChangesAsync();
-            }
-
-            public async Task GenerateInvoicesAsync(int projectId)
-            {
-                var project = await _projectRepository.GetByIdAsync(projectId);
-                if (project == null) throw new Exception("Project not found");
-
-                var allStats = await _statsRepo.GetAllAsync();
-                var projectStats = allStats.Where(s => s.ProjectId == projectId).ToList();
-
-                foreach (var stat in projectStats)
-                {
-                    if (stat.EstimatedEarnings > 0)
-                    {
-                        var invoice = new Invoice
-                        {
-                            UserId = stat.UserId,
-                            ProjectId = projectId,
-                            TotalLabels = stat.TotalApproved,
-                            UnitPrice = project.PricePerLabel,
-                            TotalAmount = stat.EstimatedEarnings,
-                            StartDate = project.StartDate ?? DateTime.UtcNow.AddMonths(-1),
-                            EndDate = project.EndDate ?? DateTime.UtcNow,
-                            Status = "Pending",
-                            CreatedDate = DateTime.UtcNow
-                        };
-                        await _invoiceRepo.AddAsync(invoice);
-                    }
-                }
-                await _invoiceRepo.SaveChangesAsync();
-
-                await _activityLogRepo.AddAsync(new ActivityLog
-                {
-                    UserId = project.ManagerId,
-                    ActionType = "GenerateInvoices",
-                    EntityName = "Project",
-                    EntityId = projectId.ToString(),
-                    Description = $"Generated invoices for project: {project.Name}",
                     Timestamp = DateTime.UtcNow
                 });
                 await _activityLogRepo.SaveChangesAsync();
@@ -701,7 +649,6 @@
             {
                 TotalProjects = projects.Count,
                 ActiveProjects = projects.Count(p => p.Deadline >= DateTime.UtcNow),
-                TotalBudget = projects.Sum(p => p.TotalBudget),
                 TotalDataItems = projects.Sum(p => p.DataItems.Count),
                 TotalMembers = totalMembers
             };

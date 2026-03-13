@@ -45,8 +45,6 @@ namespace API
                 Name = "Dự án Thử nghiệm (Dev Only)",
                 Description = "Dữ liệu này chỉ xuất hiện trong môi trường Development.",
                 ManagerId = managerId,
-                PricePerLabel = 1000,
-                TotalBudget = 1000000,
                 Deadline = DateTime.UtcNow.AddDays(30),
                 CreatedDate = DateTime.UtcNow,
                 AllowGeometryTypes = "Rectangle",

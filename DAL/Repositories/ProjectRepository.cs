@@ -103,7 +103,6 @@ namespace DAL.Repositories
                     Id = p.Id,
                     Name = p.Name,
                     Deadline = p.Deadline,
-                    TotalBudget = p.TotalBudget,
                     DataItems = p.DataItems.Select(d => new DataItem
                     {
                         Status = d.Status,
