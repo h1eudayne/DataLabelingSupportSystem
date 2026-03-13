@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace DAL.Migrations
 {
     /// <inheritdoc />
-    public partial class AddAccuracyAndManagerToDispute : Migration
+    public partial class RemoveFinanceFeatures : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -60,28 +60,6 @@ namespace DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "PaymentInfos",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    BankName = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    BankAccountNumber = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    TaxCode = table.Column<string>(type: "nvarchar(max)", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_PaymentInfos", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_PaymentInfos_Users_UserId",
-                        column: x => x.UserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "Projects",
                 columns: table => new
                 {
@@ -90,8 +68,6 @@ namespace DAL.Migrations
                     ManagerId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     Name = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     Description = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    PricePerLabel = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
-                    TotalBudget = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     StartDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     EndDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     Deadline = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -137,39 +113,6 @@ namespace DAL.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "Invoices",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    ProjectId = table.Column<int>(type: "int", nullable: false),
-                    TotalLabels = table.Column<int>(type: "int", nullable: false),
-                    UnitPrice = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
-                    TotalAmount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
-                    StartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    EndDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Invoices", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_Invoices_Projects_ProjectId",
-                        column: x => x.ProjectId,
-                        principalTable: "Projects",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_Invoices_Users_UserId",
-                        column: x => x.UserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "LabelClasses",
                 columns: table => new
                 {
@@ -178,6 +121,7 @@ namespace DAL.Migrations
                     Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     Color = table.Column<string>(type: "nvarchar(7)", maxLength: 7, nullable: false),
                     GuideLine = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ExampleImageUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     DefaultChecklist = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     ProjectId = table.Column<int>(type: "int", nullable: false)
                 },
@@ -235,7 +179,6 @@ namespace DAL.Migrations
                     TotalReviewsDone = table.Column<int>(type: "int", nullable: false),
                     TotalCorrectDecisions = table.Column<int>(type: "int", nullable: false),
                     TotalAuditedReviews = table.Column<int>(type: "int", nullable: false),
-                    EstimatedEarnings = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     TotalFirstPassCorrect = table.Column<int>(type: "int", nullable: false),
                     TotalManagerDecisions = table.Column<int>(type: "int", nullable: false),
                     TotalCorrectByManager = table.Column<int>(type: "int", nullable: false),
@@ -457,25 +400,9 @@ namespace DAL.Migrations
                 column: "ManagerId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Invoices_ProjectId",
-                table: "Invoices",
-                column: "ProjectId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Invoices_UserId",
-                table: "Invoices",
-                column: "UserId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_LabelClasses_ProjectId",
                 table: "LabelClasses",
                 column: "ProjectId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_PaymentInfos_UserId",
-                table: "PaymentInfos",
-                column: "UserId",
-                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Projects_ManagerId",
@@ -524,12 +451,6 @@ namespace DAL.Migrations
 
             migrationBuilder.DropTable(
                 name: "Disputes");
-
-            migrationBuilder.DropTable(
-                name: "Invoices");
-
-            migrationBuilder.DropTable(
-                name: "PaymentInfos");
 
             migrationBuilder.DropTable(
                 name: "ReviewChecklistItems");

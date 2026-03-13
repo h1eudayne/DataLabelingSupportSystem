@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260312234644_RemoveFinanceAndBillingFeatures")]
-    partial class RemoveFinanceAndBillingFeatures
+    [Migration("20260313041945_RemoveFinanceFeatures")]
+    partial class RemoveFinanceFeatures
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
