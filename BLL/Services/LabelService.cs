@@ -3,6 +3,7 @@ using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using DAL.Interfaces;
 using Core.Entities;
+using System.Text.Json; // Bổ sung thư viện này để dùng JsonSerializer
 
 namespace BLL.Services
 {
@@ -32,11 +33,18 @@ namespace BLL.Services
                 ProjectId = request.ProjectId,
                 Name = request.Name,
                 Color = request.Color,
-                GuideLine = request.GuideLine
+                GuideLine = request.GuideLine,
+                // THÊM MAP DỮ LIỆU Ở ĐÂY
+                ExampleImageUrl = request.ExampleImageUrl,
+                IsDefault = request.IsDefault,
+                DefaultChecklist = (request.Checklist != null && request.Checklist.Any())
+                                    ? JsonSerializer.Serialize(request.Checklist)
+                                    : "[]"
             };
 
             await _labelRepo.AddAsync(label);
             await _labelRepo.SaveChangesAsync();
+
             await _logService.LogActionAsync(
                 "System",
                 "Create",
@@ -45,21 +53,43 @@ namespace BLL.Services
                 $"Created label '{label.Name}' for Project {label.ProjectId}"
             );
 
-            return new LabelResponse { Id = label.Id, Name = label.Name, Color = label.Color };
+            return new LabelResponse
+            {
+                Id = label.Id,
+                Name = label.Name,
+                Color = label.Color,
+                GuideLine = label.GuideLine,
+                ExampleImageUrl = label.ExampleImageUrl,
+                IsDefault = label.IsDefault,
+                Checklist = request.Checklist ?? new List<string>()
+            };
         }
 
         public async Task<LabelResponse> UpdateLabelAsync(int labelId, UpdateLabelRequest request)
         {
             var label = await _labelRepo.GetByIdAsync(labelId);
             if (label == null) throw new Exception("Label not found");
+
             bool isCriticalChange = label.Name != request.Name || label.GuideLine != request.GuideLine;
             string oldName = label.Name;
+
+            // CẬP NHẬT DỮ LIỆU Ở ĐÂY
             label.Name = request.Name;
             label.Color = request.Color;
             label.GuideLine = request.GuideLine;
+            label.ExampleImageUrl = request.ExampleImageUrl;
+            label.IsDefault = request.IsDefault;
+
+            if (request.Checklist != null)
+            {
+                label.DefaultChecklist = request.Checklist.Any()
+                                         ? JsonSerializer.Serialize(request.Checklist)
+                                         : "[]";
+            }
 
             _labelRepo.Update(label);
             await _labelRepo.SaveChangesAsync();
+
             if (isCriticalChange)
             {
                 int activeTasks = await _assignmentRepo.CountActiveTasksAsync(label.ProjectId);
@@ -81,7 +111,18 @@ namespace BLL.Services
                 }
             }
 
-            return new LabelResponse { Id = label.Id, Name = label.Name, Color = label.Color };
+            return new LabelResponse
+            {
+                Id = label.Id,
+                Name = label.Name,
+                Color = label.Color,
+                GuideLine = label.GuideLine,
+                ExampleImageUrl = label.ExampleImageUrl,
+                IsDefault = label.IsDefault,
+                Checklist = !string.IsNullOrEmpty(label.DefaultChecklist)
+                            ? JsonSerializer.Deserialize<List<string>>(label.DefaultChecklist, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<string>()
+                            : new List<string>()
+            };
         }
 
         public async Task DeleteLabelAsync(int labelId)
@@ -89,6 +130,7 @@ namespace BLL.Services
             var label = await _labelRepo.GetByIdAsync(labelId);
             if (label == null) throw new Exception("Label not found");
             int activeTasks = await _assignmentRepo.CountActiveTasksAsync(label.ProjectId);
+
             if (activeTasks > 0)
             {
                 await _assignmentRepo.ResetAssignmentsByProjectAsync(

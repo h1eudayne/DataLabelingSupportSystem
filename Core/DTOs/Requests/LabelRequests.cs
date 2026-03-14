@@ -32,6 +32,10 @@ namespace Core.DTOs.Requests
         /// </summary>
         /// <example>Mark all pedestrians visible in the frame.</example>
         public string? GuideLine { get; set; }
+
+        public string? ExampleImageUrl { get; set; }
+        public List<string>? Checklist { get; set; }
+        public bool IsDefault { get; set; } = false;
     }
 
     /// <summary>
@@ -56,5 +60,10 @@ namespace Core.DTOs.Requests
         /// </summary>
         /// <example>Mark all types of vehicles.</example>
         public string? GuideLine { get; set; }
+        public string? ExampleImageUrl { get; set; }
+
+        public List<string>? Checklist { get; set; }
+
+        public bool IsDefault { get; set; } = false;
     }
 }
