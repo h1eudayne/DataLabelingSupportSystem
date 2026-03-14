@@ -142,7 +142,11 @@ namespace BLL.Services
 
         public async Task AssignTasksToAnnotatorAsync(AssignTaskRequest request)
         {
-            if (!string.IsNullOrEmpty(request.ReviewerId))
+            if (string.IsNullOrWhiteSpace(request.ReviewerId))
+            {
+                request.ReviewerId = null;
+            }
+            else
             {
                 var reviewer = await _userRepo.GetByIdAsync(request.ReviewerId);
                 if (reviewer == null)
@@ -157,7 +161,7 @@ namespace BLL.Services
                 .GetUnassignedDataItemsAsync(request.ProjectId, request.Quantity);
 
             if (!dataItems.Any())
-                throw new Exception("Not enough available data items.");
+                throw new Exception("Not enough available data items in this project.");
 
             foreach (var item in dataItems)
             {
@@ -172,7 +176,12 @@ namespace BLL.Services
                 };
 
                 await _assignmentRepo.AddAsync(assignment);
+                item.Status = TaskStatusConstants.Assigned;
+                _dataItemRepo.Update(item);
             }
+
+            await _assignmentRepo.SaveChangesAsync();
+            await _dataItemRepo.SaveChangesAsync();
 
             await _statisticService.TrackNewAssignmentAsync(
                 request.AnnotatorId,
@@ -193,7 +202,6 @@ namespace BLL.Services
                     "Info");
             }
         }
-
         public async Task<AssignmentResponse> GetAssignmentByIdAsync(int assignmentId, string userId)
         {
             var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(assignmentId);
