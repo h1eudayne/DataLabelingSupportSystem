@@ -38,6 +38,7 @@ namespace Core.DTOs.Requests
         public string GuideLine { get; set; } = string.Empty;
         public List<string>? Checklist { get; set; }
         public string? ExampleImageUrl { get; set; }
+        public bool IsDefault { get; set; } = false;
     }
 
     public class ImportDataRequest

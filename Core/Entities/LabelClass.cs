@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Core.Entities
@@ -18,6 +18,8 @@ namespace Core.Entities
         public string? GuideLine { get; set; }
         public string? ExampleImageUrl { get; set; }
         public string? DefaultChecklist { get; set; }
+
+        public bool IsDefault { get; set; } = false;
 
         public int ProjectId { get; set; }
 

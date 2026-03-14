@@ -275,6 +275,7 @@ namespace BLL.Services
                         Name = l.Name ?? "",
                         Color = l.Color ?? "",
                         GuideLine = l.GuideLine ?? "",
+                        IsDefault = l.IsDefault,
                         Checklist = !string.IsNullOrEmpty(l.DefaultChecklist)
                                     ? JsonSerializer.Deserialize<List<string>>(l.DefaultChecklist, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<string>()
                                     : new List<string>()

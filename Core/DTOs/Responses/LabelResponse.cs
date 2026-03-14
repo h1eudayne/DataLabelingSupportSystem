@@ -8,5 +8,6 @@ namespace Core.DTOs.Responses
         public string? GuideLine { get; set; }
         public string? ExampleImageUrl { get; set; }
         public List<string> Checklist { get; set; } = new List<string>();
+        public bool IsDefault { get; set; } = false;
     }
 }
