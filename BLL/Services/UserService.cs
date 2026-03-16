@@ -20,15 +20,19 @@ namespace BLL.Services
         private readonly IConfiguration _configuration;
         private readonly IActivityLogService _logService;
         private readonly IAssignmentRepository _assignmentRepo;
+        private readonly IProjectRepository _projectRepo;
         public UserService(
             IUserRepository userRepository,
             IConfiguration configuration,
             IAssignmentRepository assignmentRepo,
-            IActivityLogService logService)
+            IActivityLogService logService,
+            IProjectRepository projectRepo)
         {
             _userRepository = userRepository;
             _configuration = configuration;
+            _assignmentRepo = assignmentRepo;
             _logService = logService;
+            _projectRepo = projectRepo;
 
         }
 
@@ -110,27 +114,48 @@ namespace BLL.Services
         public async Task<PagedResponse<UserResponse>> GetAllUsersAsync(int page, int pageSize)
         {
             var allUsers = await _userRepository.GetAllAsync();
+            var allProjects = await _projectRepo.GetAllAsync();
+            var allAssignments = await _assignmentRepo.GetAllAsync();
 
             var totalCount = allUsers.Count();
             var stats = new
             {
-                TotalAdmins = allUsers.Count(u => u.Role == "Admin"),
-                TotalWorkers = allUsers.Count(u => u.Role != "Admin")
+                TotalAdmins = allUsers.Count(u => u.Role == UserRoles.Admin),
+                TotalWorkers = allUsers.Count(u => u.Role != UserRoles.Admin)
             };
 
             var items = allUsers
                 .OrderByDescending(u => u.Id)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(u => new UserResponse
+                .Select(u =>
                 {
-                    Id = u.Id,
-                    FullName = u.FullName ?? "",
-                    Email = u.Email ?? "",
-                    Role = u.Role ?? "",
-                    AvatarUrl = u.AvatarUrl ?? "",
-                    IsActive = u.IsActive,
-                    ManagerId = u.ManagerId
+                    int totalProjects;
+
+                    if (u.Role == UserRoles.Manager || u.Role == UserRoles.Admin)
+                    {
+                        totalProjects = allProjects.Count(p => p.ManagerId == u.Id);
+                    }
+                    else
+                    {
+                        totalProjects = allAssignments
+                            .Where(a => a.AnnotatorId == u.Id || a.ReviewerId == u.Id)
+                            .Select(a => a.ProjectId)
+                            .Distinct()
+                            .Count();
+                    }
+
+                    return new UserResponse
+                    {
+                        Id = u.Id,
+                        FullName = u.FullName ?? "",
+                        Email = u.Email ?? "",
+                        Role = u.Role ?? "",
+                        AvatarUrl = u.AvatarUrl ?? "",
+                        IsActive = u.IsActive,
+                        ManagerId = u.ManagerId,
+                        TotalProjects = totalProjects
+                    };
                 }).ToList();
 
             return new PagedResponse<UserResponse>

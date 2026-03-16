@@ -9,6 +9,7 @@
         public string AvatarUrl { get; set; } = "";
         public bool IsActive { get; set; }
         public string? ManagerId { get; set; }
+        public int TotalProjects { get; set; }
     }
 
     public class PagedResponse<T>
