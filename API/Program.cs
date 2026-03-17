@@ -38,7 +38,7 @@ builder.Services.AddScoped<IAppNotificationService, API.Services.AppNotification
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
-        b => b.WithOrigins("http://localhost:3000", "https://localhost:3000")
+        b => b.SetIsOriginAllowed(origin => true)
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials());
@@ -150,12 +150,8 @@ using (var scope = app.Services.CreateScope())
         logger.LogError(ex, "An error occurred while seeding the initial data.");
     }
 }
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
