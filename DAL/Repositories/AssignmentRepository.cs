@@ -76,8 +76,10 @@ namespace DAL.Repositories
                     .ThenInclude(p => p.LabelClasses)
                 .Include(a => a.Annotations)
                 .Include(a => a.Reviewer)
+                .Include(a => a.Annotator) 
                 .Where(a => a.ProjectId == projectId &&
-                            a.Status == TaskStatusConstants.Submitted)
+                            a.Status == TaskStatusConstants.Submitted &&
+                            (a.ReviewerId == reviewerId || a.ReviewerId == null)) 
                 .OrderBy(a => a.SubmittedAt)
                 .ToListAsync();
         }

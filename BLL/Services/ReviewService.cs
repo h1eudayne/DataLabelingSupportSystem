@@ -268,6 +268,8 @@ namespace BLL.Services
                     Deadline = a.Project?.Deadline ?? DateTime.MinValue,
                     ReviewerId = a.ReviewerId ?? "",
                     ReviewerName = a.Reviewer?.FullName ?? "",
+                    AnnotatorId = a.AnnotatorId,
+                    AnnotatorName = a.Annotator?.FullName ?? a.Annotator?.Email ?? "Unknown Annotator",
 
                     Labels = a.Project?.LabelClasses.Select(l => new LabelResponse
                     {

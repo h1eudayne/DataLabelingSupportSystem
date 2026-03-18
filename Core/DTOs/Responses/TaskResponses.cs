@@ -66,6 +66,8 @@ namespace Core.DTOs.Responses
         /// Existing annotations for this task, if any.
         /// </summary>
         public List<object>? ExistingAnnotations { get; set; }
+        public string? AnnotatorId { get; set; }
+        public string? AnnotatorName { get; set; }
     }
 
     /// <summary>
