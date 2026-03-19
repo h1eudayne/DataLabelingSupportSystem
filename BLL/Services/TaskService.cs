@@ -6,7 +6,6 @@ using Core.Constants;
 using Core.Entities;
 using System.Text.Json;
 
-
 namespace BLL.Services
 {
     public class TaskService : ITaskService
@@ -142,7 +141,6 @@ namespace BLL.Services
 
         public async Task AssignTasksToAnnotatorAsync(AssignTaskRequest request, string managerId)
         {
-            // Validate manager owns this project
             var project = await _projectRepo.GetByIdAsync(request.ProjectId);
             if (project == null)
                 throw new Exception("Project not found");
@@ -418,7 +416,7 @@ namespace BLL.Services
             await _activityLogRepo.AddAsync(log);
 
             await _assignmentRepo.SaveChangesAsync();
- 
+
             if (!string.IsNullOrEmpty(assignment.ReviewerId))
             {
                 await _notification.SendNotificationAsync(

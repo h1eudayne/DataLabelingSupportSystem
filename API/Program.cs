@@ -1,4 +1,4 @@
-﻿using API.Middlewares;
+using API.Middlewares;
 using BLL.Interfaces;
 using BLL.Services;
 using DAL;
@@ -88,7 +88,13 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+    options.MaximumReceiveMessageSize = 32 * 1024; // 32 KB
+    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+}).AddMessagePackProtocol();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
