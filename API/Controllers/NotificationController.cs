@@ -1,0 +1,80 @@
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using DAL;
+using System.Security.Claims;
+
+namespace API.Controllers
+{
+    [Route("api/notifications")]
+    [ApiController]
+    [Authorize]
+    public class NotificationController : ControllerBase
+    {
+        private readonly ApplicationDbContext _context;
+
+        public NotificationController(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetMyNotifications()
+        {
+
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            var notifications = await _context.AppNotifications
+                .Where(n => n.UserId == userId)
+                .OrderByDescending(n => n.CreatedAt)
+                .Take(50)
+                .Select(n => new
+                {
+                    n.Id,
+                    n.Message,
+                    n.Type,
+                    n.IsRead,
+                    n.CreatedAt
+                })
+                .ToListAsync();
+
+            return Ok(notifications);
+        }
+
+        [HttpPut("{id}/read")]
+        public async Task<IActionResult> MarkAsRead(int id)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            var notif = await _context.AppNotifications
+                .FirstOrDefaultAsync(n => n.Id == id && n.UserId == userId);
+
+            if (notif == null) return NotFound(new { message = "Không tìm thấy thông báo!" });
+            notif.IsRead = true;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Đã đánh dấu đọc thành công!" });
+        }
+
+        [HttpPut("read-all")]
+        public async Task<IActionResult> MarkAllAsRead()
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+
+            var unreadNotifs = await _context.AppNotifications
+                .Where(n => n.UserId == userId && !n.IsRead)
+                .ToListAsync();
+
+            foreach (var notif in unreadNotifs)
+            {
+                notif.IsRead = true;
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Đã đánh dấu đọc tất cả!" });
+        }
+    }
+}

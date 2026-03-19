@@ -20,6 +20,7 @@ namespace DAL
         public DbSet<Dispute> Disputes { get; set; }
         public DbSet<ActivityLog> ActivityLogs { get; set; }
         public DbSet<ReviewChecklistItem> ReviewChecklistItems { get; set; }
+        public DbSet<AppNotification> AppNotifications { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
