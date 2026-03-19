@@ -1,4 +1,4 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Microsoft.AspNetCore.Authorization;
@@ -46,10 +46,17 @@ namespace API.Controllers
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> AssignTasks([FromBody] AssignTaskRequest request)
         {
+            var managerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(managerId)) return Unauthorized();
+
             try
             {
-                await _taskService.AssignTasksToAnnotatorAsync(request);
+                await _taskService.AssignTasksToAnnotatorAsync(request, managerId);
                 return Ok(new { Message = "Tasks assigned successfully." });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new ErrorResponse { Message = ex.Message });
             }
             catch (Exception ex)
             {

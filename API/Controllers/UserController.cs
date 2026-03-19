@@ -1,4 +1,4 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Microsoft.AspNetCore.Authorization;
@@ -214,7 +214,46 @@ namespace API.Controllers
         }
 
         /// <summary>
-        /// Retrieves all users in the system.
+        /// Retrieves users managed by the current Manager.
+        /// </summary>
+        /// <remarks>
+        /// Returns only users whose ManagerId matches the current user's ID.
+        /// Used by Managers to populate assignment dropdowns with relevant team members only.
+        /// </remarks>
+        /// <returns>A list of managed users.</returns>
+        /// <response code="200">Managed users retrieved successfully.</response>
+        /// <response code="401">User is not authenticated or not a Manager.</response>
+        [HttpGet("managed")]
+        [Authorize(Roles = "Manager")]
+        [ProducesResponseType(typeof(List<UserResponse>), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        public async Task<IActionResult> GetManagedUsers()
+        {
+            var managerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(managerId)) return Unauthorized();
+
+            var users = await _userService.GetManagedUsersAsync(managerId);
+            return Ok(users);
+        }
+
+        /// <summary>
+        /// Retrieves all users without pagination (Admin only).
+        /// </summary>
+        /// <returns>A list of all users in the system.</returns>
+        /// <response code="200">All users retrieved successfully.</response>
+        /// <response code="401">User is not authorized.</response>
+        [HttpGet("all")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(List<UserResponse>), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        public async Task<IActionResult> GetAllUsersNoPaging()
+        {
+            var users = await _userService.GetAllUsersNoPagingAsync();
+            return Ok(users);
+        }
+
+        /// <summary>
+        /// Retrieves a paginated list of all users.
         /// </summary>
         /// <remarks>
         /// Accessible by Admin and Manager roles.

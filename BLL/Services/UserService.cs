@@ -1,4 +1,4 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using DAL.Interfaces;
@@ -166,6 +166,42 @@ namespace BLL.Services
                 Stats = stats,
                 Items = items
             };
+        }
+
+        public async Task<List<UserResponse>> GetManagedUsersAsync(string managerId)
+        {
+            var allUsers = await _userRepository.GetAllAsync();
+            var managedUsers = allUsers
+                .Where(u => u.ManagerId == managerId && u.IsActive)
+                .Select(u => new UserResponse
+                {
+                    Id = u.Id,
+                    FullName = u.FullName ?? "",
+                    Email = u.Email ?? "",
+                    Role = u.Role ?? "",
+                    AvatarUrl = u.AvatarUrl ?? "",
+                    IsActive = u.IsActive,
+                    ManagerId = u.ManagerId,
+                    TotalProjects = 0
+                }).ToList();
+
+            return managedUsers;
+        }
+
+        public async Task<List<UserResponse>> GetAllUsersNoPagingAsync()
+        {
+            var allUsers = await _userRepository.GetAllAsync();
+            return allUsers.Select(u => new UserResponse
+            {
+                Id = u.Id,
+                FullName = u.FullName ?? "",
+                Email = u.Email ?? "",
+                Role = u.Role ?? "",
+                AvatarUrl = u.AvatarUrl ?? "",
+                IsActive = u.IsActive,
+                ManagerId = u.ManagerId,
+                TotalProjects = 0
+            }).ToList();
         }
 
         public async Task UpdateUserAsync(string userId, UpdateUserRequest request)

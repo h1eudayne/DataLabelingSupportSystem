@@ -1,11 +1,11 @@
-﻿using Core.DTOs.Requests;
+using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 
 namespace BLL.Interfaces
 {
     public interface ITaskService
     {
-        Task AssignTasksToAnnotatorAsync(AssignTaskRequest request);
+        Task AssignTasksToAnnotatorAsync(AssignTaskRequest request, string managerId);
         Task<AnnotatorStatsResponse> GetAnnotatorStatsAsync(string annotatorId);
         Task<List<AssignedProjectResponse>> GetAssignedProjectsAsync(string annotatorId);
         Task<List<AssignmentResponse>> GetTaskImagesAsync(int projectId, string annotatorId);
