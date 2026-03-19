@@ -1,4 +1,4 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using DAL.Interfaces;
@@ -140,8 +140,15 @@ namespace BLL.Services
             }).ToList();
         }
 
-        public async Task AssignTasksToAnnotatorAsync(AssignTaskRequest request)
+        public async Task AssignTasksToAnnotatorAsync(AssignTaskRequest request, string managerId)
         {
+            // Validate manager owns this project
+            var project = await _projectRepo.GetByIdAsync(request.ProjectId);
+            if (project == null)
+                throw new Exception("Project not found");
+            if (project.ManagerId != managerId)
+                throw new UnauthorizedAccessException("You are not the manager of this project.");
+
             if (string.IsNullOrWhiteSpace(request.ReviewerId))
             {
                 request.ReviewerId = null;

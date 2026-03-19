@@ -1,4 +1,4 @@
-﻿using Core.DTOs.Requests;
+using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Core.Entities;
 using Microsoft.AspNetCore.Http;
@@ -19,5 +19,7 @@ namespace BLL.Interfaces
         Task ToggleUserStatusAsync(string userId, bool isActive);
         Task UpdateAvatarAsync(string userId, string avatarUrl);
         Task<ImportUserResponse> ImportUsersFromExcelAsync(IFormFile file, string adminId);
+        Task<List<UserResponse>> GetManagedUsersAsync(string managerId);
+        Task<List<UserResponse>> GetAllUsersNoPagingAsync();
     }
 }
