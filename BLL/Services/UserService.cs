@@ -367,9 +367,12 @@ namespace BLL.Services
                 };
 
                 await _userRepository.AddAsync(user);
-                await _userRepository.SaveChangesAsync();
-
                 response.SuccessCount++;
+            }
+
+            if (response.SuccessCount > 0)
+            {
+                await _userRepository.SaveChangesAsync();
             }
 
             await _logService.LogActionAsync(
