@@ -412,5 +412,18 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
+        /// <summary>
+        /// Retrieves the Management Board (Admins & Managers) without pagination.
+        /// </summary>
+        /// <returns>A list of management users.</returns>
+        [HttpGet("management-board")]
+        [Authorize(Roles = "Admin,Manager")]
+        [ProducesResponseType(typeof(List<UserResponse>), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        public async Task<IActionResult> GetManagementBoard()
+        {
+            var users = await _userService.GetManagementBoardAsync();
+            return Ok(users);
+        }
     }
 }

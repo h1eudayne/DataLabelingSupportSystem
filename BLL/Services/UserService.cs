@@ -413,5 +413,23 @@ namespace BLL.Services
             var token = tokenHandler.CreateToken(tokenDescriptor);
             return tokenHandler.WriteToken(token);
         }
+        public async Task<List<UserResponse>> GetManagementBoardAsync()
+        {
+            var allUsers = await _userRepository.GetAllAsync();
+
+            return allUsers
+                .Where(u => u.Role == UserRoles.Admin || u.Role == UserRoles.Manager)
+                .Select(u => new UserResponse
+                {
+                    Id = u.Id,
+                    FullName = u.FullName ?? "",
+                    Email = u.Email ?? "",
+                    Role = u.Role ?? "",
+                    AvatarUrl = u.AvatarUrl ?? "",
+                    IsActive = u.IsActive
+                })
+                .OrderBy(u => u.Role) 
+                .ToList();
+        }
     }
 }
