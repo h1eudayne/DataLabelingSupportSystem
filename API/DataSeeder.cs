@@ -1,4 +1,4 @@
-﻿using DAL;
+using DAL;
 using Core.Constants;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -33,8 +33,8 @@ namespace API
             {
                 new User { Id = adminId, FullName = "Admin User", Email = "admin@system.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"), Role = UserRoles.Admin, IsActive = true },
                 new User { Id = managerId, FullName = "Manager User", Email = "manager@system.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"), Role = UserRoles.Manager, IsActive = true },
-                new User { Id = annotatorId, FullName = "Annotator User", Email = "annotator@system.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"), Role = UserRoles.Annotator, IsActive = true },
-                new User { Id = reviewerId, FullName = "Reviewer User", Email = "reviewer@system.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"), Role = UserRoles.Reviewer, IsActive = true }
+                new User { Id = annotatorId, FullName = "Annotator User", Email = "annotator@system.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"), Role = UserRoles.Annotator, IsActive = true, ManagerId = managerId },
+                new User { Id = reviewerId, FullName = "Reviewer User", Email = "reviewer@system.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"), Role = UserRoles.Reviewer, IsActive = true, ManagerId = managerId }
             };
 
             await context.Users.AddRangeAsync(users);
