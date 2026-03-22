@@ -35,6 +35,11 @@ namespace Core.DTOs.Requests
         /// </summary>
         /// <example>Annotator</example>
         public string Role { get; set; } = "Annotator";
+
+        /// <summary>
+        /// The ID of the manager to assign this user to (optional).
+        /// </summary>
+        public string? ManagerId { get; set; }
     }
 
     /// <summary>
@@ -113,6 +118,11 @@ namespace Core.DTOs.Requests
         /// </summary>
         /// <example>NewSecurePass456!</example>
         public string? Password { get; set; }
+
+        /// <summary>
+        /// The ID of the manager to assign this user to (optional). Pass empty string to remove manager.
+        /// </summary>
+        public string? ManagerId { get; set; }
     }
     public class ChangePasswordRequest
     {

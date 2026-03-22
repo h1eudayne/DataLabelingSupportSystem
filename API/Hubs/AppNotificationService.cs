@@ -1,4 +1,4 @@
-﻿using API.Hubs;
+using API.Hubs;
 using BLL.Interfaces;
 using Core.Entities;
 using DAL;           
@@ -27,6 +27,7 @@ namespace API.Services
             var notification = new AppNotification
             {
                 UserId = userId,
+                Title = type,
                 Message = message,
                 Type = type,
                 IsRead = false,

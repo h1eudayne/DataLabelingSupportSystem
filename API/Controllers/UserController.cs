@@ -295,7 +295,8 @@ namespace API.Controllers
                     request.FullName,
                     request.Email,
                     request.Password,
-                    request.Role
+                    request.Role,
+                    request.ManagerId
                 );
 
                 return Ok(new

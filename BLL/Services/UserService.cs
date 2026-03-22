@@ -36,7 +36,7 @@ namespace BLL.Services
 
         }
 
-        public async Task<User> RegisterAsync(string fullName, string email, string password, string role)
+        public async Task<User> RegisterAsync(string fullName, string email, string password, string role, string? managerId = null)
         {
             if (!UserRoles.IsValid(role))
                 throw new Exception("Invalid role.");
@@ -49,6 +49,7 @@ namespace BLL.Services
                 FullName = fullName,
                 Email = email,
                 Role = role,
+                ManagerId = managerId,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(password)
             };
 
@@ -230,6 +231,11 @@ namespace BLL.Services
             if (!string.IsNullOrEmpty(request.Password))
             {
                 user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+            }
+            // Allow setting or clearing ManagerId
+            if (request.ManagerId != null)
+            {
+                user.ManagerId = string.IsNullOrEmpty(request.ManagerId) ? null : request.ManagerId;
             }
 
             _userRepository.Update(user);
