@@ -24,17 +24,19 @@ namespace API
         {
             if (await context.Users.AnyAsync()) return;
 
-            var adminId = Guid.NewGuid().ToString();
-            var managerId = Guid.NewGuid().ToString();
-            var annotatorId = Guid.NewGuid().ToString();
-            var reviewerId = Guid.NewGuid().ToString();
+            var adminId = "440816a8-8954-4557-a462-196471ce8b02";
+            var managerId = "49179920-d356-46f9-bb64-64da9f6ef4ee";
+            var annotatorId = "5c023639-82ed-448e-9415-fc2e86b2d325";
+            var reviewerId = "59420220-7179-4029-92e8-54a7c7acb39d";
+
+            var defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword("123456");
 
             var users = new List<User>
             {
-                new User { Id = adminId, FullName = "Admin User", Email = "admin@system.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"), Role = UserRoles.Admin, IsActive = true },
-                new User { Id = managerId, FullName = "Manager User", Email = "manager@system.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"), Role = UserRoles.Manager, IsActive = true },
-                new User { Id = annotatorId, FullName = "Annotator User", Email = "annotator@system.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"), Role = UserRoles.Annotator, IsActive = true, ManagerId = managerId },
-                new User { Id = reviewerId, FullName = "Reviewer User", Email = "reviewer@system.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"), Role = UserRoles.Reviewer, IsActive = true, ManagerId = managerId }
+                new User { Id = adminId, FullName = "Admin User", Email = "admin@system.com", PasswordHash = defaultPasswordHash, Role = UserRoles.Admin, IsActive = true },
+                new User { Id = managerId, FullName = "Manager User", Email = "manager@system.com", PasswordHash = defaultPasswordHash, Role = UserRoles.Manager, IsActive = true },
+                new User { Id = annotatorId, FullName = "Annotator User", Email = "annotator@system.com", PasswordHash = defaultPasswordHash, Role = UserRoles.Annotator, IsActive = true, ManagerId = managerId },
+                new User { Id = reviewerId, FullName = "Reviewer User", Email = "reviewer@system.com", PasswordHash = defaultPasswordHash, Role = UserRoles.Reviewer, IsActive = true, ManagerId = managerId }
             };
 
             await context.Users.AddRangeAsync(users);
