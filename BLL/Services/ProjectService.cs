@@ -694,17 +694,32 @@
         }
         public async Task<List<ProjectSummaryResponse>> GetAllProjectsForAdminAsync()
         {
-            var projects = await _projectRepository.GetAllAsync();
 
-            return projects.OrderByDescending(p => p.CreatedDate).Select(p => new ProjectSummaryResponse
+            var projects = await _projectRepository.GetAllProjectsForAdminStatsAsync();
+
+            return projects.Select(p => new ProjectSummaryResponse
             {
                 Id = p.Id,
                 Name = p.Name,
                 Deadline = p.Deadline,
-                TotalDataItems = p.DataItems != null ? p.DataItems.Count : 0,
-                Status = DateTime.UtcNow > p.Deadline ? "Expired" : "Active",
-                Progress = 0,
-                TotalMembers = 0
+                TotalDataItems = p.DataItems.Count,
+
+                Status = DateTime.UtcNow > p.Deadline ? "Expired" :
+                         (p.DataItems.Count == 0 || p.DataItems.All(d => d.Status == TaskStatusConstants.New) ? "New" : "Active"),
+
+                Progress = p.DataItems.Count > 0
+                    ? (decimal)p.DataItems.Count(d =>
+                        d.Status == TaskStatusConstants.Approved ||
+                        (d.Assignments != null && d.Assignments.Any(a => a.Status == TaskStatusConstants.Approved))
+                    ) / p.DataItems.Count * 100
+                    : 0,
+
+                TotalMembers = p.DataItems
+                                .SelectMany(d => d.Assignments)
+                                .SelectMany(a => new[] { a.AnnotatorId, a.ReviewerId })
+                                .Where(id => !string.IsNullOrEmpty(id))
+                                .Distinct()
+                                .Count()
             }).ToList();
         }
     }

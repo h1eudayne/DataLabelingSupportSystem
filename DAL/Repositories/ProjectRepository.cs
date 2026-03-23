@@ -133,5 +133,27 @@ namespace DAL.Repositories
                 .OrderByDescending(p => p.Id)
                 .ToListAsync();
         }
+        public async Task<List<Project>> GetAllProjectsForAdminStatsAsync()
+        {
+            return await _context.Projects
+                .Select(p => new Project
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    Deadline = p.Deadline,
+                    DataItems = p.DataItems.Select(d => new DataItem
+                    {
+                        Status = d.Status,
+                        Assignments = d.Assignments.Select(a => new Assignment
+                        {
+                            Status = a.Status,
+                            AnnotatorId = a.AnnotatorId,
+                            ReviewerId = a.ReviewerId
+                        }).ToList()
+                    }).ToList()
+                })
+                .OrderByDescending(p => p.Id)
+                .ToListAsync();
+        }
     }
 }

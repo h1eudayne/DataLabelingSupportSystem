@@ -198,11 +198,20 @@ namespace API.Controllers
             }
         }
         /// <summary>
-        /// Lấy toàn bộ danh sách dự án trong hệ thống (Chỉ dành cho Admin).
+        /// Retrieves a comprehensive list of all projects in the system.
         /// </summary>
+        /// <remarks>
+        /// Accessible only by Admins. This endpoint provides an aggregated view of all projects including their status, progress, and member count across all managers.
+        /// </remarks>
+        /// <returns>A list of project summaries for the entire system.</returns>
+        /// <response code="200">Projects retrieved successfully.</response>
+        /// <response code="400">Failed to retrieve projects.</response>
+        /// <response code="401">User is not authenticated or not authorized.</response>
         [HttpGet("all")]
         [Authorize(Roles = "Admin")]
-        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(typeof(List<ProjectSummaryResponse>), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> GetAllProjectsForAdmin()
         {
             try
