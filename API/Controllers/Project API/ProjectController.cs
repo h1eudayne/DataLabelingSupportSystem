@@ -197,5 +197,23 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
+        /// <summary>
+        /// Lấy toàn bộ danh sách dự án trong hệ thống (Chỉ dành cho Admin).
+        /// </summary>
+        [HttpGet("all")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(object), 200)]
+        public async Task<IActionResult> GetAllProjectsForAdmin()
+        {
+            try
+            {
+                var projects = await _projectService.GetAllProjectsForAdminAsync();
+                return Ok(projects);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
     }
 }

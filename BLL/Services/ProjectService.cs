@@ -675,22 +675,37 @@
         }
 
         public async Task<List<Core.DTOs.Responses.BucketResponse>> GetBucketsAsync(int projectId, string userId)
+        {
+            var dataItems = await _projectRepository.GetProjectDataItemsAsync(projectId);
+
+            if (!dataItems.Any()) return new List<Core.DTOs.Responses.BucketResponse>();
+            var buckets = dataItems.GroupBy(d => d.BucketId)
+                                .OrderBy(g => g.Key)
+                                .Select(g => new Core.DTOs.Responses.BucketResponse
+                                {
+                                    BucketId = g.Key,
+                                    Name = $"Lô số {g.Key}",
+                                    TotalItems = g.Count(),
+                                    CompletedItems = 0,
+                                    Status = "New"
+                                }).ToList();
+
+            return buckets;
+        }
+        public async Task<List<ProjectSummaryResponse>> GetAllProjectsForAdminAsync()
+        {
+            var projects = await _projectRepository.GetAllAsync();
+
+            return projects.OrderByDescending(p => p.CreatedDate).Select(p => new ProjectSummaryResponse
             {
-                var dataItems = await _projectRepository.GetProjectDataItemsAsync(projectId);
-
-                if (!dataItems.Any()) return new List<Core.DTOs.Responses.BucketResponse>();
-                var buckets = dataItems.GroupBy(d => d.BucketId)
-                                    .OrderBy(g => g.Key)
-                                    .Select(g => new Core.DTOs.Responses.BucketResponse
-                                    {
-                                        BucketId = g.Key,
-                                        Name = $"Lô số {g.Key}",
-                                        TotalItems = g.Count(),
-                                        CompletedItems = 0,
-                                        Status = "New"
-                                    }).ToList();
-
-                return buckets;
-            }
+                Id = p.Id,
+                Name = p.Name,
+                Deadline = p.Deadline,
+                TotalDataItems = p.DataItems != null ? p.DataItems.Count : 0,
+                Status = DateTime.UtcNow > p.Deadline ? "Expired" : "Active",
+                Progress = 0,
+                TotalMembers = 0
+            }).ToList();
         }
     }
+}
