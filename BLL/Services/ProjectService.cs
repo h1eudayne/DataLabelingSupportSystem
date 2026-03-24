@@ -396,27 +396,45 @@
         {
             var projects = await _projectRepository.GetProjectsByManagerIdAsync(managerId);
 
-            return projects.Select(p => new ProjectSummaryResponse
+            return projects.Select(p =>
             {
-                Id = p.Id,
-                Name = p.Name,
-                Deadline = p.Deadline,
-                TotalDataItems = p.DataItems.Count,
-                Status = DateTime.UtcNow > p.Deadline ? "Expired" :
-                         (p.DataItems.Count == 0 || p.DataItems.All(d => d.Status == TaskStatusConstants.New) ? "New" : "Active"),
+                int totalItems = p.DataItems.Count;
+                int approvedCount = p.DataItems.Count(d =>
+                    d.Status == TaskStatusConstants.Approved ||
+                    (d.Assignments != null && d.Assignments.Any(a => a.Status == TaskStatusConstants.Approved))
+                );
 
-                Progress = p.DataItems.Count > 0
-                    ? (decimal)p.DataItems.Count(d =>
-                        d.Status == TaskStatusConstants.Approved ||
-                        (d.Assignments != null && d.Assignments.Any(a => a.Status == TaskStatusConstants.Approved))
-                    ) / p.DataItems.Count * 100
-                    : 0,
-                TotalMembers = p.DataItems
-                                .SelectMany(d => d.Assignments)
-                                .SelectMany(a => new[] { a.AnnotatorId, a.ReviewerId })
-                                .Where(id => !string.IsNullOrEmpty(id))
-                                .Distinct()
-                                .Count()
+                decimal progress = totalItems > 0 ? (decimal)approvedCount / totalItems * 100 : 0;
+
+                string currentStatus = "New";
+                if (totalItems > 0 && approvedCount == totalItems)
+                {
+                    currentStatus = "Completed";
+                }
+                else if (DateTime.UtcNow > p.Deadline)
+                {
+                    currentStatus = "Expired";
+                }
+                else if (totalItems > 0 && p.DataItems.Any(d => d.Status != TaskStatusConstants.New))
+                {
+                    currentStatus = "In Process";
+                }
+
+                return new ProjectSummaryResponse
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    Deadline = p.Deadline,
+                    TotalDataItems = totalItems,
+                    Status = currentStatus,
+                    Progress = progress,
+                    TotalMembers = p.DataItems
+                                    .SelectMany(d => d.Assignments)
+                                    .SelectMany(a => new[] { a.AnnotatorId, a.ReviewerId })
+                                    .Where(id => !string.IsNullOrEmpty(id))
+                                    .Distinct()
+                                    .Count()
+                };
             }).ToList();
         }
         public async Task DeleteProjectAsync(int projectId)
@@ -694,32 +712,48 @@
         }
         public async Task<List<ProjectSummaryResponse>> GetAllProjectsForAdminAsync()
         {
-
             var projects = await _projectRepository.GetAllProjectsForAdminStatsAsync();
 
-            return projects.Select(p => new ProjectSummaryResponse
+            return projects.Select(p =>
             {
-                Id = p.Id,
-                Name = p.Name,
-                Deadline = p.Deadline,
-                TotalDataItems = p.DataItems.Count,
+                int totalItems = p.DataItems.Count;
+                int approvedCount = p.DataItems.Count(d =>
+                    d.Status == TaskStatusConstants.Approved ||
+                    (d.Assignments != null && d.Assignments.Any(a => a.Status == TaskStatusConstants.Approved))
+                );
 
-                Status = DateTime.UtcNow > p.Deadline ? "Expired" :
-                         (p.DataItems.Count == 0 || p.DataItems.All(d => d.Status == TaskStatusConstants.New) ? "New" : "Active"),
+                decimal progress = totalItems > 0 ? (decimal)approvedCount / totalItems * 100 : 0;
 
-                Progress = p.DataItems.Count > 0
-                    ? (decimal)p.DataItems.Count(d =>
-                        d.Status == TaskStatusConstants.Approved ||
-                        (d.Assignments != null && d.Assignments.Any(a => a.Status == TaskStatusConstants.Approved))
-                    ) / p.DataItems.Count * 100
-                    : 0,
+                string currentStatus = "New";
 
-                TotalMembers = p.DataItems
-                                .SelectMany(d => d.Assignments)
-                                .SelectMany(a => new[] { a.AnnotatorId, a.ReviewerId })
-                                .Where(id => !string.IsNullOrEmpty(id))
-                                .Distinct()
-                                .Count()
+                if (totalItems > 0 && approvedCount == totalItems)
+                {
+                    currentStatus = "Completed";
+                }
+                else if (DateTime.UtcNow > p.Deadline)
+                {
+                    currentStatus = "Expired";
+                }
+                else if (totalItems > 0 && p.DataItems.Any(d => d.Status != TaskStatusConstants.New))
+                {
+                    currentStatus = "In Process"; 
+                }
+
+                return new ProjectSummaryResponse
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    Deadline = p.Deadline,
+                    TotalDataItems = totalItems,
+                    Status = currentStatus,
+                    Progress = progress,
+                    TotalMembers = p.DataItems
+                                    .SelectMany(d => d.Assignments)
+                                    .SelectMany(a => new[] { a.AnnotatorId, a.ReviewerId })
+                                    .Where(id => !string.IsNullOrEmpty(id))
+                                    .Distinct()
+                                    .Count()
+                };
             }).ToList();
         }
     }
