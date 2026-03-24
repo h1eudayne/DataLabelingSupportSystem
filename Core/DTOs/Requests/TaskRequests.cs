@@ -20,6 +20,7 @@ namespace Core.DTOs.Requests
         /// <example>d290f1ee-6c54-4b01-90e6-d701748f0851</example>
         [Required]
         public string AnnotatorId { get; set; } = string.Empty;
+        public List<string> ReviewerIds { get; set; } = new List<string>();
 
         /// <summary>
         /// The number of tasks (data items) to assign.
@@ -66,5 +67,20 @@ namespace Core.DTOs.Requests
         /// </summary>
         /// <example>{ "x": 10, "y": 20, "width": 100, "height": 100 }</example>
         public string ValueJson { get; set; } = string.Empty;
+    }
+    public class AssignTeamRequest
+    {
+        [Required]
+        public int ProjectId { get; set; }
+
+        [Required]
+        [MinLength(1, ErrorMessage = "At least one annotator must be selected.")]
+        public List<string> AnnotatorIds { get; set; } = new List<string>();
+
+        public List<string> ReviewerIds { get; set; } = new List<string>();
+
+        [Required]
+        [Range(1, int.MaxValue, ErrorMessage = "Total quantity must be greater than 0.")]
+        public int TotalQuantity { get; set; }
     }
 }

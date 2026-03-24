@@ -736,7 +736,7 @@
                 }
                 else if (totalItems > 0 && p.DataItems.Any(d => d.Status != TaskStatusConstants.New))
                 {
-                    currentStatus = "In Process"; 
+                    currentStatus = "In Process";
                 }
 
                 return new ProjectSummaryResponse
@@ -755,6 +755,50 @@
                                     .Count()
                 };
             }).ToList();
+        }
+        public async Task AssignReviewersAsync(AssignReviewersRequest request)
+        {
+            var project = await _projectRepository.GetProjectWithDetailsAsync(request.ProjectId);
+            if (project == null)
+                throw new Exception("Project not found.");
+
+            var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
+
+            if (!allAssignments.Any())
+                throw new Exception("No tasks found in this project. Please assign tasks to annotators first.");
+
+            var allUsers = await _userRepository.GetAllAsync();
+            var validReviewers = allUsers
+                .Where(u => request.ReviewerIds.Contains(u.Id) &&
+                            (u.Role == UserRoles.Reviewer || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin))
+                .ToList();
+
+            if (validReviewers.Count != request.ReviewerIds.Count)
+                throw new Exception("One or more provided reviewer IDs are invalid or lack the required role.");
+
+            int totalReviewers = validReviewers.Count;
+            int index = 0;
+
+            foreach (var assignment in allAssignments)
+            {
+                assignment.ReviewerId = validReviewers[index % totalReviewers].Id;
+                _assignmentRepo.Update(assignment);
+                index++;
+            }
+
+            await _assignmentRepo.SaveChangesAsync();
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = project.ManagerId,
+                ActionType = "AssignReviewers",
+                EntityName = "Project",
+                EntityId = project.Id.ToString(),
+                Description = $"Assigned {totalReviewers} reviewers to project {project.Name} across {allAssignments.Count} tasks.",
+                Timestamp = DateTime.UtcNow
+            });
+
+            await _activityLogRepo.SaveChangesAsync();
         }
     }
 }

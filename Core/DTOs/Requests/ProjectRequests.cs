@@ -53,4 +53,13 @@ namespace Core.DTOs.Requests
         public string Description { get; set; } = string.Empty;
         public int Weight { get; set; } = 1;
     }
+    public class AssignReviewersRequest
+    {
+        [Required]
+        public int ProjectId { get; set; }
+
+        [Required]
+        [MinLength(1, ErrorMessage = "At least one reviewer must be selected.")]
+        public List<string> ReviewerIds { get; set; } = new List<string>();
+    }
 }

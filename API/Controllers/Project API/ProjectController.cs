@@ -22,6 +22,22 @@ namespace API.Controllers
         {
             _projectService = projectService;
         }
+        [HttpPost("assign-reviewers")]
+        [Authorize(Roles = "Manager,Admin")]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        public async Task<IActionResult> AssignReviewers([FromBody] AssignReviewersRequest request)
+        {
+            try
+            {
+                await _projectService.AssignReviewersAsync(request);
+                return Ok(new { Message = "Reviewers assigned successfully." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
         /// <summary>
         /// Retrieves all projects for a specific user by their ID.
         /// </summary>

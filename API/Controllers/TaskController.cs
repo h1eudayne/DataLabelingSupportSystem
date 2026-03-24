@@ -29,7 +29,7 @@ namespace API.Controllers
         // ======================================================
 
         /// <summary>
-        /// Assigns annotation tasks to an Annotator and a Reviewer.
+        /// Assigns tasks to a team of Annotators and (optionally) Reviewers using round-robin distribution.
         /// </summary>
         /// <remarks>
         /// Used by Managers to distribute data items to team members.
@@ -39,20 +39,21 @@ namespace API.Controllers
         /// <response code="200">Tasks assigned successfully.</response>
         /// <response code="400">Assignment failed (e.g., insufficient images, user not found).</response>
         /// <response code="401">User is not authorized as a Manager.</response>
-        [HttpPost("assignments")]
-        [Authorize(Roles = "Manager")]
+        [HttpPost("assign-team")]
+        [Authorize(Roles = "Manager,Admin")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
-        public async Task<IActionResult> AssignTasks([FromBody] AssignTaskRequest request)
+        [ProducesResponseType(typeof(ErrorResponse), 403)]
+        public async Task<IActionResult> AssignTeamTasks([FromBody] AssignTeamRequest request)
         {
             var managerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(managerId)) return Unauthorized();
 
             try
             {
-                await _taskService.AssignTasksToAnnotatorAsync(request, managerId);
-                return Ok(new { Message = "Tasks assigned successfully." });
+                await _taskService.AssignTeamAsync(managerId, request);
+                return Ok(new { Message = "Tasks successfully distributed to the team." });
             }
             catch (UnauthorizedAccessException ex)
             {

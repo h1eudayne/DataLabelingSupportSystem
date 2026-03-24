@@ -38,7 +38,109 @@ namespace BLL.Services
             _activityLogRepo = activityLogRepo;
             _notification = notification;
         }
+        public async Task AssignTeamAsync(string managerId, AssignTeamRequest request)
+        {
+            var project = await _projectRepo.GetByIdAsync(request.ProjectId);
+            if (project == null)
+                throw new Exception("Project not found.");
 
+            if (project.ManagerId != managerId)
+                throw new UnauthorizedAccessException("You are not the manager of this project.");
+
+            var allUsers = await _userRepo.GetAllAsync();
+
+            var validAnnotators = allUsers
+                .Where(u => request.AnnotatorIds.Contains(u.Id) &&
+                            (u.Role == UserRoles.Annotator || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin))
+                .ToList();
+
+            if (validAnnotators.Count != request.AnnotatorIds.Count)
+                throw new Exception("One or more Annotator IDs are invalid or lack the required role.");
+
+            var validReviewers = new List<User>();
+            if (request.ReviewerIds != null && request.ReviewerIds.Any())
+            {
+                validReviewers = allUsers
+                    .Where(u => request.ReviewerIds.Contains(u.Id) &&
+                                (u.Role == UserRoles.Reviewer || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin))
+                    .ToList();
+
+                if (validReviewers.Count != request.ReviewerIds.Count)
+                    throw new Exception("One or more Reviewer IDs are invalid or lack the required role.");
+            }
+
+            var dataItems = await _assignmentRepo.GetUnassignedDataItemsAsync(request.ProjectId, request.TotalQuantity);
+            if (!dataItems.Any())
+                throw new Exception("Not enough available data items in this project.");
+
+            int annIndex = 0;
+            int revIndex = 0;
+            int totalAnn = validAnnotators.Count;
+            int totalRev = validReviewers.Count;
+
+            var newAssignments = new List<Assignment>();
+
+            foreach (var item in dataItems)
+            {
+                string assignedAnnotator = validAnnotators[annIndex % totalAnn].Id;
+                string? assignedReviewer = totalRev > 0 ? validReviewers[revIndex % totalRev].Id : null;
+
+                var assignment = new Assignment
+                {
+                    ProjectId = request.ProjectId,
+                    DataItemId = item.Id,
+                    AnnotatorId = assignedAnnotator,
+                    ReviewerId = assignedReviewer,
+                    Status = TaskStatusConstants.Assigned,
+                    AssignedDate = DateTime.UtcNow
+                };
+
+                newAssignments.Add(assignment);
+                await _assignmentRepo.AddAsync(assignment);
+
+                item.Status = TaskStatusConstants.Assigned;
+                _dataItemRepo.Update(item);
+
+                annIndex++;
+                if (totalRev > 0) revIndex++;
+            }
+
+            await _assignmentRepo.SaveChangesAsync();
+            await _dataItemRepo.SaveChangesAsync();
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = managerId,
+                ActionType = "AssignTeam",
+                EntityName = "Project",
+                EntityId = project.Id.ToString(),
+                Description = $"Manager assigned {dataItems.Count} tasks to {totalAnn} annotators and {totalRev} reviewers.",
+                Timestamp = DateTime.UtcNow
+            });
+            await _activityLogRepo.SaveChangesAsync();
+
+            var annotatorGroups = newAssignments.GroupBy(a => a.AnnotatorId);
+            foreach (var group in annotatorGroups)
+            {
+                await _statisticService.TrackNewAssignmentAsync(group.Key, request.ProjectId, group.Count());
+                await _notification.SendNotificationAsync(
+                    group.Key,
+                    $"Manager has assigned you {group.Count()} new tasks in project {project.Name}!",
+                    "Success");
+            }
+
+            if (totalRev > 0)
+            {
+                var reviewerGroups = newAssignments.Where(a => a.ReviewerId != null).GroupBy(a => a.ReviewerId);
+                foreach (var group in reviewerGroups)
+                {
+                    await _notification.SendNotificationAsync(
+                        group.Key!,
+                        $"You have been assigned to review {group.Count()} tasks in project {project.Name}!",
+                        "Info");
+                }
+            }
+        }
         private int? ExtractClassIdFromJSON(string? json)
         {
             if (string.IsNullOrWhiteSpace(json)) return null;
