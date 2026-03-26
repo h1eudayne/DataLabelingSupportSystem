@@ -22,6 +22,7 @@ namespace BLL.Interfaces
         Task<byte[]> ExportProjectDataAsync(int projectId, string userId);
         Task<ProjectStatisticsResponse> GetProjectStatisticsAsync(int projectId);
         Task<object> GetUserProjectsByUserIdAsync(string userId);
+        Task RemoveUserFromProjectAsync(int projectId, string userId);
 
     }
 }

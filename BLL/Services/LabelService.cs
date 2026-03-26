@@ -12,19 +12,24 @@ namespace BLL.Services
         private readonly ILabelRepository _labelRepo;
         private readonly IAssignmentRepository _assignmentRepo;
         private readonly IActivityLogService _logService;
+        private readonly IRepository<Annotation> _annotationRepo; 
 
         public LabelService(
             ILabelRepository labelRepo,
             IAssignmentRepository assignmentRepo,
-            IActivityLogService logService)
+            IActivityLogService logService,
+            IRepository<Annotation> annotationRepo) 
         {
             _labelRepo = labelRepo;
             _assignmentRepo = assignmentRepo;
             _logService = logService;
+            _annotationRepo = annotationRepo; 
         }
         public async Task<int> CheckLabelUsageAsync(int labelId)
         {
-            return await Task.FromResult(0);
+
+            var annotations = await _annotationRepo.FindAsync(a => a.ClassId == labelId);
+            return annotations.Count();
         }
         public async Task<LabelResponse> CreateLabelAsync(CreateLabelRequest request)
         {

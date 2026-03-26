@@ -95,7 +95,23 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-
+        /// <summary>
+        /// Đuổi User khỏi dự án và thu hồi lại các task đang giao
+        /// </summary>
+        [HttpDelete("{projectId}/users/{userId}")]
+        [Authorize(Roles = "Manager,Admin")]
+        public async Task<IActionResult> RemoveUserFromProject(int projectId, string userId)
+        {
+            try
+            {
+                await _projectService.RemoveUserFromProjectAsync(projectId, userId);
+                return Ok(new { Message = "Đã đuổi User khỏi dự án và thu hồi các task chưa làm thành công." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
         /// <summary>
         /// Updates an existing project's details.
         /// </summary>

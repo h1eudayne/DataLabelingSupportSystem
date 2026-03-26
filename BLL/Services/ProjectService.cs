@@ -857,5 +857,43 @@
 
             return System.Text.Encoding.UTF8.GetBytes(builder.ToString());
         }
+        public async Task RemoveUserFromProjectAsync(int projectId, string userId)
+        {
+            var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
+            if (project == null) throw new Exception("Project not found.");
+
+            var pendingAssignments = project.DataItems
+                .SelectMany(d => d.Assignments)
+                .Where(a => a.AnnotatorId == userId && a.Status == TaskStatusConstants.Assigned)
+                .ToList();
+
+            if (pendingAssignments.Any())
+            {
+                foreach (var assignment in pendingAssignments)
+                {
+                    _assignmentRepo.Delete(assignment);
+
+                    var dataItem = project.DataItems.FirstOrDefault(d => d.Id == assignment.DataItemId);
+                    if (dataItem != null && dataItem.Assignments.Count <= 1)
+                    {
+                        dataItem.Status = TaskStatusConstants.New;
+                    }
+                }
+
+                await _assignmentRepo.SaveChangesAsync();
+                await _projectRepository.SaveChangesAsync();
+            }
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = project.ManagerId,
+                ActionType = "RemoveUser",
+                EntityName = "Project",
+                EntityId = projectId.ToString(),
+                Description = $"Removed user {userId} from project and revoked {pendingAssignments.Count} pending tasks.",
+                Timestamp = DateTime.UtcNow
+            });
+            await _activityLogRepo.SaveChangesAsync();
+        }
     }
 }
