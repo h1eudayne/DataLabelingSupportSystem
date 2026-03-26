@@ -7,6 +7,7 @@ namespace BLL.Interfaces
     {
         Task<LabelResponse> CreateLabelAsync(CreateLabelRequest request);
         Task<LabelResponse> UpdateLabelAsync(int labelId, UpdateLabelRequest request);
+        Task<List<LabelResponse>> GetLabelsByProjectIdAsync(int projectId);
         Task DeleteLabelAsync(int labelId);
         Task<int> CheckLabelUsageAsync(int labelId);
     }

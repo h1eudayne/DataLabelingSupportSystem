@@ -22,7 +22,25 @@ namespace API.Controllers
         {
             _labelService = labelService;
         }
-
+        /// <summary>
+        /// Retrieves all labels for a specific project.
+        /// </summary>
+        [HttpGet]
+        [ProducesResponseType(typeof(List<LabelResponse>), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        public async Task<IActionResult> GetLabels([FromQuery] int projectId)
+        {
+            try
+            {
+                if (projectId <= 0) return BadRequest(new ErrorResponse { Message = "ProjectId is required." });
+                var result = await _labelService.GetLabelsByProjectIdAsync(projectId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
         /// <summary>
         /// Creates a new label within a project.
         /// </summary>

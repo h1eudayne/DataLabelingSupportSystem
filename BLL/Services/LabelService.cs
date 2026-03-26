@@ -12,18 +12,34 @@ namespace BLL.Services
         private readonly ILabelRepository _labelRepo;
         private readonly IAssignmentRepository _assignmentRepo;
         private readonly IActivityLogService _logService;
-        private readonly IRepository<Annotation> _annotationRepo; 
+        private readonly IRepository<Annotation> _annotationRepo;
 
         public LabelService(
             ILabelRepository labelRepo,
             IAssignmentRepository assignmentRepo,
             IActivityLogService logService,
-            IRepository<Annotation> annotationRepo) 
+            IRepository<Annotation> annotationRepo)
         {
             _labelRepo = labelRepo;
             _assignmentRepo = assignmentRepo;
             _logService = logService;
-            _annotationRepo = annotationRepo; 
+            _annotationRepo = annotationRepo;
+        }
+        public async Task<List<LabelResponse>> GetLabelsByProjectIdAsync(int projectId)
+        {
+            var labels = await _labelRepo.FindAsync(l => l.ProjectId == projectId);
+            return labels.Select(l => new LabelResponse
+            {
+                Id = l.Id,
+                Name = l.Name,
+                Color = l.Color,
+                GuideLine = l.GuideLine,
+                ExampleImageUrl = l.ExampleImageUrl,
+                IsDefault = l.IsDefault,
+                Checklist = !string.IsNullOrEmpty(l.DefaultChecklist)
+                            ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(l.DefaultChecklist) ?? new List<string>()
+                            : new List<string>()
+            }).ToList();
         }
         public async Task<int> CheckLabelUsageAsync(int labelId)
         {
