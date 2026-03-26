@@ -336,10 +336,10 @@ namespace BLL.Services
                     continue;
                 }
 
-                if (!UserRoles.IsValid(role))
+                if (role != UserRoles.Annotator && role != UserRoles.Reviewer)
                 {
                     response.FailureCount++;
-                    response.Errors.Add($"Row {rowNumber}: Role '{role}' is invalid.");
+                    response.Errors.Add($"Row {rowNumber}: Role '{role}' is not allowed. You can only import 'Annotator' or 'Reviewer'.");
                     continue;
                 }
 
