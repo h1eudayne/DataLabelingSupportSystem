@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260322170416_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20260326021833_UpdateAdvancedBRFields")]
+    partial class UpdateAdvancedBRFields
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -160,7 +160,13 @@ namespace DAL.Migrations
                     b.Property<int>("DurationSeconds")
                         .HasColumnType("int");
 
+                    b.Property<bool>("IsEscalated")
+                        .HasColumnType("bit");
+
                     b.Property<int>("ProjectId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RejectCount")
                         .HasColumnType("int");
 
                     b.Property<string>("ReviewerId")
@@ -336,6 +342,10 @@ namespace DAL.Migrations
                     b.Property<DateTime?>("EndDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("GuidelineVersion")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("ManagerId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -350,8 +360,15 @@ namespace DAL.Migrations
                     b.Property<int>("PenaltyUnit")
                         .HasColumnType("int");
 
+                    b.Property<bool>("RequireConsensus")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("StartDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
@@ -418,6 +435,9 @@ namespace DAL.Migrations
 
                     b.Property<string>("ErrorCategory")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsApproved")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsAudited")
                         .HasColumnType("bit");
@@ -496,6 +516,9 @@ namespace DAL.Migrations
 
                     b.Property<float>("EfficiencyScore")
                         .HasColumnType("real");
+
+                    b.Property<bool>("IsLocked")
+                        .HasColumnType("bit");
 
                     b.Property<int>("ProjectId")
                         .HasColumnType("int");
