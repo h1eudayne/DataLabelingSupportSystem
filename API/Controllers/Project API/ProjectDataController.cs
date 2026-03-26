@@ -150,7 +150,7 @@ namespace API.Controllers
             }
         }
         /// <summary>
-        /// Xuất dữ liệu đã duyệt (Approved) của dự án ra file CSV
+        /// Exports the approved data of the project to a CSV file.
         /// </summary>
         [HttpGet("{projectId}/export-csv")]
         [Authorize(Roles = "Manager,Admin")]

@@ -9,7 +9,7 @@
         public string? AnnotationData { get; set; }
         public DateTime? AssignedDate { get; set; }
         public DateTime? Deadline { get; set; }
-
+        public string? ErrorCategory { get; set; }
         public string? RejectionReason { get; set; }
     }
 }

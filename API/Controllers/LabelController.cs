@@ -117,7 +117,7 @@ namespace API.Controllers
             }
         }
         /// <summary>
-        /// Đếm số lượng ảnh đang dùng Label này để cảnh báo trước khi sửa/xóa
+        /// Counts the number of images using this label to provide a warning before editing/deleting.
         /// </summary>
         [HttpGet("{id}/usage-count")]
         [Authorize(Roles = "Manager,Admin")]
@@ -125,13 +125,14 @@ namespace API.Controllers
         {
             try
             {
-                // Gọi cái hàm CheckLabelUsageAsync tui dặn ông viết ở bài trước
                 var count = await _labelService.CheckLabelUsageAsync(id);
                 return Ok(new
                 {
                     LabelId = id,
                     UsageCount = count,
-                    Message = count > 0 ? $"Cảnh báo: Label này đang được dùng trong {count} task!" : "Label chưa được sử dụng, có thể sửa an toàn."
+                    Message = count > 0
+                        ? $"Warning: This label is currently being used in {count} tasks!"
+                        : "This label is not currently in use and can be modified safely."
                 });
             }
             catch (Exception ex)

@@ -96,7 +96,7 @@ namespace API.Controllers
             }
         }
         /// <summary>
-        /// Đuổi User khỏi dự án và thu hồi lại các task đang giao
+        /// Removes a user from the project and revokes their assigned, uncompleted tasks.
         /// </summary>
         [HttpDelete("{projectId}/users/{userId}")]
         [Authorize(Roles = "Manager,Admin")]
@@ -105,7 +105,7 @@ namespace API.Controllers
             try
             {
                 await _projectService.RemoveUserFromProjectAsync(projectId, userId);
-                return Ok(new { Message = "Đã đuổi User khỏi dự án và thu hồi các task chưa làm thành công." });
+                return Ok(new { Message = "Successfully removed the user from the project and revoked pending tasks." });
             }
             catch (Exception ex)
             {

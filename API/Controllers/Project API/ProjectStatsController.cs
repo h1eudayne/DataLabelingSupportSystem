@@ -80,7 +80,7 @@ namespace API.Controllers
             }
         }
         /// <summary>
-        /// Quản lý Khóa / Mở khóa Annotator trong 1 dự án
+        /// Manages locking / unlocking of an Annotator within a project.
         /// </summary>
         [HttpPost("{projectId}/users/{userId}/toggle-lock")]
         [Authorize(Roles = "Manager,Admin")]
@@ -88,9 +88,8 @@ namespace API.Controllers
         {
             try
             {
-
-                string action = lockStatus ? "Khóa" : "Mở khóa";
-                return Ok(new { Message = $"Đã {action} user này thành công." });
+                string action = lockStatus ? "locked" : "unlocked";
+                return Ok(new { Message = $"Successfully {action} this user." });
             }
             catch (Exception ex)
             {

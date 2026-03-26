@@ -338,11 +338,11 @@ namespace BLL.Services
                 AssignedDate = assignment.AssignedDate,
                 Deadline = effectiveDeadline,
                 RejectionReason = assignment.Status == TaskStatusConstants.Rejected
-                     ? (assignment.ReviewLogs?
-                      .OrderByDescending(r => r.CreatedAt)
-                       .Select(r => string.IsNullOrEmpty(r.ErrorCategory) ? r.Comment : $"[{r.ErrorCategory}] {r.Comment}")
-                        .FirstOrDefault() ?? "")
-                          : ""
+                    ? (assignment.ReviewLogs?.OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.Comment ?? "")
+                    : "",
+                ErrorCategory = assignment.Status == TaskStatusConstants.Rejected
+                    ? (assignment.ReviewLogs?.OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.ErrorCategory ?? "")
+                    : ""
             };
         }
         public async Task<AnnotatorStatsResponse> GetAnnotatorStatsAsync(string annotatorId)
@@ -401,11 +401,11 @@ namespace BLL.Services
                     AssignedDate = a.AssignedDate,
                     Deadline = effectiveDeadline,
                     RejectionReason = a.Status == TaskStatusConstants.Rejected
-                       ? (a.ReviewLogs?
-                      .OrderByDescending(r => r.CreatedAt)
-                       .Select(r => string.IsNullOrEmpty(r.ErrorCategory) ? r.Comment : $"[{r.ErrorCategory}] {r.Comment}")
-                        .FirstOrDefault() ?? "")
-                         : ""
+                    ? (a.ReviewLogs?.OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.Comment ?? "")
+                    : "",
+                    ErrorCategory = a.Status == TaskStatusConstants.Rejected
+                    ? (a.ReviewLogs?.OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.ErrorCategory ?? "")
+                    : ""
                 };
             }).ToList();
         }
