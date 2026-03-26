@@ -73,36 +73,36 @@ namespace BLL.Services
             if (!dataItems.Any())
                 throw new Exception("Not enough available data items in this project.");
 
-            int annIndex = 0;
-            int revIndex = 0;
-            int totalAnn = validAnnotators.Count;
             int totalRev = validReviewers.Count;
+            int revIndex = 0;
 
             var newAssignments = new List<Assignment>();
 
             foreach (var item in dataItems)
             {
-                string assignedAnnotator = validAnnotators[annIndex % totalAnn].Id;
-                string? assignedReviewer = totalRev > 0 ? validReviewers[revIndex % totalRev].Id : null;
-
-                var assignment = new Assignment
-                {
-                    ProjectId = request.ProjectId,
-                    DataItemId = item.Id,
-                    AnnotatorId = assignedAnnotator,
-                    ReviewerId = assignedReviewer,
-                    Status = TaskStatusConstants.Assigned,
-                    AssignedDate = DateTime.UtcNow
-                };
-
-                newAssignments.Add(assignment);
-                await _assignmentRepo.AddAsync(assignment);
-
                 item.Status = TaskStatusConstants.Assigned;
                 _dataItemRepo.Update(item);
 
-                annIndex++;
-                if (totalRev > 0) revIndex++;
+                foreach (var annotator in validAnnotators)
+                {
+
+                    string? assignedReviewer = totalRev > 0 ? validReviewers[revIndex % totalRev].Id : null;
+
+                    var assignment = new Assignment
+                    {
+                        ProjectId = request.ProjectId,
+                        DataItemId = item.Id,
+                        AnnotatorId = annotator.Id,
+                        ReviewerId = assignedReviewer,
+                        Status = TaskStatusConstants.Assigned,
+                        AssignedDate = DateTime.UtcNow
+                    };
+
+                    newAssignments.Add(assignment);
+                    await _assignmentRepo.AddAsync(assignment);
+
+                    if (totalRev > 0) revIndex++; 
+                }
             }
 
             await _assignmentRepo.SaveChangesAsync();
@@ -114,7 +114,7 @@ namespace BLL.Services
                 ActionType = "AssignTeam",
                 EntityName = "Project",
                 EntityId = project.Id.ToString(),
-                Description = $"Manager assigned {dataItems.Count} tasks to {totalAnn} annotators and {totalRev} reviewers.",
+                Description = $"Manager assigned {dataItems.Count} tasks to EVERY annotator ({validAnnotators.Count} people). Total Assignments created: {newAssignments.Count}.",
                 Timestamp = DateTime.UtcNow
             });
             await _activityLogRepo.SaveChangesAsync();

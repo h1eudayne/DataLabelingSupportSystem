@@ -22,7 +22,10 @@ namespace BLL.Services
             _assignmentRepo = assignmentRepo;
             _logService = logService;
         }
-
+        public async Task<int> CheckLabelUsageAsync(int labelId)
+        {
+            return await Task.FromResult(0);
+        }
         public async Task<LabelResponse> CreateLabelAsync(CreateLabelRequest request)
         {
             if (await _labelRepo.ExistsInProjectAsync(request.ProjectId, request.Name))

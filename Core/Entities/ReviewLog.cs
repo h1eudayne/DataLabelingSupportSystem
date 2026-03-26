@@ -24,5 +24,6 @@ namespace Core.Entities
         public int ScorePenalty { get; set; } = 0;
         public bool IsAudited { get; set; } = false;
         public string? AuditResult { get; set; }
+        public bool IsApproved { get; set; }
     }
 }

@@ -35,25 +35,23 @@ namespace BLL.Services
             _notification = notification;
         }
 
-        public async Task CreateDisputeAsync(string annotatorId, CreateDisputeRequest request)
+        public async Task<DisputeResponse> CreateDisputeAsync(string annotatorId, CreateDisputeRequest request)
         {
-            var assignment = await _assignmentRepo.GetByIdAsync(request.AssignmentId);
-            if (assignment == null) throw new Exception("Task not found");
 
-            if (assignment.AnnotatorId != annotatorId)
-                throw new Exception("Unauthorized: You do not own this task.");
-            if (assignment.Status != TaskStatusConstants.Rejected)
-                throw new Exception("You can only dispute rejected tasks.");
-            var existingDisputes = await _disputeRepo.GetDisputesByAnnotatorAsync(annotatorId);
-            if (existingDisputes.Any(d => d.AssignmentId == request.AssignmentId && d.Status == "Pending"))
+            var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(request.AssignmentId);
+            if (assignment == null) throw new Exception("Assignment not found");
+            if (assignment.AnnotatorId != annotatorId) throw new UnauthorizedAccessException("You can only dispute your own assignments");
+            if (assignment.Status != TaskStatusConstants.Rejected) throw new Exception("You can only dispute rejected tasks");
+
+            var lastReview = assignment.ReviewLogs?.OrderByDescending(r => r.CreatedAt).FirstOrDefault();
+            if (lastReview != null && (DateTime.UtcNow - lastReview.CreatedAt).TotalHours > 48)
             {
-                throw new Exception("A dispute for this task is already pending.");
+                throw new Exception("Dispute Window Expired: You can only file a dispute within 48 hours of rejection.");
             }
 
             var dispute = new Dispute
             {
                 AssignmentId = request.AssignmentId,
-                AnnotatorId = annotatorId,
                 Reason = request.Reason,
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow
@@ -62,16 +60,20 @@ namespace BLL.Services
             await _disputeRepo.AddAsync(dispute);
             await _disputeRepo.SaveChangesAsync();
 
-            var project = await _projectRepo.GetByIdAsync(assignment.ProjectId);
-            if (project != null)
+            if (!string.IsNullOrEmpty(assignment.ReviewerId))
             {
-                await _notification.SendNotificationAsync(
-                    project.ManagerId,
-                    $"An annotator has just submitted a dispute for task #{assignment.Id}. Please review it!",
-                    "Warning");
+                await _notification.SendNotificationAsync(assignment.ReviewerId, $"A dispute has been filed for Assignment {assignment.Id}", "Warning");
             }
-        }
 
+            return new DisputeResponse
+            {
+                Id = dispute.Id,
+                AssignmentId = dispute.AssignmentId,
+                Reason = dispute.Reason,
+                Status = dispute.Status,
+                CreatedAt = dispute.CreatedAt
+            };
+        }
         public async Task ResolveDisputeAsync(string managerId, ResolveDisputeRequest request)
         {
             var dispute = await _disputeRepo.GetDisputeWithDetailsAsync(request.DisputeId);

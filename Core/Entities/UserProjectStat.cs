@@ -28,8 +28,8 @@ namespace Core.Entities
         public double ReviewerQualityScore { get; set; } = 100; 
         public int TotalReviewsDone { get; set; } = 0;        
         public int TotalCorrectDecisions { get; set; } = 0;    
-        public int TotalAuditedReviews { get; set; } = 0;      
-
+        public int TotalAuditedReviews { get; set; } = 0;
+        public bool IsLocked { get; set; } = false;
         public int TotalFirstPassCorrect { get; set; } = 0;
         public int TotalManagerDecisions { get; set; } = 0;
         public int TotalCorrectByManager { get; set; } = 0;

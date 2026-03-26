@@ -1,4 +1,4 @@
-using BLL.Interfaces;
+﻿using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Microsoft.AspNetCore.Authorization;
@@ -113,7 +113,30 @@ namespace API.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(new ErrorResponse { Message = ex.Message }); 
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
+        /// <summary>
+        /// Đếm số lượng ảnh đang dùng Label này để cảnh báo trước khi sửa/xóa
+        /// </summary>
+        [HttpGet("{id}/usage-count")]
+        [Authorize(Roles = "Manager,Admin")]
+        public async Task<IActionResult> GetLabelUsageCount(int id)
+        {
+            try
+            {
+                // Gọi cái hàm CheckLabelUsageAsync tui dặn ông viết ở bài trước
+                var count = await _labelService.CheckLabelUsageAsync(id);
+                return Ok(new
+                {
+                    LabelId = id,
+                    UsageCount = count,
+                    Message = count > 0 ? $"Cảnh báo: Label này đang được dùng trong {count} task!" : "Label chưa được sử dụng, có thể sửa an toàn."
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
     }

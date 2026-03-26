@@ -244,7 +244,54 @@ namespace BLL.Services
             await _reviewLogRepo.SaveChangesAsync();
             await _activityLogRepo.SaveChangesAsync();
         }
+        public async Task<ReviewLog> SubmitReviewAsync(string reviewerId, ReviewRequest request)
+        {
+            var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(request.AssignmentId);
+            if (assignment == null) throw new Exception("Assignment not found");
+            if (assignment.ReviewerId != reviewerId) throw new UnauthorizedAccessException("You are not assigned to review this task");
+            if (assignment.Status != TaskStatusConstants.Submitted) throw new Exception("Task is not in a reviewable state");
 
+            var reviewLog = new ReviewLog
+            {
+                AssignmentId = request.AssignmentId,
+                ReviewerId = reviewerId,
+                IsApproved = request.IsApproved,
+                Comment = request.Comment,
+                ErrorCategory = request.ErrorCategory,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            if (request.IsApproved)
+            {
+                assignment.Status = TaskStatusConstants.Approved;
+            }
+            else
+            {
+                assignment.RejectCount += 1;
+
+                if (assignment.RejectCount >= 3)
+                {
+                    assignment.IsEscalated = true;
+                    assignment.Status = "Escalated"; 
+                }
+                else
+                {
+                    assignment.Status = TaskStatusConstants.Rejected;
+                }
+            }
+
+            await _reviewLogRepo.AddAsync(reviewLog);
+            _assignmentRepo.Update(assignment);
+            await _assignmentRepo.SaveChangesAsync();
+
+            string statusStr = request.IsApproved ? "Approved" : "Rejected";
+            await _notification.SendNotificationAsync(
+                assignment.AnnotatorId,
+                $"Your task (ID: {assignment.Id}) has been {statusStr} by reviewer.",
+                "Info");
+
+            return reviewLog;
+        }
         public async Task<List<TaskResponse>> GetTasksForReviewAsync(int projectId, string reviewerId)
         {
             var assignments = await _assignmentRepo.GetAssignmentsForReviewerAsync(projectId, reviewerId);

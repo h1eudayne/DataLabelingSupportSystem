@@ -15,6 +15,8 @@ namespace BLL.Interfaces
         Task DeleteProjectAsync(int projectId);
         Task<List<ProjectSummaryResponse>> GetAllProjectsForAdminAsync();
         Task AssignReviewersAsync(AssignReviewersRequest request);
+        Task CompleteProjectAsync(int projectId, string managerId);
+        Task<byte[]> ExportProjectCsvAsync(int projectId, string userId);
         Task<List<Core.DTOs.Responses.BucketResponse>> GetBucketsAsync(int projectId, string userId);
         Task<int> UploadDirectDataItemsAsync(int projectId, List<Microsoft.AspNetCore.Http.IFormFile> files, string webRootPath);
         Task<byte[]> ExportProjectDataAsync(int projectId, string userId);

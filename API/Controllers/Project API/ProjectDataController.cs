@@ -149,5 +149,25 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
+        /// <summary>
+        /// Xuất dữ liệu đã duyệt (Approved) của dự án ra file CSV
+        /// </summary>
+        [HttpGet("{projectId}/export-csv")]
+        [Authorize(Roles = "Manager,Admin")]
+        public async Task<IActionResult> ExportCsv(int projectId)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            try
+            {
+                var fileBytes = await _projectService.ExportProjectCsvAsync(projectId, userId);
+                return File(fileBytes, "text/csv", $"Project_{projectId}_Export.csv");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
     }
 }

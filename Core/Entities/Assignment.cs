@@ -25,7 +25,8 @@ namespace Core.Entities
         public DateTime AssignedDate { get; set; } = DateTime.UtcNow;
         public DateTime? SubmittedAt { get; set; }
         public int DurationSeconds { get; set; }
-
+        public int RejectCount { get; set; } = 0;
+        public bool IsEscalated { get; set; } = false;
         public string Status { get; set; } = "Assigned";
 
         public virtual ICollection<Annotation> Annotations { get; set; } = new List<Annotation>();

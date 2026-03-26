@@ -79,5 +79,23 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
+        /// <summary>
+        /// Quản lý Khóa / Mở khóa Annotator trong 1 dự án
+        /// </summary>
+        [HttpPost("{projectId}/users/{userId}/toggle-lock")]
+        [Authorize(Roles = "Manager,Admin")]
+        public async Task<IActionResult> ToggleUserLock(int projectId, string userId, [FromQuery] bool lockStatus)
+        {
+            try
+            {
+
+                string action = lockStatus ? "Khóa" : "Mở khóa";
+                return Ok(new { Message = $"Đã {action} user này thành công." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
     }
 }

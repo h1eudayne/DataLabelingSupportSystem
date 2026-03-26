@@ -800,5 +800,62 @@
 
             await _activityLogRepo.SaveChangesAsync();
         }
+        public async Task CompleteProjectAsync(int projectId, string managerId)
+        {
+            var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
+            if (project == null) throw new Exception("Project not found.");
+            if (project.ManagerId != managerId) throw new UnauthorizedAccessException("You are not the manager of this project.");
+
+            var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
+
+            if (allAssignments.Any() && allAssignments.Any(a => a.Status != TaskStatusConstants.Approved))
+            {
+                throw new Exception("Cannot complete project: All tasks must be Approved before completing.");
+            }
+
+            project.Status = "Completed";
+            _projectRepository.Update(project);
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = managerId,
+                ActionType = "CompleteProject",
+                EntityName = "Project",
+                EntityId = project.Id.ToString(),
+                Description = $"Manager completed project: {project.Name}",
+                Timestamp = DateTime.UtcNow
+            });
+
+            await _projectRepository.SaveChangesAsync();
+            await _activityLogRepo.SaveChangesAsync();
+        }
+        public async Task<byte[]> ExportProjectCsvAsync(int projectId, string userId)
+        {
+            var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
+            if (project == null) throw new Exception("Project not found.");
+
+            var approvedTasks = project.DataItems
+                .SelectMany(d => d.Assignments)
+                .Where(a => a.Status == TaskStatusConstants.Approved)
+                .ToList();
+
+            if (!approvedTasks.Any())
+                throw new Exception("No approved data available for export.");
+
+            var builder = new System.Text.StringBuilder();
+            builder.AppendLine("AssignmentId,DataItemId,AnnotatorId,AnnotationData,ApprovedDate");
+
+            foreach (var task in approvedTasks)
+            {
+
+                var annotationJson = System.Text.Json.JsonSerializer.Serialize(task.Annotations);
+
+                var safeJson = annotationJson.Replace("\"", "\"\"");
+
+                builder.AppendLine($"{task.Id},{task.DataItemId},{task.AnnotatorId},\"{safeJson}\",{task.SubmittedAt}");
+            }
+
+            return System.Text.Encoding.UTF8.GetBytes(builder.ToString());
+        }
     }
 }

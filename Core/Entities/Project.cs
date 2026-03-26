@@ -14,7 +14,9 @@
         public string AllowGeometryTypes { get; set; }
         public string AnnotationGuide { get; set; }
         public int MaxTaskDurationHours { get; set; } = 24;
-
+        public string GuidelineVersion { get; set; } = "1.0";
+        public bool RequireConsensus { get; set; } = false;
+        public string Status { get; set; } = "Draft";
         public int PenaltyUnit { get; set; } = 10;
 
         public virtual ICollection<ReviewChecklistItem> ChecklistItems { get; set; } = new List<ReviewChecklistItem>();
