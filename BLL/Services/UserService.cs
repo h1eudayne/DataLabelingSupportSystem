@@ -434,8 +434,49 @@ namespace BLL.Services
                     AvatarUrl = u.AvatarUrl ?? "",
                     IsActive = u.IsActive
                 })
-                .OrderBy(u => u.Role) 
+                .OrderBy(u => u.Role)
                 .ToList();
+        }
+
+        public async Task<string> ForgotPasswordAsync(string email)
+        {
+            var user = await _userRepository.GetUserByEmailAsync(email);
+            if (user == null) throw new Exception("Email not found in the system.");
+
+
+            string newPassword = Guid.NewGuid().ToString().Substring(0, 8);
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+
+            _userRepository.Update(user);
+            await _userRepository.SaveChangesAsync();
+
+            await _logService.LogActionAsync(
+                user.Id,
+                "ForgotPassword",
+                "User",
+                user.Id,
+                "User requested a password reset from the login screen."
+            );
+
+            return newPassword;
+        }
+        public async Task AdminChangeUserPasswordAsync(string adminId, string targetUserId, string newPassword)
+        {
+            var user = await _userRepository.GetByIdAsync(targetUserId);
+            if (user == null) throw new Exception("User not found.");
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+
+            _userRepository.Update(user);
+            await _userRepository.SaveChangesAsync();
+
+            await _logService.LogActionAsync(
+                adminId,
+                "AdminChangePassword",
+                "User",
+                targetUserId,
+                $"Admin explicitly changed the password for user {user.Email}."
+            );
         }
     }
 }

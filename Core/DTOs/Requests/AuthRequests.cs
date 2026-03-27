@@ -139,4 +139,12 @@ namespace Core.DTOs.Requests
         public string? FullName { get; set; }
         public string? AvatarUrl { get; set; }
     }
+    public class ForgotPasswordRequest
+    {
+        public string Email { get; set; } = null!;
+    }
+    public class AdminChangePasswordRequest
+    {
+        public string NewPassword { get; set; } = null!;
+    }
 }

@@ -175,5 +175,31 @@ namespace API.Controllers
                 return StatusCode(500, new ErrorResponse { Message = "An error occurred during logout." });
             }
         }
+        /// <summary>
+        /// Reset password (used for the Forgot Password feature on the login screen).
+        /// </summary>
+        /// <remarks>
+        /// The system will generate a new random password.  
+        /// </remarks>
+        [HttpPost("forgot-password")]
+        [AllowAnonymous]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+        {
+            try
+            {
+                var newPassword = await _userService.ForgotPasswordAsync(request.Email);
+                return Ok(new
+                {
+                    Message = "Password has been reset successfully.",
+                    NewPassword = newPassword
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
     }
 }

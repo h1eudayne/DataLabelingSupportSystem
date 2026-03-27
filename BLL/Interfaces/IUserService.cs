@@ -16,6 +16,8 @@ namespace BLL.Interfaces
         Task<PagedResponse<UserResponse>> GetAllUsersAsync(int page, int pageSize);
         Task UpdateUserAsync(string userId, UpdateUserRequest request);
         Task DeleteUserAsync(string userId);
+        Task<string> ForgotPasswordAsync(string email);
+        Task AdminChangeUserPasswordAsync(string adminId, string targetUserId, string newPassword);
         Task<List<UserResponse>> GetManagementBoardAsync();
         Task ToggleUserStatusAsync(string userId, bool isActive);
         Task UpdateAvatarAsync(string userId, string avatarUrl);
