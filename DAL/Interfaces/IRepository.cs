@@ -1,4 +1,5 @@
-﻿using System.Linq.Expressions; 
+using System.Linq.Expressions;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace DAL.Interfaces
 {
@@ -11,5 +12,7 @@ namespace DAL.Interfaces
         void Delete(T entity);
         Task SaveChangesAsync();
         Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate);
+        
+        Task<IDbContextTransaction> BeginTransactionAsync();
     }
 }

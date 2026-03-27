@@ -7,9 +7,9 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    /// <summary>
-    /// Handles operations related to task disputes between Annotators and Managers/Reviewers.
-    /// </summary>
+    
+    
+    
     [Route("api/disputes")]
     [ApiController]
     [Authorize]
@@ -23,16 +23,16 @@ namespace API.Controllers
             _disputeService = disputeService;
         }
 
-        /// <summary>
-        /// Submits a new dispute for a rejected task.
-        /// </summary>
-        /// <remarks>
-        /// Only users with the 'Annotator' role can create a dispute.
-        /// </remarks>
-        /// <param name="request">The payload containing the assignment ID and the reason for the dispute.</param>
-        /// <response code="200">Dispute submitted successfully.</response>
-        /// <response code="400">Invalid request data or dispute already exists.</response>
-        /// <response code="401">User is not authenticated or not authorized.</response>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpPost]
         [Authorize(Roles = "Annotator")]
         [ProducesResponseType(200)]
@@ -45,18 +45,18 @@ namespace API.Controllers
             return Ok(new { Message = "Dispute submitted successfully." });
         }
 
-        /// <summary>
-        /// Resolves an existing dispute.
-        /// </summary>
-        /// <remarks>
-        /// Only users with 'Manager' or 'Admin' roles can resolve disputes.
-        /// </remarks>
-        /// <param name="request">The payload containing the dispute ID and the resolution decision (approve/reject).</param>
-        /// <response code="200">Dispute resolved successfully.</response>
-        /// <response code="400">Invalid dispute data or dispute already resolved.</response>
-        /// <response code="401">User is not authenticated or not authorized.</response>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpPost("resolve")]
-        [Authorize(Roles = "Manager,Admin")]
+        [Authorize(Roles = "Manager")]
         [ProducesResponseType(200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
@@ -69,18 +69,18 @@ namespace API.Controllers
             return Ok(new { Message = "Dispute resolved." });
         }
 
-        /// <summary>
-        /// Retrieves a list of disputes based on the specified project.
-        /// </summary>
-        /// <remarks>
-        /// Returns disputes relevant to the user's role (Annotators see their own, Managers/Admins see all for the project).
-        /// </remarks>
-        /// <param name="projectId">The ID of the project to filter disputes by.</param>
-        /// <response code="200">A list of disputes for the requested project.</response>
-        /// <response code="400">Invalid project ID.</response>
-        /// <response code="401">User is not authenticated.</response>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpGet]
-        [ProducesResponseType(200)] // You can replace '200' with typeof(List<DisputeResponse>) if you have a specific DTO
+        [ProducesResponseType(200)] 
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> GetDisputes([FromQuery] int projectId)

@@ -1,86 +1,109 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Core.DTOs.Requests
 {
-    /// <summary>
-    /// Request model for assigning tasks to an annotator.
-    /// </summary>
+    
+    
+    
     public class AssignTaskRequest
     {
-        /// <summary>
-        /// The unique identifier of the project.
-        /// </summary>
-        /// <example>5</example>
+        
+        
+        
+        
         [Required]
+        [JsonPropertyName("projectId")]
         public int ProjectId { get; set; }
 
-        /// <summary>
-        /// The unique identifier (GUID) of the annotator.
-        /// </summary>
-        /// <example>d290f1ee-6c54-4b01-90e6-d701748f0851</example>
+        
+        
+        
+        
         [Required]
+        [JsonPropertyName("annotatorId")]
         public string AnnotatorId { get; set; } = string.Empty;
+        
+        [JsonPropertyName("reviewerIds")]
         public List<string> ReviewerIds { get; set; } = new List<string>();
 
-        /// <summary>
-        /// The number of tasks (data items) to assign.
-        /// </summary>
-        /// <example>10</example>
+        
+        
+        
+        
         [Required]
+        [JsonPropertyName("quantity")]
         public int Quantity { get; set; }
+        
+        [JsonPropertyName("reviewerId")]
         public string? ReviewerId { get; set; }
     }
 
     public class SubmitAnnotationRequest
     {
         [Required]
+        [JsonPropertyName("assignmentId")]
         public int AssignmentId { get; set; }
+        
+        [JsonPropertyName("dataJSON")]
         public string DataJSON { get; set; } = string.Empty;
+        
+        [JsonPropertyName("classId")]
         public int? ClassId { get; set; }
     }
 
     public class SubmitMultipleTasksRequest
     {
         [Required]
+        [JsonPropertyName("assignmentIds")]
         public List<int> AssignmentIds { get; set; } = new List<int>();
     }
 
     public class AnnotationItem
     {
+        [JsonPropertyName("labelClassId")]
         public int LabelClassId { get; set; }
+        
+        [JsonPropertyName("valueJson")]
         public string ValueJson { get; set; } = string.Empty;
     }
 
-    /// <summary>
-    /// Detail of a single annotation within a submission.
-    /// </summary>
+    
+    
+    
     public class AnnotationDetail
     {
-        /// <summary>
-        /// The identifier of the label class used for this annotation.
-        /// </summary>
-        /// <example>3</example>
+        
+        
+        
+        
+        [JsonPropertyName("labelClassId")]
         public int LabelClassId { get; set; }
 
-        /// <summary>
-        /// The JSON string representation of the annotation value (e.g., coordinates).
-        /// </summary>
-        /// <example>{ "x": 10, "y": 20, "width": 100, "height": 100 }</example>
+        
+        
+        
+        
+        [JsonPropertyName("valueJson")]
         public string ValueJson { get; set; } = string.Empty;
     }
     public class AssignTeamRequest
     {
         [Required]
+        [JsonPropertyName("projectId")]
         public int ProjectId { get; set; }
 
         [Required]
         [MinLength(1, ErrorMessage = "At least one annotator must be selected.")]
+        [JsonPropertyName("annotatorIds")]
         public List<string> AnnotatorIds { get; set; } = new List<string>();
 
+        [JsonPropertyName("reviewerIds")]
         public List<string> ReviewerIds { get; set; } = new List<string>();
 
         [Required]
         [Range(1, int.MaxValue, ErrorMessage = "Total quantity must be greater than 0.")]
+        [JsonPropertyName("totalQuantity")]
         public int TotalQuantity { get; set; }
     }
 }

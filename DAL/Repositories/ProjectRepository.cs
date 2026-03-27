@@ -25,11 +25,23 @@ namespace DAL.Repositories
                                  .ToListAsync();
         }
 
+        public async Task<int> GetProjectDataItemsCountAsync(int projectId)
+        {
+            return await _context.DataItems
+                                 .Where(d => d.ProjectId == projectId)
+                                 .CountAsync();
+        }
+
         public async Task<List<DataItem>> GetDataItemsByBucketIdAsync(int projectId, int bucketId)
         {
             return await _context.DataItems
                                  .Where(d => d.ProjectId == projectId && d.BucketId == bucketId)
                                  .ToListAsync();
+        }
+
+        public async Task AddDataItemsAsync(List<DataItem> dataItems)
+        {
+            await _context.DataItems.AddRangeAsync(dataItems);
         }
 
         public async Task<Project?> GetProjectWithDetailsAsync(int id)
@@ -125,6 +137,19 @@ namespace DAL.Repositories
                 .Select(a => a.ProjectId)
                 .Distinct()
                 .ToListAsync();
+
+            return await _context.Projects
+                .Where(p => projectIds.Contains(p.Id))
+                .Include(p => p.DataItems)
+                    .ThenInclude(d => d.Assignments)
+                .OrderByDescending(p => p.Id)
+                .ToListAsync();
+        }
+
+        public async Task<List<Project>> GetProjectsByIdsAsync(List<int> projectIds)
+        {
+            if (projectIds == null || !projectIds.Any())
+                return new List<Project>();
 
             return await _context.Projects
                 .Where(p => projectIds.Contains(p.Id))

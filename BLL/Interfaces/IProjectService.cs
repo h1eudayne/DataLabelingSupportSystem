@@ -1,4 +1,4 @@
-﻿using Core.DTOs.Requests;
+using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 
 namespace BLL.Interfaces
@@ -11,11 +11,15 @@ namespace BLL.Interfaces
         Task<ProjectDetailResponse?> GetProjectDetailsAsync(int projectId);
         Task<ManagerStatsResponse> GetManagerStatsAsync(string managerId);
         Task<List<ProjectSummaryResponse>> GetProjectsByManagerAsync(string managerId);
-        Task UpdateProjectAsync(int projectId, UpdateProjectRequest request);
+        Task UpdateProjectAsync(int projectId, UpdateProjectRequest request, string actingUserId);
         Task DeleteProjectAsync(int projectId);
         Task<List<ProjectSummaryResponse>> GetAllProjectsForAdminAsync();
+        Task<List<AnnotatorProjectStatsResponse>> GetAssignedProjectsForUserAsync(string userId);
         Task AssignReviewersAsync(AssignReviewersRequest request);
         Task CompleteProjectAsync(int projectId, string managerId);
+        Task ArchiveProjectAsync(int projectId, string managerId);
+        
+        Task ActivateProjectAsync(int projectId, string managerId);
         Task<byte[]> ExportProjectCsvAsync(int projectId, string userId);
         Task<List<Core.DTOs.Responses.BucketResponse>> GetBucketsAsync(int projectId, string userId);
         Task<int> UploadDirectDataItemsAsync(int projectId, List<Microsoft.AspNetCore.Http.IFormFile> files, string webRootPath);
@@ -23,6 +27,8 @@ namespace BLL.Interfaces
         Task<ProjectStatisticsResponse> GetProjectStatisticsAsync(int projectId);
         Task<object> GetUserProjectsByUserIdAsync(string userId);
         Task RemoveUserFromProjectAsync(int projectId, string userId);
+        
+        Task ToggleUserLockAsync(int projectId, string userId, bool lockStatus, string managerId);
 
     }
 }

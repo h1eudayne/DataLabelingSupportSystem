@@ -1,4 +1,4 @@
-﻿using DAL.Interfaces;
+using DAL.Interfaces;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,6 +18,11 @@ namespace DAL.Repositories
         public async Task<bool> IsEmailExistsAsync(string email)
         {
             return await _dbSet.AnyAsync(u => u.Email == email);
+        }
+
+        public async Task<bool> HasAdminRoleAsync()
+        {
+            return await _dbSet.AnyAsync(u => u.Role == "Admin" && u.IsActive);
         }
     }
 }

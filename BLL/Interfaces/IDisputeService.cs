@@ -9,5 +9,7 @@ namespace BLL.Interfaces
         Task<DisputeResponse> CreateDisputeAsync(string annotatorId, CreateDisputeRequest request);
         Task ResolveDisputeAsync(string managerId, ResolveDisputeRequest request);
         Task<List<DisputeResponse>> GetDisputesAsync(int projectId, string userId, string role);
+        
+        Task<List<DisputeResolutionDetailsResponse>> GetDisputeResolutionDetailsForReviewerAsync(string reviewerId);
     }
 }

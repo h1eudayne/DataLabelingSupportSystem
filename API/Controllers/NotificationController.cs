@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using DAL;
@@ -19,15 +19,15 @@ namespace API.Controllers
             _context = context;
         }
 
-        /// <summary>
-        /// Retrieves the latest notifications for the currently authenticated user.
-        /// </summary>
-        /// <remarks>
-        /// Fetches up to 50 of the most recent notifications ordered by creation date.
-        /// </remarks>
-        /// <returns>A list of the user's recent notifications.</returns>
-        /// <response code="200">Successfully retrieved the notifications.</response>
-        /// <response code="401">User is not authenticated.</response>
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpGet]
         [ProducesResponseType(200)]
         [ProducesResponseType(401)]
@@ -53,13 +53,13 @@ namespace API.Controllers
             return Ok(notifications);
         }
 
-        /// <summary>
-        /// Marks a specific notification as read.
-        /// </summary>
-        /// <param name="id">The ID of the notification to mark as read.</param>
-        /// <returns>A success message indicating the notification was updated.</returns>
-        /// <response code="200">Notification marked as read successfully.</response>
-        /// <response code="404">Notification not found or does not belong to the user.</response>
+        
+        
+        
+        
+        
+        
+        
         [HttpPut("{id}/read")]
         [ProducesResponseType(200)]
         [ProducesResponseType(404)]
@@ -78,11 +78,11 @@ namespace API.Controllers
             return Ok(new { message = "Marked as read successfully." });
         }
 
-        /// <summary>
-        /// Marks all unread notifications for the current user as read.
-        /// </summary>
-        /// <returns>A success message indicating all notifications were updated.</returns>
-        /// <response code="200">All unread notifications marked as read.</response>
+        
+        
+        
+        
+        
         [HttpPut("read-all")]
         [ProducesResponseType(200)]
         public async Task<IActionResult> MarkAllAsRead()

@@ -35,5 +35,9 @@ namespace Core.Entities
         public int TotalCorrectByManager { get; set; } = 0;
         public int TotalReviewerCorrectByManager { get; set; } = 0;
         public int TotalReviewerManagerDecisions { get; set; } = 0;
+
+        
+        public int OverrideCount { get; set; } = 0;
+        public int DisputeCount { get; set; } = 0;
     }
 }

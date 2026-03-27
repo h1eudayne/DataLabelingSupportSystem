@@ -1,4 +1,4 @@
-﻿using Core.Entities;
+using Core.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace DAL
@@ -21,45 +21,88 @@ namespace DAL
         public DbSet<ActivityLog> ActivityLogs { get; set; }
         public DbSet<ReviewChecklistItem> ReviewChecklistItems { get; set; }
         public DbSet<AppNotification> AppNotifications { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
+        
+        public DbSet<ProjectFlag> ProjectFlags { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // 1. Cấu hình Project - Manager
+            
             modelBuilder.Entity<Project>()
                 .HasOne(p => p.Manager)
                 .WithMany(u => u.ManagedProjects)
                 .HasForeignKey(p => p.ManagerId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // 2. Cấu hình Assignment - Annotator
+            
             modelBuilder.Entity<Assignment>()
                 .HasOne(a => a.Annotator)
                 .WithMany(u => u.Assignments)
                 .HasForeignKey(a => a.AnnotatorId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // 3. Cấu hình ReviewLog - Reviewer
+            
             modelBuilder.Entity<ReviewLog>()
                 .HasOne(r => r.Reviewer)
                 .WithMany(u => u.ReviewsGiven)
                 .HasForeignKey(r => r.ReviewerId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // 5. Cấu hình UserProjectStat
+            
             modelBuilder.Entity<UserProjectStat>()
                 .HasOne(s => s.User)
                 .WithMany(u => u.ProjectStats)
                 .HasForeignKey(s => s.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // 6. Cấu hình Assignment - Project
+            
             modelBuilder.Entity<Assignment>()
                 .HasOne(a => a.Project)
                 .WithMany()
                 .HasForeignKey(a => a.ProjectId)
                 .OnDelete(DeleteBehavior.NoAction);
 
+            
+            
+            modelBuilder.Entity<Assignment>()
+                .HasIndex(a => new { a.DataItemId, a.AnnotatorId })
+                .IsUnique()
+                .HasDatabaseName("IX_Assignment_DataItem_Annotator");
+
+            
+            modelBuilder.Entity<Assignment>()
+                .HasIndex(a => a.Status)
+                .HasDatabaseName("IX_Assignment_Status");
+
+            
+            modelBuilder.Entity<Assignment>()
+                .HasIndex(a => new { a.ProjectId, a.AnnotatorId, a.Status })
+                .HasDatabaseName("IX_Assignment_Project_Annotator_Status");
+
+            
+            modelBuilder.Entity<RefreshToken>()
+                .HasOne(rt => rt.User)
+                .WithMany()
+                .HasForeignKey(rt => rt.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            
+            modelBuilder.Entity<RefreshToken>()
+                .HasIndex(rt => rt.Token)
+                .IsUnique()
+                .HasDatabaseName("IX_RefreshToken_Token");
+
+            modelBuilder.Entity<RefreshToken>()
+                .HasIndex(rt => rt.UserId)
+                .HasDatabaseName("IX_RefreshToken_UserId");
+
+            
+            modelBuilder.Entity<ProjectFlag>()
+                .HasOne(pf => pf.Project)
+                .WithMany()
+                .HasForeignKey(pf => pf.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

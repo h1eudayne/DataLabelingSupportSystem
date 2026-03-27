@@ -26,6 +26,13 @@ namespace Core.Entities
         [ForeignKey("ProjectId")]
         public virtual Project? Project { get; set; }
 
+        
+        [MaxLength(20)]
+        public string Version { get; set; } = "1.0";
+
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
         public virtual ICollection<Annotation> Annotations { get; set; } = new List<Annotation>();
     }
 }

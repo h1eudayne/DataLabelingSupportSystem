@@ -1,36 +1,46 @@
-    using BLL.Interfaces;
-    using DAL.Interfaces;
-    using Core.Constants;
-    using Core.Entities;
-    using System.Text.Json;
-    using System.Text;
-    using Core.DTOs.Requests;
-    using Core.DTOs.Responses;
+using BLL.Interfaces;
+using DAL.Interfaces;
+using Core.Constants;
+using Core.Entities;
+using System.Text.Json;
+using System.Text;
+using Core.DTOs.Requests;
+using Core.DTOs.Responses;
 
 
-    namespace BLL.Services
+namespace BLL.Services
+{
+    public class ProjectService : IProjectService
     {
-        public class ProjectService : IProjectService
-        {
-            private readonly IProjectRepository _projectRepository;
-            private readonly IUserRepository _userRepository;
-            private readonly IRepository<UserProjectStat> _statsRepo;
-            private readonly IAssignmentRepository _assignmentRepo;
-            private readonly IActivityLogRepository _activityLogRepo;
+        private readonly IProjectRepository _projectRepository;
+        private readonly IUserRepository _userRepository;
+        private readonly IRepository<UserProjectStat> _statsRepo;
+        private readonly IAssignmentRepository _assignmentRepo;
+        private readonly IActivityLogRepository _activityLogRepo;
+        private readonly IRepository<ProjectFlag> _flagRepo;
+        private readonly IAppNotificationService _notification;
 
-            public ProjectService(
-                IProjectRepository projectRepository,
-                IUserRepository userRepository,
-                IRepository<UserProjectStat> statsRepo,
-                IAssignmentRepository assignmentRepo,
-                IActivityLogRepository activityLogRepo)
-            {
-                _projectRepository = projectRepository;
-                _userRepository = userRepository;
-                _statsRepo = statsRepo;
-                _assignmentRepo = assignmentRepo;
-                _activityLogRepo = activityLogRepo;
-            }
+        
+        
+        private const string GUIDELINE_DECISION_NOTE = "Decision based on official project guidelines";
+
+        public ProjectService(
+            IProjectRepository projectRepository,
+            IUserRepository userRepository,
+            IRepository<UserProjectStat> statsRepo,
+            IAssignmentRepository assignmentRepo,
+            IActivityLogRepository activityLogRepo,
+            IRepository<ProjectFlag> flagRepo,
+            IAppNotificationService notification)
+        {
+            _projectRepository = projectRepository;
+            _userRepository = userRepository;
+            _statsRepo = statsRepo;
+            _assignmentRepo = assignmentRepo;
+            _activityLogRepo = activityLogRepo;
+            _flagRepo = flagRepo;
+            _notification = notification;
+        }
         public async Task<object> GetUserProjectsByUserIdAsync(string userId)
         {
             var user = await _userRepository.GetByIdAsync(userId);
@@ -43,6 +53,23 @@
             {
                 return await GetAssignedProjectsAsync(userId);
             }
+        }
+
+        
+        private static string GetFlagDescription(string flagType)
+        {
+            return flagType switch
+            {
+                FlagTypeConstants.CorruptedImage => "Image file is corrupted or cannot be opened",
+                FlagTypeConstants.NoMatchingLabel => "No existing label category matches this image",
+                FlagTypeConstants.DataQualityIssue => "Image quality is too low for accurate annotation",
+                FlagTypeConstants.AmbiguousContent => "Content is unclear or ambiguous",
+                FlagTypeConstants.DuplicateImage => "This image is a duplicate of another in the project",
+                FlagTypeConstants.OutOfScope => "Image does not belong to the project's scope",
+                FlagTypeConstants.IncorrectAnnotation => "Existing annotation contains errors",
+                FlagTypeConstants.MissingParts => "Image appears to be truncated or missing parts",
+                _ => "Flag reason not specified"
+            };
         }
         public async Task<int> UploadDirectDataItemsAsync(int projectId, List<Microsoft.AspNetCore.Http.IFormFile> files, string webRootPath)
             {
@@ -86,8 +113,8 @@
             var manager = await _userRepository.GetByIdAsync(managerId);
             if (manager == null) throw new Exception("User not found");
 
-            if (manager.Role != UserRoles.Manager && manager.Role != UserRoles.Admin)
-                throw new Exception("Only Manager or Admin can create projects.");
+            if (manager.Role != UserRoles.Manager)
+                throw new Exception("BR-MNG-01: Only a Manager can create and manage labeling projects");
 
             var startDate = request.StartDate ?? DateTime.UtcNow;
             var deadline = request.Deadline ?? DateTime.UtcNow.AddDays(30);
@@ -107,7 +134,10 @@
                 AllowGeometryTypes = request.AllowGeometryTypes ?? "Rectangle",
                 AnnotationGuide = request.AnnotationGuide ?? "",
                 MaxTaskDurationHours = request.MaxTaskDurationHours > 0 ? request.MaxTaskDurationHours : 24,
-                PenaltyUnit = penaltyUnit
+                PenaltyUnit = penaltyUnit,
+                
+                
+                Status = ProjectStatusConstants.Draft
             };
 
             if (request.ReviewChecklist != null && request.ReviewChecklist.Any())
@@ -141,6 +171,22 @@
 
             await _projectRepository.AddAsync(project);
             await _projectRepository.SaveChangesAsync();
+
+            
+            foreach (var flagType in FlagTypeConstants.DefaultFlags)
+            {
+                var flag = new ProjectFlag
+                {
+                    ProjectId = project.Id,
+                    FlagType = flagType,
+                    Description = GetFlagDescription(flagType),
+                    CreatedAt = DateTime.UtcNow,
+                    IsActive = true
+                };
+                project.ProjectFlags.Add(flag);
+                await _flagRepo.AddAsync(flag);
+            }
+            await _flagRepo.SaveChangesAsync();
 
             await _activityLogRepo.AddAsync(new ActivityLog
             {
@@ -180,10 +226,17 @@
             };
         }
 
-        public async Task UpdateProjectAsync(int projectId, UpdateProjectRequest request)
+        public async Task UpdateProjectAsync(int projectId, UpdateProjectRequest request, string actingUserId)
         {
             var project = await _projectRepository.GetByIdAsync(projectId);
             if (project == null) throw new Exception("Project not found");
+
+            var actor = await _userRepository.GetByIdAsync(actingUserId);
+            if (actor == null) throw new Exception("User not found");
+            if (actor.Role == UserRoles.Admin)
+                throw new Exception("BR-ADM-18: Admin is not allowed to modify project information");
+            if (project.ManagerId != actingUserId)
+                throw new UnauthorizedAccessException("Only the project manager can update this project.");
 
             project.Name = request.Name;
             if (!string.IsNullOrEmpty(request.Description)) project.Description = request.Description;
@@ -283,8 +336,11 @@
             {
                 var project = await _projectRepository.GetByIdAsync(projectId);
                 if (project == null) throw new Exception("Project not found");
-                int currentTotalItems = project.DataItems.Count;
+
+                var currentTotalItems = await _projectRepository.GetProjectDataItemsCountAsync(projectId);
                 int bucketSize = 50;
+
+                var newDataItems = new List<DataItem>();
                 foreach (var url in storageUrls)
                 {
                     currentTotalItems++;
@@ -300,8 +356,12 @@
                         MetaData = "{}",
                         Assignments = new List<Assignment>()
                     };
-                    project.DataItems.Add(dataItem);
+                    newDataItems.Add(dataItem);
                 }
+
+                // BUG-FIX: Add items directly to DbContext instead of navigation property
+                // This ensures EF Core correctly tracks new entities
+                await _projectRepository.AddDataItemsAsync(newDataItems);
                 await _projectRepository.SaveChangesAsync();
 
                 await _activityLogRepo.AddAsync(new ActivityLog
@@ -417,7 +477,7 @@
                 }
                 else if (totalItems > 0 && p.DataItems.Any(d => d.Status != TaskStatusConstants.New))
                 {
-                    currentStatus = "In Process";
+                    currentStatus = "InProgress";
                 }
 
                 return new ProjectSummaryResponse
@@ -460,16 +520,25 @@
                 await _activityLogRepo.SaveChangesAsync();
             }
 
-            public async Task<byte[]> ExportProjectDataAsync(int projectId, string userId)
-            {
-                var project = await _projectRepository.GetProjectForExportAsync(projectId);
-                if (project == null) throw new Exception("Project not found");
-                var user = await _userRepository.GetByIdAsync(userId);
-                if (user == null) throw new Exception("User not found");
-                if (user.Role != UserRoles.Admin && project.ManagerId != userId)
-                    throw new Exception("Unauthorized to export this project.");
+        public async Task<byte[]> ExportProjectDataAsync(int projectId, string userId)
+        {
+            var project = await _projectRepository.GetProjectForExportAsync(projectId);
+            if (project == null) throw new Exception("Project not found");
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null) throw new Exception("User not found");
+            if (user.Role != UserRoles.Admin && project.ManagerId != userId)
+                throw new Exception("Unauthorized to export this project.");
 
-                var dataItems = project.DataItems
+            
+            var totalItems = project.DataItems.Count;
+            var completedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
+            if (totalItems > 0 && completedItems < totalItems)
+            {
+                double currentProgress = Math.Round((double)completedItems / totalItems * 100, 2);
+                throw new InvalidOperationException($"BR-MNG-12: Export is only allowed when all assignments are Approved. Current progress: {currentProgress}% ({completedItems}/{totalItems} items).");
+            }
+
+            var dataItems = project.DataItems
                     .Select(d => new
                     {
                         DataItemId = d.Id,
@@ -502,8 +571,6 @@
                     })
                     .ToList();
 
-                int totalItems = project.DataItems.Count;
-                int completedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
                 double progressPercent = totalItems > 0 ? Math.Round((double)completedItems / totalItems * 100, 2) : 0;
                 string currentStatus = DateTime.UtcNow > project.Deadline ? "Expired" : (totalItems > 0 && totalItems == completedItems ? "Completed" : "Active");
 
@@ -710,6 +777,68 @@
 
             return buckets;
         }
+
+        public async Task<List<AnnotatorProjectStatsResponse>> GetAssignedProjectsForUserAsync(string userId)
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null) return new List<AnnotatorProjectStatsResponse>();
+
+            if (user.Role == UserRoles.Reviewer)
+            {
+                return await GetAssignedProjectsAsReviewerAsync(userId);
+            }
+            else if (user.Role == UserRoles.Annotator)
+            {
+                return await GetAssignedProjectsAsync(userId);
+            }
+
+            return new List<AnnotatorProjectStatsResponse>();
+        }
+
+        private async Task<List<AnnotatorProjectStatsResponse>> GetAssignedProjectsAsReviewerAsync(string reviewerId)
+        {
+            var allAssignments = await _assignmentRepo.GetAllAsync();
+            var assignedProjectIds = allAssignments
+                .Where(a => a.ReviewerId == reviewerId)
+                .Select(a => a.DataItem?.ProjectId)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .Distinct()
+                .ToList();
+
+            var projects = await _projectRepository.GetProjectsByIdsAsync(assignedProjectIds);
+            var result = new List<AnnotatorProjectStatsResponse>();
+
+            foreach (var p in projects)
+            {
+                var myAssignments = p.DataItems
+                    .SelectMany(d => d.Assignments)
+                    .Where(a => a.ReviewerId == reviewerId)
+                    .ToList();
+
+                var total = myAssignments.Count;
+                var completed = myAssignments.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected);
+                var pending = myAssignments.Count(a => a.Status == TaskStatusConstants.Submitted);
+
+                string status = "Active";
+                if (DateTime.UtcNow > p.Deadline) status = "Expired";
+                else if (total > 0 && total == completed) status = "Completed";
+
+                result.Add(new AnnotatorProjectStatsResponse
+                {
+                    ProjectId = p.Id,
+                    ProjectName = p.Name,
+                    TotalImages = total,
+                    CompletedImages = completed,
+                    Status = status,
+                    Deadline = p.Deadline,
+                    PendingReview = pending
+                });
+            }
+
+            return result;
+        }
+
         public async Task<List<ProjectSummaryResponse>> GetAllProjectsForAdminAsync()
         {
             var projects = await _projectRepository.GetAllProjectsForAdminStatsAsync();
@@ -736,7 +865,7 @@
                 }
                 else if (totalItems > 0 && p.DataItems.Any(d => d.Status != TaskStatusConstants.New))
                 {
-                    currentStatus = "In Process";
+                    currentStatus = "InProgress";
                 }
 
                 return new ProjectSummaryResponse
@@ -770,7 +899,7 @@
             var allUsers = await _userRepository.GetAllAsync();
             var validReviewers = allUsers
                 .Where(u => request.ReviewerIds.Contains(u.Id) &&
-                            (u.Role == UserRoles.Reviewer || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin))
+                            u.Role == UserRoles.Reviewer)
                 .ToList();
 
             if (validReviewers.Count != request.ReviewerIds.Count)
@@ -800,20 +929,32 @@
 
             await _activityLogRepo.SaveChangesAsync();
         }
+
+        
+        
         public async Task CompleteProjectAsync(int projectId, string managerId)
         {
             var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
             if (project == null) throw new Exception("Project not found.");
             if (project.ManagerId != managerId) throw new UnauthorizedAccessException("You are not the manager of this project.");
 
+            
+            
             var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
 
             if (allAssignments.Any() && allAssignments.Any(a => a.Status != TaskStatusConstants.Approved))
             {
-                throw new Exception("Cannot complete project: All tasks must be Approved before completing.");
+                throw new Exception("BR-MNG-33: Cannot complete project: All tasks must be Approved before completing. Manager approval required.");
             }
 
-            project.Status = "Completed";
+            
+            if (project.Status != ProjectStatusConstants.Active)
+            {
+                throw new Exception("BR-MNG-33: Only Active projects can be completed. Please activate the project first.");
+            }
+
+            
+            project.Status = ProjectStatusConstants.Completed;
             _projectRepository.Update(project);
 
             await _activityLogRepo.AddAsync(new ActivityLog
@@ -822,7 +963,70 @@
                 ActionType = "CompleteProject",
                 EntityName = "Project",
                 EntityId = project.Id.ToString(),
-                Description = $"Manager completed project: {project.Name}",
+                Description = $"Manager approved and completed project: {project.Name}",
+                Timestamp = DateTime.UtcNow
+            });
+
+            await _projectRepository.SaveChangesAsync();
+            await _activityLogRepo.SaveChangesAsync();
+        }
+
+        
+        public async Task ActivateProjectAsync(int projectId, string managerId)
+        {
+            var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
+            if (project == null) throw new Exception("Project not found.");
+            if (project.ManagerId != managerId) throw new UnauthorizedAccessException("You are not the manager of this project.");
+
+            if (project.Status != ProjectStatusConstants.Draft)
+            {
+                throw new Exception("Only Draft projects can be activated.");
+            }
+
+            if (!project.DataItems.Any())
+            {
+                throw new Exception("Cannot activate project without data items. Please upload data first.");
+            }
+
+            project.Status = ProjectStatusConstants.Active;
+            _projectRepository.Update(project);
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = managerId,
+                ActionType = "ActivateProject",
+                EntityName = "Project",
+                EntityId = project.Id.ToString(),
+                Description = $"Manager activated project: {project.Name}",
+                Timestamp = DateTime.UtcNow
+            });
+
+            await _projectRepository.SaveChangesAsync();
+            await _activityLogRepo.SaveChangesAsync();
+        }
+        public async Task ArchiveProjectAsync(int projectId, string managerId)
+        {
+            var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
+            if (project == null) throw new Exception("Project not found.");
+            if (project.ManagerId != managerId) throw new UnauthorizedAccessException("You are not the manager of this project.");
+
+            
+            
+            if (project.Status == ProjectStatusConstants.Draft)
+            {
+                throw new Exception("Cannot archive a Draft project. Please complete or activate it first.");
+            }
+
+            project.Status = ProjectStatusConstants.Archived;
+            _projectRepository.Update(project);
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = managerId,
+                ActionType = "ArchiveProject",
+                EntityName = "Project",
+                EntityId = project.Id.ToString(),
+                Description = $"Manager archived project: {project.Name}",
                 Timestamp = DateTime.UtcNow
             });
 
@@ -833,6 +1037,19 @@
         {
             var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
             if (project == null) throw new Exception("Project not found.");
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null) throw new Exception("User not found");
+            if (user.Role != UserRoles.Admin && project.ManagerId != userId)
+                throw new Exception("Unauthorized to export this project.");
+
+            
+            var totalItems = project.DataItems.Count;
+            var completedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
+            if (totalItems > 0 && completedItems < totalItems)
+            {
+                double progressPercent = Math.Round((double)completedItems / totalItems * 100, 2);
+                throw new InvalidOperationException($"BR-MNG-12: Export is only allowed when all assignments are Approved. Current progress: {progressPercent}% ({completedItems}/{totalItems} items).");
+            }
 
             var approvedTasks = project.DataItems
                 .SelectMany(d => d.Assignments)
@@ -893,6 +1110,83 @@
                 Description = $"Removed user {userId} from project and revoked {pendingAssignments.Count} pending tasks.",
                 Timestamp = DateTime.UtcNow
             });
+            await _activityLogRepo.SaveChangesAsync();
+
+            
+            var removedUser = await _userRepository.GetByIdAsync(userId);
+            if (removedUser != null && removedUser.Role == UserRoles.Annotator)
+            {
+                await _notification.SendNotificationAsync(
+                    userId,
+                    $"You have been removed from project \"{project.Name}\". {pendingAssignments.Count} pending task(s) have been revoked.",
+                    "Warning"
+                );
+            }
+        }
+
+        
+        public async Task ToggleUserLockAsync(int projectId, string userId, bool lockStatus, string managerId)
+        {
+            var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
+            if (project == null) throw new Exception("Project not found");
+            if (project.ManagerId != managerId) throw new UnauthorizedAccessException("Only the project manager can toggle user lock status.");
+
+            var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
+            var userAssignments = allAssignments.Where(a => a.AnnotatorId == userId).ToList();
+
+            var allStats = await _statsRepo.GetAllAsync();
+            var userStats = allStats.Where(s => s.UserId == userId && s.ProjectId == projectId).ToList();
+
+            if (lockStatus)
+            {
+                
+                foreach (var assignment in userAssignments)
+                {
+                    if (assignment.Status == TaskStatusConstants.Assigned ||
+                        assignment.Status == TaskStatusConstants.InProgress)
+                    {
+                        _assignmentRepo.Delete(assignment);
+                    }
+                }
+
+                foreach (var stat in userStats)
+                {
+                    stat.IsLocked = true;
+                    stat.Date = DateTime.UtcNow;
+                }
+
+                await _activityLogRepo.AddAsync(new ActivityLog
+                {
+                    UserId = managerId,
+                    ActionType = "LockUser",
+                    EntityName = "Project",
+                    EntityId = projectId.ToString(),
+                    Description = $"Locked reviewer {userId} in project {project.Name}. Revoked {userAssignments.Count} pending assignments.",
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+            else
+            {
+                
+                foreach (var stat in userStats)
+                {
+                    stat.IsLocked = false;
+                    stat.Date = DateTime.UtcNow;
+                }
+
+                await _activityLogRepo.AddAsync(new ActivityLog
+                {
+                    UserId = managerId,
+                    ActionType = "UnlockUser",
+                    EntityName = "Project",
+                    EntityId = projectId.ToString(),
+                    Description = $"Unlocked reviewer {userId} in project {project.Name}. Reviewer access restored.",
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+
+            await _statsRepo.SaveChangesAsync();
+            await _assignmentRepo.SaveChangesAsync();
             await _activityLogRepo.SaveChangesAsync();
         }
     }

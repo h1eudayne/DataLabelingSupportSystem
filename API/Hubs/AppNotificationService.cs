@@ -37,7 +37,7 @@ namespace API.Services
             _context.AppNotifications.Add(notification);
             await _context.SaveChangesAsync(); 
 
-            // 2. GỌI ĐÒ (Bắn SignalR cho mấy thanh niên đang Online)
+            
             await _hubContext.Clients.User(userId).SendAsync("ReceiveNotification", new
             {
                 Id = notification.Id, 

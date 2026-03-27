@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using ClosedXML.Excel;
@@ -17,22 +18,28 @@ namespace BLL.Services
     public class UserService : IUserService
     {
         private readonly IUserRepository _userRepository;
+        private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IConfiguration _configuration;
         private readonly IActivityLogService _logService;
         private readonly IAssignmentRepository _assignmentRepo;
         private readonly IProjectRepository _projectRepo;
+        private readonly IAppNotificationService _notification;
         public UserService(
             IUserRepository userRepository,
+            IRefreshTokenRepository refreshTokenRepository,
             IConfiguration configuration,
             IAssignmentRepository assignmentRepo,
             IActivityLogService logService,
-            IProjectRepository projectRepo)
+            IProjectRepository projectRepo,
+            IAppNotificationService notification)
         {
             _userRepository = userRepository;
+            _refreshTokenRepository = refreshTokenRepository;
             _configuration = configuration;
             _assignmentRepo = assignmentRepo;
             _logService = logService;
             _projectRepo = projectRepo;
+            _notification = notification;
 
         }
 
@@ -44,13 +51,24 @@ namespace BLL.Services
             if (await _userRepository.IsEmailExistsAsync(email))
                 throw new Exception("Email already exists.");
 
+            
+            if (role == UserRoles.Admin)
+            {
+                bool hasExistingAdmin = await _userRepository.HasAdminRoleAsync();
+                if (hasExistingAdmin)
+                {
+                    throw new Exception("BR-ADM-27: Only one Admin account is allowed in the system. An Admin already exists.");
+                }
+            }
+
             var user = new User
             {
                 FullName = fullName,
                 Email = email,
                 Role = role,
                 ManagerId = managerId,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password)
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+                IsEmailVerified = true 
             };
 
             await _userRepository.AddAsync(user);
@@ -77,15 +95,16 @@ namespace BLL.Services
             await _logService.LogActionAsync(userId, "UpdateAvatar", "User", userId, "User updated their avatar.");
         }
 
-        public async Task<string?> LoginAsync(string email, string password)
+        
+        public async Task<(string? accessToken, string? refreshToken)> LoginAsync(string email, string password)
         {
             var user = await _userRepository.GetUserByEmailAsync(email);
-            if (user == null) return null;
+            if (user == null) return (null, null);
             if (!user.IsActive)
             {
                 throw new ArgumentException("Account is deactivated or banned.");
             }
-            if (string.IsNullOrEmpty(user.PasswordHash)) return null;
+            if (string.IsNullOrEmpty(user.PasswordHash)) return (null, null);
 
             bool isValidPassword;
             try
@@ -94,17 +113,83 @@ namespace BLL.Services
             }
             catch (BCrypt.Net.SaltParseException)
             {
-                return null;
+                return (null, null);
             }
 
-            if (!isValidPassword) return null;
+            if (!isValidPassword) return (null, null);
 
-            return GenerateJwtToken(user);
+            
+            await _refreshTokenRepository.RevokeAllUserTokensAsync(user.Id);
+
+            
+            var accessToken = GenerateJwtToken(user, expiresInMinutes: 30); 
+            var refreshTokenValue = await GenerateRefreshToken(user.Id);
+
+            return (accessToken, refreshTokenValue);
+        }
+
+        
+        public async Task<(string? accessToken, string? refreshToken)> RefreshTokenAsync(string refreshTokenString)
+        {
+            var refreshToken = await _refreshTokenRepository.GetByTokenAsync(refreshTokenString);
+
+            if (refreshToken == null || !refreshToken.IsActive)
+            {
+                return (null, null);
+            }
+
+            var user = await _userRepository.GetByIdAsync(refreshToken.UserId);
+            if (user == null || !user.IsActive)
+            {
+                return (null, null);
+            }
+
+            
+            refreshToken.RevokedAt = DateTime.UtcNow;
+            await _refreshTokenRepository.SaveChangesAsync();
+
+            
+            var newAccessToken = GenerateJwtToken(user, expiresInMinutes: 30);
+            var newRefreshTokenValue = await GenerateRefreshToken(user.Id);
+
+            return (newAccessToken, newRefreshTokenValue);
+        }
+
+        
+        public async Task RevokeRefreshTokenAsync(string userId)
+        {
+            await _refreshTokenRepository.RevokeAllUserTokensAsync(userId);
+        }
+
+        
+        private async Task<string> GenerateRefreshToken(string userId)
+        {
+            var randomBytes = new byte[64];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomBytes);
+
+            var refreshToken = new RefreshToken
+            {
+                UserId = userId,
+                Token = Convert.ToBase64String(randomBytes),
+                ExpiresAt = DateTime.UtcNow.AddDays(7), 
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _refreshTokenRepository.AddAsync(refreshToken);
+            await _refreshTokenRepository.SaveChangesAsync();
+
+            return refreshToken.Token;
         }
 
         public async Task<User?> GetUserByIdAsync(string id)
         {
             return await _userRepository.GetByIdAsync(id);
+        }
+
+        public async Task<User?> GetUserByEmailAsync(string email)
+        {
+            return await _userRepository.GetUserByEmailAsync(email);
         }
 
         public async Task<bool> IsEmailExistsAsync(string email)
@@ -205,10 +290,29 @@ namespace BLL.Services
             }).ToList();
         }
 
-        public async Task UpdateUserAsync(string userId, UpdateUserRequest request)
+        public async Task UpdateUserAsync(string userId, string actorId, UpdateUserRequest request)
         {
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new Exception("User not found");
+
+            
+            var actor = await _userRepository.GetByIdAsync(actorId);
+            bool isActorAdmin = actor != null && actor.Role == UserRoles.Admin;
+
+            
+            if (isActorAdmin)
+            {
+                if (!string.IsNullOrEmpty(request.FullName))
+                    throw new Exception("BR-ADM-28: Admin cannot modify user's FullName. Contact Manager for such changes.");
+                if (!string.IsNullOrEmpty(request.Email))
+                    throw new Exception("BR-ADM-28: Admin cannot modify user's Email. Contact Manager for such changes.");
+            }
+
+            
+            if (!string.IsNullOrEmpty(request.Email) && user.IsEmailVerified)
+            {
+                throw new Exception("BR-ADM-24: Cannot modify email after account activation.");
+            }
 
             if (!string.IsNullOrEmpty(request.FullName)) user.FullName = request.FullName;
             if (!string.IsNullOrEmpty(request.Email))
@@ -226,13 +330,21 @@ namespace BLL.Services
                     throw new Exception($"Cannot change role. This user still has unfinished tasks as an {user.Role}.");
                 }
 
+                string oldRole = user.Role;
                 user.Role = request.Role;
+
+                
+                await _notification.SendNotificationAsync(
+                    userId,
+                    $"Your account role has been changed from {oldRole} to {request.Role} by an Administrator.",
+                    "RoleChange"
+                );
             }
             if (!string.IsNullOrEmpty(request.Password))
             {
                 user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             }
-            // Allow setting or clearing ManagerId
+            
             if (request.ManagerId != null)
             {
                 user.ManagerId = string.IsNullOrEmpty(request.ManagerId) ? null : request.ManagerId;
@@ -286,8 +398,14 @@ namespace BLL.Services
             await _logService.LogActionAsync(userId, "DeleteUser", "User", userId, "Admin deactivated the user account.");
         }
 
-        public async Task ToggleUserStatusAsync(string userId, bool isActive)
+        public async Task ToggleUserStatusAsync(string userId, bool isActive, string? adminId = null)
         {
+            
+            if (!string.IsNullOrEmpty(adminId) && userId == adminId && !isActive)
+            {
+                throw new Exception("BR-ADM-19: Admin cannot block themselves.");
+            }
+
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new Exception("User not found");
             if (!isActive)
@@ -296,6 +414,30 @@ namespace BLL.Services
                 if (hasPendingTasks)
                 {
                     throw new Exception($"Cannot deactivate this user. They still have unfinished tasks as an {user.Role}.");
+                }
+
+                
+                if (user.Role == UserRoles.Annotator || user.Role == UserRoles.Reviewer)
+                {
+                    var userAssignments = await _assignmentRepo.GetAllAsync();
+                    var allProjects = await _projectRepo.GetAllAsync();
+
+                    bool hasActiveProjectAssignment = userAssignments.Any(a =>
+                        (a.AnnotatorId == user.Id || a.ReviewerId == user.Id) &&
+                        (a.Status == TaskStatusConstants.Assigned || a.Status == TaskStatusConstants.InProgress));
+
+                    if (hasActiveProjectAssignment)
+                    {
+                        var activeProjects = allProjects.Where(p => p.Status == "Active").ToList();
+                        bool isInActiveProject = userAssignments.Any(a =>
+                            (a.AnnotatorId == user.Id || a.ReviewerId == user.Id) &&
+                            activeProjects.Any(p => p.Id == a.ProjectId));
+
+                        if (isInActiveProject)
+                        {
+                            throw new Exception("BR-ADM-13: Cannot block user in active project. Get Manager approval first.");
+                        }
+                    }
                 }
             }
             user.IsActive = isActive;
@@ -311,12 +453,27 @@ namespace BLL.Services
             var response = new ImportUserResponse();
             var defaultPassword = BCrypt.Net.BCrypt.HashPassword("Password@123");
 
+            
+            const long maxFileSize = 5 * 1024 * 1024; 
+            const int maxRowCount = 1000;
+
+            if (file.Length > maxFileSize)
+            {
+                throw new Exception($"BR-ADM-25: Excel file size exceeds the limit of 5MB. Please upload a smaller file.");
+            }
+
             using var stream = new MemoryStream();
             await file.CopyToAsync(stream);
 
             using var workbook = new XLWorkbook(stream);
             var worksheet = workbook.Worksheet(1);
-            var rows = worksheet.RangeUsed().RowsUsed().Skip(1);
+            var rows = worksheet.RangeUsed().RowsUsed().Skip(1).ToList();
+
+            
+            if (rows.Count > maxRowCount)
+            {
+                throw new Exception($"BR-ADM-25: Excel file contains {rows.Count} rows, which exceeds the limit of {maxRowCount} rows. Please split the data into multiple files.");
+            }
 
             int rowNumber = 1;
 
@@ -391,7 +548,7 @@ namespace BLL.Services
 
             return response;
         }
-        private string GenerateJwtToken(User user)
+        private string GenerateJwtToken(User user, int expiresInMinutes = 30)
         {
             var jwtSettings = _configuration.GetSection("Jwt");
             var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
@@ -410,7 +567,7 @@ namespace BLL.Services
                     new Claim("FullName", user.FullName ?? ""),
                     new Claim("AvatarUrl", safeAvatarUrl)
                 }),
-                Expires = DateTime.UtcNow.AddDays(7),
+                Expires = DateTime.UtcNow.AddMinutes(expiresInMinutes),
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
                 Issuer = jwtSettings["Issuer"],
                 Audience = jwtSettings["Audience"]

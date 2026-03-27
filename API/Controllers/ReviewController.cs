@@ -7,10 +7,10 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    /// <summary>
-    /// Controller responsible for managing task reviews, fetching review queues, 
-    /// and auditing reviewer quality.
-    /// </summary>
+    
+    
+    
+    
     [Route("api/reviews")]
     [ApiController]
     [Authorize]
@@ -18,28 +18,30 @@ namespace API.Controllers
     public class ReviewController : ControllerBase
     {
         private readonly IReviewService _reviewService;
+        private readonly IStatisticService _statisticService;
 
-        public ReviewController(IReviewService reviewService)
+        public ReviewController(IReviewService reviewService, IStatisticService statisticService)
         {
             _reviewService = reviewService;
+            _statisticService = statisticService;
         }
 
-        // ======================================================
-        // REVIEW QUEUE & LOOKUP
-        // ======================================================
+        
+        
+        
 
-        /// <summary>
-        /// Retrieves a list of assigned projects that have tasks pending review.
-        /// </summary>
-        /// <remarks>
-        /// Used by Reviewers to view their project queue on the dashboard.
-        /// </remarks>
-        /// <returns>A list of projects with pending review tasks.</returns>
-        /// <response code="200">Projects retrieved successfully.</response>
-        /// <response code="400">Failed to retrieve projects.</response>
-        /// <response code="401">User is not authenticated.</response>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpGet("projects")]
-        [Authorize(Roles = "Reviewer,Manager,Admin")]
+        [Authorize(Roles = "Admin,Manager,Reviewer")]
         [ProducesResponseType(typeof(IEnumerable<AssignedProjectResponse>), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
@@ -59,19 +61,19 @@ namespace API.Controllers
             }
         }
 
-        /// <summary>
-        /// Gets tasks that are pending review for a specific project.
-        /// </summary>
-        /// <remarks>
-        /// Used for loading the review workspace for a specific project.
-        /// </remarks>
-        /// <param name="projectId">The ID of the target project.</param>
-        /// <returns>A list of assignments awaiting review.</returns>
-        /// <response code="200">Tasks retrieved successfully.</response>
-        /// <response code="400">Failed to retrieve tasks.</response>
-        /// <response code="401">User is not authenticated.</response>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpGet("projects/{projectId}/tasks")]
-        [Authorize(Roles = "Reviewer,Manager,Admin,Annotator")]
+        [Authorize(Roles = "Admin,Manager,Reviewer,Annotator")]
         [ProducesResponseType(typeof(IEnumerable<TaskResponse>), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
@@ -91,24 +93,24 @@ namespace API.Controllers
             }
         }
 
-        // ======================================================
-        // REVIEWER – TASK REVIEW
-        // ======================================================
+        
+        
+        
 
-        /// <summary>
-        /// Submits a review decision (Approve/Reject) for an assignment.
-        /// </summary>
-        /// <remarks>
-        /// Submitting a rejection requires specifying an error category and leaving a comment.
-        /// </remarks>
-        /// <param name="request">Review payload including the assignment ID, decision, error categories, and comments.</param>
-        /// <returns>A confirmation message indicating the result.</returns>
-        /// <response code="200">Review submitted successfully.</response>
-        /// <response code="400">Validation failed or invalid task status.</response>
-        /// <response code="401">User is not authenticated.</response>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpPost]
-        [Authorize(Roles = "Reviewer,Manager,Admin")]
-        [ProducesResponseType(typeof(object), 200)] // Consider changing 'object' to a specific response DTO if available
+        [Authorize(Roles = "Admin,Manager,Reviewer")]
+        [ProducesResponseType(typeof(object), 200)] 
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> ReviewTask([FromBody] ReviewRequest request)
@@ -130,24 +132,24 @@ namespace API.Controllers
             }
         }
 
-        // ======================================================
-        // MANAGER – REVIEW AUDIT (RQS)
-        // ======================================================
+        
+        
+        
 
-        /// <summary>
-        /// Audits a past review to evaluate reviewer quality (RQS).
-        /// </summary>
-        /// <remarks>
-        /// Managers evaluate whether they agree with the reviewer's decision. 
-        /// This data dynamically updates the Reviewer Quality Score (RQS).
-        /// </remarks>
-        /// <param name="request">Payload containing the review log ID and audit decision.</param>
-        /// <returns>An audit confirmation message.</returns>
-        /// <response code="200">Audit recorded successfully.</response>
-        /// <response code="400">Audit failed or already audited.</response>
-        /// <response code="401">User is not authorized.</response>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpPost("audits")]
-        [Authorize(Roles = "Manager,Admin")]
+        [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
@@ -160,6 +162,136 @@ namespace API.Controllers
             {
                 await _reviewService.AuditReviewAsync(managerId, request);
                 return Ok(new { Message = "Audit submitted successfully." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
+        
+        
+        
+
+        
+        
+        
+        
+        
+        
+        
+        [HttpGet("stats")]
+        [Authorize(Roles = "Admin,Manager,Reviewer")]
+        [ProducesResponseType(typeof(ReviewerStatsResponse), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        public async Task<IActionResult> GetReviewerStats()
+        {
+            var reviewerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(reviewerId)) return Unauthorized();
+
+            try
+            {
+                var stats = await _statisticService.GetReviewerStatsAsync(reviewerId);
+                return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
+        
+        
+        
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        [HttpGet("projects/{projectId}/queue")]
+        [Authorize(Roles = "Admin,Manager,Reviewer")]
+        [ProducesResponseType(typeof(ReviewQueueResponse), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        public async Task<IActionResult> GetReviewQueueGroupedByAnnotator(int projectId)
+        {
+            var reviewerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(reviewerId)) return Unauthorized();
+
+            try
+            {
+                var queue = await _reviewService.GetReviewQueueGroupedByAnnotatorAsync(projectId, reviewerId);
+                return Ok(queue);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
+        
+        
+        
+
+        
+        
+        
+        
+        
+        
+        
+        
+        [HttpPost("deduct-overdue-reliability")]
+        [Authorize(Roles = "Manager,Admin")]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        public async Task<IActionResult> DeductOverdueReliabilityScores()
+        {
+            try
+            {
+                await _statisticService.DeductReliabilityScoreForOverdueTasksAsync();
+                return Ok(new { Message = "Reliability scores have been deducted for overdue tasks." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
+        
+        
+        
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        [HttpGet("projects/{projectId}/batch-status")]
+        [Authorize(Roles = "Admin,Manager,Reviewer")]
+        [ProducesResponseType(typeof(BatchCompletionStatusResponse), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        public async Task<IActionResult> GetBatchCompletionStatus(int projectId)
+        {
+            var reviewerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(reviewerId)) return Unauthorized();
+
+            try
+            {
+                var status = await _reviewService.GetBatchCompletionStatusAsync(projectId, reviewerId);
+                return Ok(status);
             }
             catch (Exception ex)
             {

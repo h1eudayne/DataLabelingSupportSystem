@@ -1,8 +1,8 @@
 namespace Core.DTOs.Responses
 {
-    /// <summary>
-    /// DTO for returning dispute data to the client, avoiding circular references.
-    /// </summary>
+    
+    
+    
     public class DisputeResponse
     {
         public int Id { get; set; }
