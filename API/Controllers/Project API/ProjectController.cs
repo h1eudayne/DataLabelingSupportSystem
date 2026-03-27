@@ -87,11 +87,46 @@ namespace API.Controllers
 
             try
             {
+                if (string.IsNullOrWhiteSpace(request.Name))
+                {
+                    return BadRequest(new ErrorResponse { Message = "Project name is required." });
+                }
+
+                if (request.Name.Length > 255)
+                {
+                    return BadRequest(new ErrorResponse { Message = "Project name is too long (max 255 characters)." });
+                }
+
+                if (request.LabelClasses == null || !request.LabelClasses.Any())
+                {
+                    return BadRequest(new ErrorResponse { Message = "At least one label class is required." });
+                }
+
+                foreach (var label in request.LabelClasses)
+                {
+                    if (string.IsNullOrWhiteSpace(label.Name))
+                    {
+                        return BadRequest(new ErrorResponse { Message = "Label name cannot be empty." });
+                    }
+                    if (label.Name.Length > 100)
+                    {
+                        return BadRequest(new ErrorResponse { Message = $"Label name '{label.Name}' is too long (max 100 characters)." });
+                    }
+                }
+
+                Console.WriteLine($"[DEBUG] CreateProject - ManagerId: {managerId}");
+                Console.WriteLine($"[DEBUG] CreateProject - Request: {System.Text.Json.JsonSerializer.Serialize(request)}");
+                
                 var result = await _projectService.CreateProjectAsync(managerId, request);
                 return Ok(result);
             }
             catch (Exception ex)
             {
+                // Log the full exception details
+                Console.WriteLine($"[ERROR] CreateProject failed: {ex}");
+                Console.WriteLine($"[ERROR] Inner Exception: {ex.InnerException?.Message}");
+                Console.WriteLine($"[ERROR] Stack Trace: {ex.StackTrace}");
+                
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }

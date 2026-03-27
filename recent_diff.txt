@@ -1,0 +1,874 @@
+diff --git a/API/Controllers/LabelController.cs b/API/Controllers/LabelController.cs
+index 7f70ddf..2e2254e 100644
+--- a/API/Controllers/LabelController.cs
++++ b/API/Controllers/LabelController.cs
+@@ -22,7 +22,25 @@ namespace API.Controllers
+         {
+             _labelService = labelService;
+         }
+-
++        /// <summary>
++        /// Retrieves all labels for a specific project.
++        /// </summary>
++        [HttpGet]
++        [ProducesResponseType(typeof(List<LabelResponse>), 200)]
++        [ProducesResponseType(typeof(ErrorResponse), 400)]
++        public async Task<IActionResult> GetLabels([FromQuery] int projectId)
++        {
++            try
++            {
++                if (projectId <= 0) return BadRequest(new ErrorResponse { Message = "ProjectId is required." });
++                var result = await _labelService.GetLabelsByProjectIdAsync(projectId);
++                return Ok(result);
++            }
++            catch (Exception ex)
++            {
++                return BadRequest(new ErrorResponse { Message = ex.Message });
++            }
++        }
+         /// <summary>
+         /// Creates a new label within a project.
+         /// </summary>
+diff --git a/API/Program.cs b/API/Program.cs
+index ff9a949..1d06f0e 100644
+--- a/API/Program.cs
++++ b/API/Program.cs
+@@ -14,6 +14,8 @@ using System.Text.Json.Serialization;
+ 
+ var builder = WebApplication.CreateBuilder(args);
+ 
++builder.Services.AddHttpContextAccessor();
++
+ builder.Services.AddDbContext<ApplicationDbContext>(options =>
+     options.UseSqlServer(
+         builder.Configuration.GetConnectionString("DefaultConnection"),
+diff --git a/BLL/Interfaces/ILabelService.cs b/BLL/Interfaces/ILabelService.cs
+index 01ba2c0..1fa4010 100644
+--- a/BLL/Interfaces/ILabelService.cs
++++ b/BLL/Interfaces/ILabelService.cs
+@@ -7,6 +7,7 @@ namespace BLL.Interfaces
+     {
+         Task<LabelResponse> CreateLabelAsync(CreateLabelRequest request);
+         Task<LabelResponse> UpdateLabelAsync(int labelId, UpdateLabelRequest request);
++        Task<List<LabelResponse>> GetLabelsByProjectIdAsync(int projectId);
+         Task DeleteLabelAsync(int labelId);
+         Task<int> CheckLabelUsageAsync(int labelId);
+     }
+diff --git a/BLL/Services/ActivityLogService.cs b/BLL/Services/ActivityLogService.cs
+index 8a7bb65..c9774e8 100644
+--- a/BLL/Services/ActivityLogService.cs
++++ b/BLL/Services/ActivityLogService.cs
+@@ -1,20 +1,25 @@
+ ﻿using BLL.Interfaces;
+ using Core.Entities;
+ using DAL.Interfaces;
++using Microsoft.AspNetCore.Http;
+ 
+ namespace BLL.Services
+ {
+     public class ActivityLogService : IActivityLogService
+     {
+         private readonly IActivityLogRepository _logRepo;
++        private readonly IHttpContextAccessor _httpContextAccessor;
+ 
+-        public ActivityLogService(IActivityLogRepository logRepo)
++        public ActivityLogService(IActivityLogRepository logRepo, IHttpContextAccessor httpContextAccessor)
+         {
+             _logRepo = logRepo;
++            _httpContextAccessor = httpContextAccessor;
+         }
+ 
+         public async Task LogActionAsync(string userId, string actionType, string entityName, string entityId, string description)
+         {
++            var ipAddress = _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString();
++
+             var log = new ActivityLog
+             {
+                 UserId = userId,
+@@ -22,6 +27,7 @@ namespace BLL.Services
+                 EntityName = entityName,
+                 EntityId = entityId,
+                 Description = description,
++                IpAddress = ipAddress,
+                 Timestamp = DateTime.UtcNow
+             };
+ 
+diff --git a/BLL/Services/LabelService.cs b/BLL/Services/LabelService.cs
+index 3e33024..45962d2 100644
+--- a/BLL/Services/LabelService.cs
++++ b/BLL/Services/LabelService.cs
+@@ -12,18 +12,34 @@ namespace BLL.Services
+         private readonly ILabelRepository _labelRepo;
+         private readonly IAssignmentRepository _assignmentRepo;
+         private readonly IActivityLogService _logService;
+-        private readonly IRepository<Annotation> _annotationRepo; 
++        private readonly IRepository<Annotation> _annotationRepo;
+ 
+         public LabelService(
+             ILabelRepository labelRepo,
+             IAssignmentRepository assignmentRepo,
+             IActivityLogService logService,
+-            IRepository<Annotation> annotationRepo) 
++            IRepository<Annotation> annotationRepo)
+         {
+             _labelRepo = labelRepo;
+             _assignmentRepo = assignmentRepo;
+             _logService = logService;
+-            _annotationRepo = annotationRepo; 
++            _annotationRepo = annotationRepo;
++        }
++        public async Task<List<LabelResponse>> GetLabelsByProjectIdAsync(int projectId)
++        {
++            var labels = await _labelRepo.FindAsync(l => l.ProjectId == projectId);
++            return labels.Select(l => new LabelResponse
++            {
++                Id = l.Id,
++                Name = l.Name,
++                Color = l.Color,
++                GuideLine = l.GuideLine,
++                ExampleImageUrl = l.ExampleImageUrl,
++                IsDefault = l.IsDefault,
++                Checklist = !string.IsNullOrEmpty(l.DefaultChecklist)
++                            ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(l.DefaultChecklist) ?? new List<string>()
++                            : new List<string>()
++            }).ToList();
+         }
+         public async Task<int> CheckLabelUsageAsync(int labelId)
+         {
+diff --git a/BLL/Services/UserService.cs b/BLL/Services/UserService.cs
+index b735423..7a0ed7e 100644
+--- a/BLL/Services/UserService.cs
++++ b/BLL/Services/UserService.cs
+@@ -336,10 +336,10 @@ namespace BLL.Services
+                     continue;
+                 }
+ 
+-                if (!UserRoles.IsValid(role))
++                if (role != UserRoles.Annotator && role != UserRoles.Reviewer)
+                 {
+                     response.FailureCount++;
+-                    response.Errors.Add($"Row {rowNumber}: Role '{role}' is invalid.");
++                    response.Errors.Add($"Row {rowNumber}: Role '{role}' is not allowed. You can only import 'Annotator' or 'Reviewer'.");
+                     continue;
+                 }
+ 
+diff --git a/DAL/Migrations/20260322170416_InitialCreate.cs b/DAL/Migrations/20260322170416_InitialCreate.cs
+deleted file mode 100644
+index 06fa7b2..0000000
+--- a/DAL/Migrations/20260322170416_InitialCreate.cs
++++ /dev/null
+@@ -1,513 +0,0 @@
+-﻿using System;
+-using Microsoft.EntityFrameworkCore.Migrations;
+-
+-#nullable disable
+-
+-namespace DAL.Migrations
+-{
+-    /// <inheritdoc />
+-    public partial class InitialCreate : Migration
+-    {
+-        /// <inheritdoc />
+-        protected override void Up(MigrationBuilder migrationBuilder)
+-        {
+-            migrationBuilder.CreateTable(
+-                name: "Users",
+-                columns: table => new
+-                {
+-                    Id = table.Column<string>(type: "nvarchar(450)", nullable: false),
+-                    FullName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+-                    Email = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+-                    PasswordHash = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    AvatarUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
+-                    Role = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    ManagerId = table.Column<string>(type: "nvarchar(450)", nullable: true)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_Users", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_Users_Users_ManagerId",
+-                        column: x => x.ManagerId,
+-                        principalTable: "Users",
+-                        principalColumn: "Id");
+-                });
+-
+-            migrationBuilder.CreateTable(
+-                name: "ActivityLogs",
+-                columns: table => new
+-                {
+-                    Id = table.Column<int>(type: "int", nullable: false)
+-                        .Annotation("SqlServer:Identity", "1, 1"),
+-                    UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+-                    ActionType = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    EntityName = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    EntityId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    Description = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    IpAddress = table.Column<string>(type: "nvarchar(max)", nullable: true),
+-                    Timestamp = table.Column<DateTime>(type: "datetime2", nullable: false)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_ActivityLogs", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_ActivityLogs_Users_UserId",
+-                        column: x => x.UserId,
+-                        principalTable: "Users",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Cascade);
+-                });
+-
+-            migrationBuilder.CreateTable(
+-                name: "AppNotifications",
+-                columns: table => new
+-                {
+-                    Id = table.Column<int>(type: "int", nullable: false)
+-                        .Annotation("SqlServer:Identity", "1, 1"),
+-                    UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+-                    Title = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    Message = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    Type = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    IsRead = table.Column<bool>(type: "bit", nullable: false),
+-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_AppNotifications", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_AppNotifications_Users_UserId",
+-                        column: x => x.UserId,
+-                        principalTable: "Users",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Cascade);
+-                });
+-
+-            migrationBuilder.CreateTable(
+-                name: "Projects",
+-                columns: table => new
+-                {
+-                    Id = table.Column<int>(type: "int", nullable: false)
+-                        .Annotation("SqlServer:Identity", "1, 1"),
+-                    ManagerId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+-                    Name = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    Description = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    StartDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+-                    EndDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+-                    Deadline = table.Column<DateTime>(type: "datetime2", nullable: false),
+-                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+-                    AllowGeometryTypes = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    AnnotationGuide = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    MaxTaskDurationHours = table.Column<int>(type: "int", nullable: false),
+-                    PenaltyUnit = table.Column<int>(type: "int", nullable: false)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_Projects", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_Projects_Users_ManagerId",
+-                        column: x => x.ManagerId,
+-                        principalTable: "Users",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Restrict);
+-                });
+-
+-            migrationBuilder.CreateTable(
+-                name: "DataItems",
+-                columns: table => new
+-                {
+-                    Id = table.Column<int>(type: "int", nullable: false)
+-                        .Annotation("SqlServer:Identity", "1, 1"),
+-                    ProjectId = table.Column<int>(type: "int", nullable: false),
+-                    StorageUrl = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    BucketId = table.Column<int>(type: "int", nullable: false),
+-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    UploadedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+-                    MetaData = table.Column<string>(type: "nvarchar(max)", nullable: true)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_DataItems", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_DataItems_Projects_ProjectId",
+-                        column: x => x.ProjectId,
+-                        principalTable: "Projects",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Cascade);
+-                });
+-
+-            migrationBuilder.CreateTable(
+-                name: "LabelClasses",
+-                columns: table => new
+-                {
+-                    Id = table.Column<int>(type: "int", nullable: false)
+-                        .Annotation("SqlServer:Identity", "1, 1"),
+-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+-                    Color = table.Column<string>(type: "nvarchar(7)", maxLength: 7, nullable: false),
+-                    GuideLine = table.Column<string>(type: "nvarchar(max)", nullable: true),
+-                    ExampleImageUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
+-                    DefaultChecklist = table.Column<string>(type: "nvarchar(max)", nullable: true),
+-                    IsDefault = table.Column<bool>(type: "bit", nullable: false),
+-                    ProjectId = table.Column<int>(type: "int", nullable: false)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_LabelClasses", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_LabelClasses_Projects_ProjectId",
+-                        column: x => x.ProjectId,
+-                        principalTable: "Projects",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Cascade);
+-                });
+-
+-            migrationBuilder.CreateTable(
+-                name: "ReviewChecklistItems",
+-                columns: table => new
+-                {
+-                    Id = table.Column<int>(type: "int", nullable: false)
+-                        .Annotation("SqlServer:Identity", "1, 1"),
+-                    ProjectId = table.Column<int>(type: "int", nullable: false),
+-                    Code = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    Description = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    Weight = table.Column<int>(type: "int", nullable: false),
+-                    IsCritical = table.Column<bool>(type: "bit", nullable: false)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_ReviewChecklistItems", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_ReviewChecklistItems_Projects_ProjectId",
+-                        column: x => x.ProjectId,
+-                        principalTable: "Projects",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Cascade);
+-                });
+-
+-            migrationBuilder.CreateTable(
+-                name: "UserProjectStats",
+-                columns: table => new
+-                {
+-                    Id = table.Column<int>(type: "int", nullable: false)
+-                        .Annotation("SqlServer:Identity", "1, 1"),
+-                    UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+-                    ProjectId = table.Column<int>(type: "int", nullable: false),
+-                    Date = table.Column<DateTime>(type: "datetime2", nullable: false),
+-                    TotalAssigned = table.Column<int>(type: "int", nullable: false),
+-                    TotalApproved = table.Column<int>(type: "int", nullable: false),
+-                    TotalRejected = table.Column<int>(type: "int", nullable: false),
+-                    EfficiencyScore = table.Column<float>(type: "real", nullable: false),
+-                    AverageQualityScore = table.Column<double>(type: "float", nullable: false),
+-                    TotalCriticalErrors = table.Column<int>(type: "int", nullable: false),
+-                    TotalReviewedTasks = table.Column<int>(type: "int", nullable: false),
+-                    ReviewerQualityScore = table.Column<double>(type: "float", nullable: false),
+-                    TotalReviewsDone = table.Column<int>(type: "int", nullable: false),
+-                    TotalCorrectDecisions = table.Column<int>(type: "int", nullable: false),
+-                    TotalAuditedReviews = table.Column<int>(type: "int", nullable: false),
+-                    TotalFirstPassCorrect = table.Column<int>(type: "int", nullable: false),
+-                    TotalManagerDecisions = table.Column<int>(type: "int", nullable: false),
+-                    TotalCorrectByManager = table.Column<int>(type: "int", nullable: false),
+-                    TotalReviewerCorrectByManager = table.Column<int>(type: "int", nullable: false),
+-                    TotalReviewerManagerDecisions = table.Column<int>(type: "int", nullable: false)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_UserProjectStats", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_UserProjectStats_Projects_ProjectId",
+-                        column: x => x.ProjectId,
+-                        principalTable: "Projects",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Cascade);
+-                    table.ForeignKey(
+-                        name: "FK_UserProjectStats_Users_UserId",
+-                        column: x => x.UserId,
+-                        principalTable: "Users",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Restrict);
+-                });
+-
+-            migrationBuilder.CreateTable(
+-                name: "Assignments",
+-                columns: table => new
+-                {
+-                    Id = table.Column<int>(type: "int", nullable: false)
+-                        .Annotation("SqlServer:Identity", "1, 1"),
+-                    ProjectId = table.Column<int>(type: "int", nullable: false),
+-                    DataItemId = table.Column<int>(type: "int", nullable: false),
+-                    ReviewerId = table.Column<string>(type: "nvarchar(450)", nullable: true),
+-                    AnnotatorId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+-                    AssignedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+-                    SubmittedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+-                    DurationSeconds = table.Column<int>(type: "int", nullable: false),
+-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_Assignments", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_Assignments_DataItems_DataItemId",
+-                        column: x => x.DataItemId,
+-                        principalTable: "DataItems",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Cascade);
+-                    table.ForeignKey(
+-                        name: "FK_Assignments_Projects_ProjectId",
+-                        column: x => x.ProjectId,
+-                        principalTable: "Projects",
+-                        principalColumn: "Id");
+-                    table.ForeignKey(
+-                        name: "FK_Assignments_Users_AnnotatorId",
+-                        column: x => x.AnnotatorId,
+-                        principalTable: "Users",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Restrict);
+-                    table.ForeignKey(
+-                        name: "FK_Assignments_Users_ReviewerId",
+-                        column: x => x.ReviewerId,
+-                        principalTable: "Users",
+-                        principalColumn: "Id");
+-                });
+-
+-            migrationBuilder.CreateTable(
+-                name: "Annotations",
+-                columns: table => new
+-                {
+-                    Id = table.Column<int>(type: "int", nullable: false)
+-                        .Annotation("SqlServer:Identity", "1, 1"),
+-                    AssignmentId = table.Column<int>(type: "int", nullable: false),
+-                    DataJSON = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+-                    ClassId = table.Column<int>(type: "int", nullable: true),
+-                    Value = table.Column<string>(type: "nvarchar(max)", nullable: true),
+-                    LabelClassId = table.Column<int>(type: "int", nullable: true)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_Annotations", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_Annotations_Assignments_AssignmentId",
+-                        column: x => x.AssignmentId,
+-                        principalTable: "Assignments",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Cascade);
+-                    table.ForeignKey(
+-                        name: "FK_Annotations_LabelClasses_LabelClassId",
+-                        column: x => x.LabelClassId,
+-                        principalTable: "LabelClasses",
+-                        principalColumn: "Id");
+-                });
+-
+-            migrationBuilder.CreateTable(
+-                name: "Disputes",
+-                columns: table => new
+-                {
+-                    Id = table.Column<int>(type: "int", nullable: false)
+-                        .Annotation("SqlServer:Identity", "1, 1"),
+-                    AssignmentId = table.Column<int>(type: "int", nullable: false),
+-                    AnnotatorId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+-                    Reason = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    Status = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    ManagerComment = table.Column<string>(type: "nvarchar(max)", nullable: true),
+-                    ManagerId = table.Column<string>(type: "nvarchar(450)", nullable: true),
+-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+-                    ResolvedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_Disputes", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_Disputes_Assignments_AssignmentId",
+-                        column: x => x.AssignmentId,
+-                        principalTable: "Assignments",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Cascade);
+-                    table.ForeignKey(
+-                        name: "FK_Disputes_Users_AnnotatorId",
+-                        column: x => x.AnnotatorId,
+-                        principalTable: "Users",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Cascade);
+-                    table.ForeignKey(
+-                        name: "FK_Disputes_Users_ManagerId",
+-                        column: x => x.ManagerId,
+-                        principalTable: "Users",
+-                        principalColumn: "Id");
+-                });
+-
+-            migrationBuilder.CreateTable(
+-                name: "ReviewLogs",
+-                columns: table => new
+-                {
+-                    Id = table.Column<int>(type: "int", nullable: false)
+-                        .Annotation("SqlServer:Identity", "1, 1"),
+-                    AssignmentId = table.Column<int>(type: "int", nullable: false),
+-                    ReviewerId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+-                    Decision = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    Comment = table.Column<string>(type: "nvarchar(max)", nullable: true),
+-                    ErrorCategory = table.Column<string>(type: "nvarchar(max)", nullable: true),
+-                    Verdict = table.Column<string>(type: "nvarchar(max)", nullable: false),
+-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+-                    ScorePenalty = table.Column<int>(type: "int", nullable: false),
+-                    IsAudited = table.Column<bool>(type: "bit", nullable: false),
+-                    AuditResult = table.Column<string>(type: "nvarchar(max)", nullable: true)
+-                },
+-                constraints: table =>
+-                {
+-                    table.PrimaryKey("PK_ReviewLogs", x => x.Id);
+-                    table.ForeignKey(
+-                        name: "FK_ReviewLogs_Assignments_AssignmentId",
+-                        column: x => x.AssignmentId,
+-                        principalTable: "Assignments",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Cascade);
+-                    table.ForeignKey(
+-                        name: "FK_ReviewLogs_Users_ReviewerId",
+-                        column: x => x.ReviewerId,
+-                        principalTable: "Users",
+-                        principalColumn: "Id",
+-                        onDelete: ReferentialAction.Restrict);
+-                });
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_ActivityLogs_UserId",
+-                table: "ActivityLogs",
+-                column: "UserId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_Annotations_AssignmentId",
+-                table: "Annotations",
+-                column: "AssignmentId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_Annotations_LabelClassId",
+-                table: "Annotations",
+-                column: "LabelClassId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_AppNotifications_UserId",
+-                table: "AppNotifications",
+-                column: "UserId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_Assignments_AnnotatorId",
+-                table: "Assignments",
+-                column: "AnnotatorId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_Assignments_DataItemId",
+-                table: "Assignments",
+-                column: "DataItemId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_Assignments_ProjectId",
+-                table: "Assignments",
+-                column: "ProjectId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_Assignments_ReviewerId",
+-                table: "Assignments",
+-                column: "ReviewerId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_DataItems_ProjectId",
+-                table: "DataItems",
+-                column: "ProjectId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_Disputes_AnnotatorId",
+-                table: "Disputes",
+-                column: "AnnotatorId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_Disputes_AssignmentId",
+-                table: "Disputes",
+-                column: "AssignmentId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_Disputes_ManagerId",
+-                table: "Disputes",
+-                column: "ManagerId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_LabelClasses_ProjectId",
+-                table: "LabelClasses",
+-                column: "ProjectId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_Projects_ManagerId",
+-                table: "Projects",
+-                column: "ManagerId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_ReviewChecklistItems_ProjectId",
+-                table: "ReviewChecklistItems",
+-                column: "ProjectId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_ReviewLogs_AssignmentId",
+-                table: "ReviewLogs",
+-                column: "AssignmentId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_ReviewLogs_ReviewerId",
+-                table: "ReviewLogs",
+-                column: "ReviewerId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_UserProjectStats_ProjectId",
+-                table: "UserProjectStats",
+-                column: "ProjectId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_UserProjectStats_UserId",
+-                table: "UserProjectStats",
+-                column: "UserId");
+-
+-            migrationBuilder.CreateIndex(
+-                name: "IX_Users_ManagerId",
+-                table: "Users",
+-                column: "ManagerId");
+-        }
+-
+-        /// <inheritdoc />
+-        protected override void Down(MigrationBuilder migrationBuilder)
+-        {
+-            migrationBuilder.DropTable(
+-                name: "ActivityLogs");
+-
+-            migrationBuilder.DropTable(
+-                name: "Annotations");
+-
+-            migrationBuilder.DropTable(
+-                name: "AppNotifications");
+-
+-            migrationBuilder.DropTable(
+-                name: "Disputes");
+-
+-            migrationBuilder.DropTable(
+-                name: "ReviewChecklistItems");
+-
+-            migrationBuilder.DropTable(
+-                name: "ReviewLogs");
+-
+-            migrationBuilder.DropTable(
+-                name: "UserProjectStats");
+-
+-            migrationBuilder.DropTable(
+-                name: "LabelClasses");
+-
+-            migrationBuilder.DropTable(
+-                name: "Assignments");
+-
+-            migrationBuilder.DropTable(
+-                name: "DataItems");
+-
+-            migrationBuilder.DropTable(
+-                name: "Projects");
+-
+-            migrationBuilder.DropTable(
+-                name: "Users");
+-        }
+-    }
+-}
+diff --git a/DAL/Migrations/20260322170416_InitialCreate.Designer.cs b/DAL/Migrations/20260326021833_UpdateAdvancedBRFields.Designer.cs
+similarity index 96%
+rename from DAL/Migrations/20260322170416_InitialCreate.Designer.cs
+rename to DAL/Migrations/20260326021833_UpdateAdvancedBRFields.Designer.cs
+index 27d116e..1322619 100644
+--- a/DAL/Migrations/20260322170416_InitialCreate.Designer.cs
++++ b/DAL/Migrations/20260326021833_UpdateAdvancedBRFields.Designer.cs
+@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+ namespace DAL.Migrations
+ {
+     [DbContext(typeof(ApplicationDbContext))]
+-    [Migration("20260322170416_InitialCreate")]
+-    partial class InitialCreate
++    [Migration("20260326021833_UpdateAdvancedBRFields")]
++    partial class UpdateAdvancedBRFields
+     {
+         /// <inheritdoc />
+         protected override void BuildTargetModel(ModelBuilder modelBuilder)
+@@ -160,9 +160,15 @@ namespace DAL.Migrations
+                     b.Property<int>("DurationSeconds")
+                         .HasColumnType("int");
+ 
++                    b.Property<bool>("IsEscalated")
++                        .HasColumnType("bit");
++
+                     b.Property<int>("ProjectId")
+                         .HasColumnType("int");
+ 
++                    b.Property<int>("RejectCount")
++                        .HasColumnType("int");
++
+                     b.Property<string>("ReviewerId")
+                         .HasColumnType("nvarchar(450)");
+ 
+@@ -336,6 +342,10 @@ namespace DAL.Migrations
+                     b.Property<DateTime?>("EndDate")
+                         .HasColumnType("datetime2");
+ 
++                    b.Property<string>("GuidelineVersion")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
+                     b.Property<string>("ManagerId")
+                         .IsRequired()
+                         .HasColumnType("nvarchar(450)");
+@@ -350,9 +360,16 @@ namespace DAL.Migrations
+                     b.Property<int>("PenaltyUnit")
+                         .HasColumnType("int");
+ 
++                    b.Property<bool>("RequireConsensus")
++                        .HasColumnType("bit");
++
+                     b.Property<DateTime?>("StartDate")
+                         .HasColumnType("datetime2");
+ 
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
+                     b.HasKey("Id");
+ 
+                     b.HasIndex("ManagerId");
+@@ -419,6 +436,9 @@ namespace DAL.Migrations
+                     b.Property<string>("ErrorCategory")
+                         .HasColumnType("nvarchar(max)");
+ 
++                    b.Property<bool>("IsApproved")
++                        .HasColumnType("bit");
++
+                     b.Property<bool>("IsAudited")
+                         .HasColumnType("bit");
+ 
+@@ -497,6 +517,9 @@ namespace DAL.Migrations
+                     b.Property<float>("EfficiencyScore")
+                         .HasColumnType("real");
+ 
++                    b.Property<bool>("IsLocked")
++                        .HasColumnType("bit");
++
+                     b.Property<int>("ProjectId")
+                         .HasColumnType("int");
+ 
+diff --git a/DAL/Migrations/20260326021833_UpdateAdvancedBRFields.cs b/DAL/Migrations/20260326021833_UpdateAdvancedBRFields.cs
+new file mode 100644
+index 0000000..1527a16
+--- /dev/null
++++ b/DAL/Migrations/20260326021833_UpdateAdvancedBRFields.cs
+@@ -0,0 +1,45 @@
++﻿using System;
++using Microsoft.EntityFrameworkCore.Migrations;
++
++#nullable disable
++
++namespace DAL.Migrations
++{
++    /// <inheritdoc />
++    public partial class UpdateAdvancedBRFields : Migration
++    {
++        /// <inheritdoc />
++        protected override void Up(MigrationBuilder migrationBuilder)
++        {
++            // 1. Thêm 3 cột mới vào bảng Projects
++            migrationBuilder.AddColumn<string>(name: "GuidelineVersion", table: "Projects", type: "nvarchar(max)", nullable: false, defaultValue: "1.0");
++            migrationBuilder.AddColumn<bool>(name: "RequireConsensus", table: "Projects", type: "bit", nullable: false, defaultValue: false);
++            migrationBuilder.AddColumn<string>(name: "Status", table: "Projects", type: "nvarchar(max)", nullable: false, defaultValue: "Draft");
++
++            // 2. Thêm 2 cột mới vào bảng Assignments
++            migrationBuilder.AddColumn<int>(name: "RejectCount", table: "Assignments", type: "int", nullable: false, defaultValue: 0);
++            migrationBuilder.AddColumn<bool>(name: "IsEscalated", table: "Assignments", type: "bit", nullable: false, defaultValue: false);
++
++            // 3. Thêm cột khóa tài khoản vào bảng UserProjectStats
++            migrationBuilder.AddColumn<bool>(name: "IsLocked", table: "UserProjectStats", type: "bit", nullable: false, defaultValue: false);
++
++            // 4. Thêm cột duyệt bài vào bảng ReviewLogs
++            migrationBuilder.AddColumn<bool>(name: "IsApproved", table: "ReviewLogs", type: "bit", nullable: false, defaultValue: false);
++        }
++
++        protected override void Down(MigrationBuilder migrationBuilder)
++        {
++            // Lệnh để xóa các cột này nếu ông muốn Rollback
++            migrationBuilder.DropColumn(name: "GuidelineVersion", table: "Projects");
++            migrationBuilder.DropColumn(name: "RequireConsensus", table: "Projects");
++            migrationBuilder.DropColumn(name: "Status", table: "Projects");
++
++            migrationBuilder.DropColumn(name: "RejectCount", table: "Assignments");
++            migrationBuilder.DropColumn(name: "IsEscalated", table: "Assignments");
++
++            migrationBuilder.DropColumn(name: "IsLocked", table: "UserProjectStats");
++
++            migrationBuilder.DropColumn(name: "IsApproved", table: "ReviewLogs");
++        }
++    }
++}
+diff --git a/DAL/Migrations/ApplicationDbContextModelSnapshot.cs b/DAL/Migrations/ApplicationDbContextModelSnapshot.cs
+index 8df5645..ef815b3 100644
+--- a/DAL/Migrations/ApplicationDbContextModelSnapshot.cs
++++ b/DAL/Migrations/ApplicationDbContextModelSnapshot.cs
+@@ -157,9 +157,15 @@ namespace DAL.Migrations
+                     b.Property<int>("DurationSeconds")
+                         .HasColumnType("int");
+ 
++                    b.Property<bool>("IsEscalated")
++                        .HasColumnType("bit");
++
+                     b.Property<int>("ProjectId")
+                         .HasColumnType("int");
+ 
++                    b.Property<int>("RejectCount")
++                        .HasColumnType("int");
++
+                     b.Property<string>("ReviewerId")
+                         .HasColumnType("nvarchar(450)");
+ 
+@@ -333,6 +339,10 @@ namespace DAL.Migrations
+                     b.Property<DateTime?>("EndDate")
+                         .HasColumnType("datetime2");
+ 
++                    b.Property<string>("GuidelineVersion")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
+                     b.Property<string>("ManagerId")
+                         .IsRequired()
+                         .HasColumnType("nvarchar(450)");
+@@ -347,9 +357,16 @@ namespace DAL.Migrations
+                     b.Property<int>("PenaltyUnit")
+                         .HasColumnType("int");
+ 
++                    b.Property<bool>("RequireConsensus")
++                        .HasColumnType("bit");
++
+                     b.Property<DateTime?>("StartDate")
+                         .HasColumnType("datetime2");
+ 
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .HasColumnType("nvarchar(max)");
++
+                     b.HasKey("Id");
+ 
+                     b.HasIndex("ManagerId");
+@@ -416,6 +433,9 @@ namespace DAL.Migrations
+                     b.Property<string>("ErrorCategory")
+                         .HasColumnType("nvarchar(max)");
+ 
++                    b.Property<bool>("IsApproved")
++                        .HasColumnType("bit");
++
+                     b.Property<bool>("IsAudited")
+                         .HasColumnType("bit");
+ 
+@@ -494,6 +514,9 @@ namespace DAL.Migrations
+                     b.Property<float>("EfficiencyScore")
+                         .HasColumnType("real");
+ 
++                    b.Property<bool>("IsLocked")
++                        .HasColumnType("bit");
++
+                     b.Property<int>("ProjectId")
+                         .HasColumnType("int");
+ 

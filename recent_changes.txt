@@ -1,0 +1,30 @@
+commit 48fdc39b5ac8102df19e11ca1b22c340fd99dde9
+Author: DangQuangTien <dangquangtien16102002@gmail.com>
+Date:   Thu Mar 26 23:09:39 2026 +0700
+
+    Add GetLabelsByProjectId endpoint and service
+    
+    Add a GET endpoint to LabelController to retrieve labels for a specific project (query param projectId) with basic validation and error handling. Extend ILabelService with GetLabelsByProjectIdAsync and implement it in LabelService: query labels by ProjectId, map entities to LabelResponse, and deserialize DefaultChecklist JSON into a List<string>. Also includes minor whitespace/formatting cleanups.
+
+M	API/Controllers/LabelController.cs
+M	BLL/Interfaces/ILabelService.cs
+M	BLL/Services/LabelService.cs
+
+commit 39c03ec512037d0b5c8d604282d43b50b0cc5402
+Author: DangQuangTien <dangquangtien16102002@gmail.com>
+Date:   Thu Mar 26 22:43:14 2026 +0700
+
+    Log client IP in activity logs
+    
+    Register IHttpContextAccessor and capture client IP for activity logs. Added builder.Services.AddHttpContextAccessor() in Program.cs, injected IHttpContextAccessor into ActivityLogService, read RemoteIpAddress from HttpContext (null-safe) and store it in ActivityLog.IpAddress. Also added the necessary using and updated the service constructor accordingly.
+
+M	API/Program.cs
+M	BLL/Services/ActivityLogService.cs
+
+commit 02d9c0949ffc7c650e82b52d1f9da81b40063a98
+Author: DangQuangTien <dangquangtien16102002@gmail.com>
+Date:   Thu Mar 26 22:04:20 2026 +0700
+
+    update
+
+M	BLL/Services/UserService.cs
