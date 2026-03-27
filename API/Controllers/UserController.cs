@@ -31,7 +31,7 @@ namespace API.Controllers
         /// Retrieves the profile of the currently logged-in user.
         /// </summary>
         /// <remarks>
-        /// Returns basic user information and payment details (if available).
+        /// Returns basic user information such as ID, Full Name, Email, Role, and Avatar URL.
         /// </remarks>
         /// <returns>User profile data.</returns>
         /// <response code="200">Profile retrieved successfully.</response>
@@ -65,9 +65,10 @@ namespace API.Controllers
         /// <remarks>
         /// Allows updating the full name and avatar URL.
         /// </remarks>
-        /// <param name="request">Profile update payload.</param>
+        /// <param name="request">Profile update payload containing new name and/or avatar.</param>
+        /// <returns>A success message.</returns>
         /// <response code="200">Profile updated successfully.</response>
-        /// <response code="400">Update failed.</response>
+        /// <response code="400">Update failed due to invalid data.</response>
         /// <response code="401">User is not authenticated.</response>
         [HttpPut("me")]
         [ProducesResponseType(typeof(object), 200)]
@@ -96,10 +97,11 @@ namespace API.Controllers
         /// Saves the image to the server and updates the user's AvatarUrl.
         /// </remarks>
         /// <param name="file">The image file to upload.</param>
+        /// <returns>A success message and the new Avatar URL.</returns>
         /// <response code="200">Avatar uploaded successfully.</response>
-        /// <response code="400">No file selected or invalid file.</response>
+        /// <response code="400">No file selected or invalid file format.</response>
         /// <response code="401">User is not authenticated.</response>
-        /// <response code="500">Internal server error during upload.</response>
+        /// <response code="500">Internal server error during file upload.</response>
         [HttpPost("me/avatar")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -146,6 +148,7 @@ namespace API.Controllers
         /// Changes the password of the current user.
         /// </summary>
         /// <param name="request">Payload containing the old and new passwords.</param>
+        /// <returns>A success message.</returns>
         /// <response code="200">Password changed successfully.</response>
         /// <response code="400">Password change failed (e.g., incorrect old password).</response>
         /// <response code="401">User is not authenticated.</response>
@@ -181,9 +184,10 @@ namespace API.Controllers
         /// Imports users from an uploaded Excel file.
         /// </summary>
         /// <remarks>
-        /// Admin only. Reads an .xlsx file and batch-creates user accounts.
+        /// Admin only. Reads an .xlsx file and batch-creates user accounts (Annotators and Reviewers).
         /// </remarks>
         /// <param name="file">The Excel file (.xlsx) containing user data.</param>
+        /// <returns>A summary of successful and failed imports.</returns>
         /// <response code="200">Users imported successfully.</response>
         /// <response code="400">Invalid file format or missing file.</response>
         /// <response code="401">User is not authorized.</response>
@@ -239,7 +243,10 @@ namespace API.Controllers
         /// <summary>
         /// Retrieves all users without pagination (Admin only).
         /// </summary>
-        /// <returns>A list of all users in the system.</returns>
+        /// <remarks>
+        /// This is used for extracting a full list of personnel in the system.
+        /// </remarks>
+        /// <returns>A complete list of all users.</returns>
         /// <response code="200">All users retrieved successfully.</response>
         /// <response code="401">User is not authorized.</response>
         [HttpGet("all")]
@@ -256,9 +263,11 @@ namespace API.Controllers
         /// Retrieves a paginated list of all users.
         /// </summary>
         /// <remarks>
-        /// Accessible by Admin and Manager roles.
+        /// Accessible by Admin and Manager roles. Includes statistics like total projects for each user.
         /// </remarks>
-        /// <returns>A list of all users.</returns>
+        /// <param name="page">The page number (default is 1).</param>
+        /// <param name="pageSize">The number of items per page (default is 10).</param>
+        /// <returns>A paginated list of users.</returns>
         /// <response code="200">Users retrieved successfully.</response>
         /// <response code="401">User is not authorized.</response>
         [HttpGet]
@@ -278,9 +287,11 @@ namespace API.Controllers
         /// Admin only.
         /// </remarks>
         /// <param name="request">User registration data.</param>
+        /// <returns>A success message and the newly created User ID.</returns>
         /// <response code="200">User created successfully.</response>
-        /// <response code="400">User creation failed (e.g., email already exists).</response>
+        /// <response code="400">User creation failed (e.g., invalid data).</response>
         /// <response code="401">User is not authorized.</response>
+        /// <response code="409">Email already exists.</response>
         [HttpPost]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -318,13 +329,16 @@ namespace API.Controllers
         /// Updates an existing user's details.
         /// </summary>
         /// <remarks>
-        /// Admin only.
+        /// Admin only. Allows changing name, email, role, and manager assignment.
         /// </remarks>
         /// <param name="id">The target user ID.</param>
         /// <param name="request">Update payload.</param>
+        /// <returns>A success message.</returns>
         /// <response code="200">User updated successfully.</response>
-        /// <response code="400">Update failed.</response>
+        /// <response code="400">Update failed due to validation rules or pending tasks.</response>
         /// <response code="401">User is not authorized.</response>
+        /// <response code="404">User not found.</response>
+        /// <response code="409">Email already exists.</response>
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -354,13 +368,15 @@ namespace API.Controllers
         /// Activates or deactivates a user account.
         /// </summary>
         /// <remarks>
-        /// Admin only.
+        /// Admin only. A user with pending tasks cannot be deactivated.
         /// </remarks>
         /// <param name="id">The target user ID.</param>
         /// <param name="isActive">The desired account status boolean.</param>
+        /// <returns>A success message indicating the new status.</returns>
         /// <response code="200">User status updated successfully.</response>
-        /// <response code="400">Operation failed.</response>
+        /// <response code="400">Operation failed (e.g., user has pending tasks).</response>
         /// <response code="401">User is not authorized.</response>
+        /// <response code="404">User not found.</response>
         [HttpPatch("{id}/status")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -387,12 +403,14 @@ namespace API.Controllers
         /// Deletes (deactivates) a user account.
         /// </summary>
         /// <remarks>
-        /// Admin only. This is typically a soft delete in the system.
+        /// Admin only. This is a soft delete that sets IsActive to false.
         /// </remarks>
         /// <param name="id">The target user ID.</param>
+        /// <returns>A success message.</returns>
         /// <response code="200">User deleted successfully.</response>
-        /// <response code="400">Deletion failed.</response>
+        /// <response code="400">Deletion failed (e.g., user has unfinished tasks).</response>
         /// <response code="401">User is not authorized.</response>
+        /// <response code="404">User not found.</response>
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -413,10 +431,17 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
+
         /// <summary>
-        /// Retrieves the Management Board (Admins & Managers) without pagination.
+        /// Retrieves the Management Board (Admins and Managers).
         /// </summary>
-        /// <returns>A list of management users.</returns>
+        /// <remarks>
+        /// Returns a list of users who have the role of 'Admin' or 'Manager', ordered by role.
+        /// Used for dropdowns when assigning Managers to Projects or Users.
+        /// </remarks>
+        /// <returns>A list of management personnel.</returns>
+        /// <response code="200">Management board retrieved successfully.</response>
+        /// <response code="401">User is not authorized.</response>
         [HttpGet("management-board")]
         [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(List<UserResponse>), 200)]

@@ -19,6 +19,16 @@ namespace API.Controllers
             _labelService = labelService;
         }
 
+        /// <summary>
+        /// Create a new label for a project.
+        /// </summary>
+        /// <remarks>
+        /// This API is used to create a new label. ProjectId is required.
+        /// </remarks>
+        /// <param name="request">Label information to create (Name, color, guideline, checklist...)</param>
+        /// <returns>The newly created label information.</returns>
+        /// <response code="200">Label created successfully.</response>
+        /// <response code="400">Label name already exists in the project or invalid input data.</response>
         [HttpPost]
         [ProducesResponseType(typeof(LabelResponse), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -38,6 +48,17 @@ namespace API.Controllers
             }
         }
 
+        /// <summary>
+        /// Update an existing label.
+        /// </summary>
+        /// <remarks>
+        /// **IMPORTANT NOTE FOR FE:** If the user changes the Name or Guideline of the label, 
+        /// the backend will automatically RESET all in-progress tasks that use this label.  
+        /// It is recommended that FE calls the `usage-count` API beforehand to warn users.
+        /// </remarks>
+        /// <param name="id">ID of the label to update</param>
+        /// <param name="request">Updated label information</param>
+        /// <returns>The updated label information.</returns>
         [HttpPut("{id}")]
         [ProducesResponseType(typeof(LabelResponse), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -57,6 +78,15 @@ namespace API.Controllers
             }
         }
 
+        /// <summary>
+        /// Delete a label from the project.
+        /// </summary>
+        /// <remarks>
+        /// **IMPORTANT NOTE FOR FE:** Deleting a label will cause the backend to RESET all tasks using this label.  
+        /// It is recommended that FE calls the `usage-count` API first to display a confirmation popup before deletion.
+        /// </remarks>
+        /// <param name="id">ID of the label to delete</param>
+        /// <returns>Deletion success message.</returns>
         [HttpDelete("{id}")]
         [ProducesResponseType(200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -76,6 +106,16 @@ namespace API.Controllers
             }
         }
 
+        /// <summary>
+        /// Check how many tasks are currently using a specific label.
+        /// </summary>
+        /// <remarks>
+        /// **For FE:** Call this API when the user clicks Edit/Delete.  
+        /// If `UsageCount > 0`, FE must show a warning popup:  
+        /// "This label is being used in X tasks. Editing/deleting will reset those tasks. Are you sure?"
+        /// </remarks>
+        /// <param name="id">ID of the label to check</param>
+        /// <returns>The number of tasks using the label and a corresponding message.</returns>
         [HttpGet("{id}/usage-count")]
         [Authorize(Roles = "Manager,Admin")]
         public async Task<IActionResult> GetLabelUsageCount(int id)
@@ -98,6 +138,14 @@ namespace API.Controllers
             }
         }
 
+        /// <summary>
+        /// Get all labels of a project.
+        /// </summary>
+        /// <remarks>
+        /// Returns the list of labels to be displayed in the labeling tool or label management screen.
+        /// </remarks>
+        /// <param name="projectId">Project ID to retrieve labels</param>
+        /// <returns>List of labels belonging to the project.</returns>
         [HttpGet]
         [ProducesResponseType(typeof(List<LabelResponse>), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -106,6 +154,7 @@ namespace API.Controllers
             try
             {
                 if (projectId <= 0) return BadRequest(new ErrorResponse { Message = "ProjectId is required." });
+
                 var result = await _labelService.GetLabelsByProjectIdAsync(projectId);
                 return Ok(result);
             }
