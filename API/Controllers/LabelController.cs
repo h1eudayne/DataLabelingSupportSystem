@@ -6,10 +6,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace API.Controllers
 {
-    /// <summary>
-    /// Provides APIs for managing label definitions within a project.
-    /// Labels are used by annotators during the data labeling process.
-    /// </summary>
     [Route("api/labels")]
     [ApiController]
     [Authorize]
@@ -22,52 +18,18 @@ namespace API.Controllers
         {
             _labelService = labelService;
         }
-        /// <summary>
-        /// Retrieves all labels for a specific project.
-        /// </summary>
-        [HttpGet]
-        [ProducesResponseType(typeof(List<LabelResponse>), 200)]
-        [ProducesResponseType(typeof(ErrorResponse), 400)]
-        public async Task<IActionResult> GetLabels([FromQuery] int projectId)
-        {
-            try
-            {
-                if (projectId <= 0) return BadRequest(new ErrorResponse { Message = "ProjectId is required." });
-                var result = await _labelService.GetLabelsByProjectIdAsync(projectId);
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new ErrorResponse { Message = ex.Message });
-            }
-        }
-        /// <summary>
-        /// Creates a new label within a project.
-        /// </summary>
-        /// <remarks>
-        /// This API is typically used by Managers to define the label set
-        /// before annotation begins.
-        /// </remarks>
-        /// <param name="request">
-        /// The label creation request containing:
-        /// - ProjectId
-        /// - Label name
-        /// - Description
-        /// - Optional metadata (color, shortcut, etc.)
-        /// </param>
-        /// <returns>The newly created label information.</returns>
-        /// <response code="200">Label created successfully.</response>
-        /// <response code="400">Label creation failed due to validation or business rules.</response>
-        /// <response code="401">User is not authenticated.</response>
+
         [HttpPost]
         [ProducesResponseType(typeof(LabelResponse), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
-        [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> CreateLabel([FromBody] CreateLabelRequest request)
         {
             try
             {
-                var result = await _labelService.CreateLabelAsync(request);
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+                var result = await _labelService.CreateLabelAsync(userId, request);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -76,28 +38,17 @@ namespace API.Controllers
             }
         }
 
-        /// <summary>
-        /// Updates an existing label.
-        /// </summary>
-        /// <remarks>
-        /// This operation modifies label attributes such as name or description.
-        /// Updating a label may affect existing annotations depending on project rules.
-        /// </remarks>
-        /// <param name="id">The unique identifier of the label.</param>
-        /// <param name="request">The updated label information.</param>
-        /// <returns>The updated label details.</returns>
-        /// <response code="200">Label updated successfully.</response>
-        /// <response code="400">Update failed (e.g., label not found or invalid data).</response>
-        /// <response code="401">User is not authenticated.</response>
         [HttpPut("{id}")]
         [ProducesResponseType(typeof(LabelResponse), 200)]
-        [ProducesResponseType(typeof(ErrorResponse), 400)] // Standardized ErrorResponse
-        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
         public async Task<IActionResult> UpdateLabel(int id, [FromBody] UpdateLabelRequest request)
         {
             try
             {
-                var result = await _labelService.UpdateLabelAsync(id, request);
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+                var result = await _labelService.UpdateLabelAsync(userId, id, request);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -106,27 +57,17 @@ namespace API.Controllers
             }
         }
 
-        /// <summary>
-        /// Deletes a label from the system.
-        /// </summary>
-        /// <remarks>
-        /// A label cannot be deleted if it is currently being used
-        /// in any existing annotation.
-        /// </remarks>
-        /// <param name="id">The unique identifier of the label.</param>
-        /// <returns>A confirmation message.</returns>
-        /// <response code="200">Label deleted successfully.</response>
-        /// <response code="400">Deletion failed because the label is in use or does not exist.</response>
-        /// <response code="401">User is not authenticated.</response>
         [HttpDelete("{id}")]
         [ProducesResponseType(200)]
-        [ProducesResponseType(typeof(ErrorResponse), 400)] // Standardized ErrorResponse
-        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
         public async Task<IActionResult> DeleteLabel(int id)
         {
             try
             {
-                await _labelService.DeleteLabelAsync(id);
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+                await _labelService.DeleteLabelAsync(userId, id);
                 return Ok(new { Message = "Label deleted successfully." });
             }
             catch (Exception ex)
@@ -134,9 +75,7 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        /// <summary>
-        /// Counts the number of images using this label to provide a warning before editing/deleting.
-        /// </summary>
+
         [HttpGet("{id}/usage-count")]
         [Authorize(Roles = "Manager,Admin")]
         public async Task<IActionResult> GetLabelUsageCount(int id)
@@ -152,6 +91,23 @@ namespace API.Controllers
                         ? $"Warning: This label is currently being used in {count} tasks!"
                         : "This label is not currently in use and can be modified safely."
                 });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
+        [HttpGet]
+        [ProducesResponseType(typeof(List<LabelResponse>), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        public async Task<IActionResult> GetLabels([FromQuery] int projectId)
+        {
+            try
+            {
+                if (projectId <= 0) return BadRequest(new ErrorResponse { Message = "ProjectId is required." });
+                var result = await _labelService.GetLabelsByProjectIdAsync(projectId);
+                return Ok(result);
             }
             catch (Exception ex)
             {

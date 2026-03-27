@@ -16,7 +16,7 @@ namespace BLL.Services
         private readonly IStatisticService _statisticService;
         private readonly IProjectRepository _projectRepo;
         private readonly IUserRepository _userRepo;
-        private readonly IActivityLogRepository _activityLogRepo;
+        private readonly IActivityLogService _logService; 
         private readonly IAppNotificationService _notification;
 
         public ReviewService(
@@ -27,7 +27,7 @@ namespace BLL.Services
             IProjectRepository projectRepo,
             IUserRepository userRepo,
             IAppNotificationService notification,
-            IActivityLogRepository activityLogRepo)
+            IActivityLogService logService) 
         {
             _assignmentRepo = assignmentRepo;
             _reviewLogRepo = reviewLogRepo;
@@ -35,7 +35,7 @@ namespace BLL.Services
             _statisticService = statisticService;
             _projectRepo = projectRepo;
             _userRepo = userRepo;
-            _activityLogRepo = activityLogRepo;
+            _logService = logService;
             _notification = notification;
         }
 
@@ -186,19 +186,17 @@ namespace BLL.Services
             await _reviewLogRepo.AddAsync(log);
             _assignmentRepo.Update(assignment);
 
-            var actionStr = request.IsApproved ? "approved" : "rejected";
-            await _activityLogRepo.AddAsync(new ActivityLog
-            {
-                UserId = reviewerId,
-                ActionType = request.IsApproved ? "ApproveTask" : "RejectTask",
-                EntityName = "Project",
-                EntityId = assignment.ProjectId.ToString(),
-                Description = $"Reviewer {actionStr} task {assignment.Id}.",
-                Timestamp = DateTime.UtcNow
-            });
-
             await _assignmentRepo.SaveChangesAsync();
-            await _activityLogRepo.SaveChangesAsync();
+
+            var actionStr = request.IsApproved ? "approved" : "rejected";
+            var actionType = request.IsApproved ? "ApproveTask" : "RejectTask";
+            await _logService.LogActionAsync(
+                reviewerId,
+                actionType,
+                "Project",
+                assignment.ProjectId.ToString(),
+                $"Reviewer {actionStr} task {assignment.Id}."
+            );
 
             if (request.IsApproved)
             {
@@ -230,20 +228,18 @@ namespace BLL.Services
             log.IsAudited = true;
             log.AuditResult = request.IsCorrectDecision ? "Agree" : "Disagree";
 
-            var decisionStr = request.IsCorrectDecision ? "Agreed" : "Disagreed";
-            await _activityLogRepo.AddAsync(new ActivityLog
-            {
-                UserId = managerId,
-                ActionType = "AuditReview",
-                EntityName = "Project",
-                EntityId = assignment.ProjectId.ToString(),
-                Description = $"Manager audited review {log.Id} and {decisionStr.ToLower()} with the decision.",
-                Timestamp = DateTime.UtcNow
-            });
-
             await _reviewLogRepo.SaveChangesAsync();
-            await _activityLogRepo.SaveChangesAsync();
+
+            var decisionStr = request.IsCorrectDecision ? "Agreed" : "Disagreed";
+            await _logService.LogActionAsync(
+                managerId,
+                "AuditReview",
+                "Project",
+                assignment.ProjectId.ToString(),
+                $"Manager audited review {log.Id} and {decisionStr.ToLower()} with the decision."
+            );
         }
+
         public async Task<ReviewLog> SubmitReviewAsync(string reviewerId, ReviewRequest request)
         {
             var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(request.AssignmentId);
@@ -272,7 +268,7 @@ namespace BLL.Services
                 if (assignment.RejectCount >= 3)
                 {
                     assignment.IsEscalated = true;
-                    assignment.Status = "Escalated"; 
+                    assignment.Status = "Escalated";
                 }
                 else
                 {
@@ -284,6 +280,16 @@ namespace BLL.Services
             _assignmentRepo.Update(assignment);
             await _assignmentRepo.SaveChangesAsync();
 
+            string actionStr = request.IsApproved ? "approved" : "rejected";
+            string actionType = request.IsApproved ? "ApproveTask" : "RejectTask";
+            await _logService.LogActionAsync(
+                reviewerId,
+                actionType,
+                "Assignment",
+                assignment.Id.ToString(),
+                $"Reviewer {actionStr} task {assignment.Id}."
+            );
+
             string statusStr = request.IsApproved ? "Approved" : "Rejected";
             await _notification.SendNotificationAsync(
                 assignment.AnnotatorId,
@@ -292,6 +298,7 @@ namespace BLL.Services
 
             return reviewLog;
         }
+
         public async Task<List<TaskResponse>> GetTasksForReviewAsync(int projectId, string reviewerId)
         {
             var assignments = await _assignmentRepo.GetAssignmentsForReviewerAsync(projectId, reviewerId);

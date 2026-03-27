@@ -16,6 +16,7 @@ namespace BLL.Services
         private readonly IProjectRepository _projectRepo;
         private readonly IRepository<DataItem> _dataItemRepo;
         private readonly IAppNotificationService _notification;
+        private readonly IActivityLogService _logService; 
 
         public DisputeService(
             IDisputeRepository disputeRepo,
@@ -24,7 +25,8 @@ namespace BLL.Services
             IRepository<ReviewLog> reviewLogRepo,
             IProjectRepository projectRepo,
             IAppNotificationService notification,
-            IRepository<DataItem> dataItemRepo)
+            IRepository<DataItem> dataItemRepo,
+            IActivityLogService logService) 
         {
             _disputeRepo = disputeRepo;
             _assignmentRepo = assignmentRepo;
@@ -33,11 +35,11 @@ namespace BLL.Services
             _projectRepo = projectRepo;
             _dataItemRepo = dataItemRepo;
             _notification = notification;
+            _logService = logService;
         }
 
         public async Task<DisputeResponse> CreateDisputeAsync(string annotatorId, CreateDisputeRequest request)
         {
-
             var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(request.AssignmentId);
             if (assignment == null) throw new Exception("Assignment not found");
             if (assignment.AnnotatorId != annotatorId) throw new UnauthorizedAccessException("You can only dispute your own assignments");
@@ -60,6 +62,14 @@ namespace BLL.Services
             await _disputeRepo.AddAsync(dispute);
             await _disputeRepo.SaveChangesAsync();
 
+            await _logService.LogActionAsync(
+                annotatorId,
+                "CreateDispute",
+                "Assignment",
+                assignment.Id.ToString(),
+                $"Annotator filed a dispute for Task {assignment.Id}. Reason: {request.Reason}"
+            );
+
             if (!string.IsNullOrEmpty(assignment.ReviewerId))
             {
                 await _notification.SendNotificationAsync(assignment.ReviewerId, $"A dispute has been filed for Assignment {assignment.Id}", "Warning");
@@ -74,6 +84,7 @@ namespace BLL.Services
                 CreatedAt = dispute.CreatedAt
             };
         }
+
         public async Task ResolveDisputeAsync(string managerId, ResolveDisputeRequest request)
         {
             var dispute = await _disputeRepo.GetDisputeWithDetailsAsync(request.DisputeId);
@@ -141,6 +152,15 @@ namespace BLL.Services
 
             await _disputeRepo.SaveChangesAsync();
 
+            string decision = request.IsAccepted ? "Accepted" : "Rejected";
+            await _logService.LogActionAsync(
+                managerId,
+                "ResolveDispute",
+                "Dispute",
+                dispute.Id.ToString(),
+                $"Manager {decision} dispute {dispute.Id} for Task {assignment.Id}."
+            );
+
             if (request.IsAccepted)
             {
                 await _notification.SendNotificationAsync(
@@ -173,9 +193,6 @@ namespace BLL.Services
             return disputes.Select(MapToResponse).ToList();
         }
 
-        /// <summary>
-        /// Maps a Dispute entity to a flat DisputeResponse DTO (no circular references).
-        /// </summary>
         private static DisputeResponse MapToResponse(Dispute d)
         {
             return new DisputeResponse

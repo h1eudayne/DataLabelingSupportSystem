@@ -25,6 +25,7 @@ namespace BLL.Services
             _logService = logService;
             _annotationRepo = annotationRepo;
         }
+
         public async Task<List<LabelResponse>> GetLabelsByProjectIdAsync(int projectId)
         {
             var labels = await _labelRepo.FindAsync(l => l.ProjectId == projectId);
@@ -37,17 +38,18 @@ namespace BLL.Services
                 ExampleImageUrl = l.ExampleImageUrl,
                 IsDefault = l.IsDefault,
                 Checklist = !string.IsNullOrEmpty(l.DefaultChecklist)
-                            ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(l.DefaultChecklist) ?? new List<string>()
+                            ? JsonSerializer.Deserialize<List<string>>(l.DefaultChecklist) ?? new List<string>()
                             : new List<string>()
             }).ToList();
         }
+
         public async Task<int> CheckLabelUsageAsync(int labelId)
         {
-
             var annotations = await _annotationRepo.FindAsync(a => a.ClassId == labelId);
             return annotations.Count();
         }
-        public async Task<LabelResponse> CreateLabelAsync(CreateLabelRequest request)
+
+        public async Task<LabelResponse> CreateLabelAsync(string userId, CreateLabelRequest request)
         {
             if (await _labelRepo.ExistsInProjectAsync(request.ProjectId, request.Name))
                 throw new Exception("Label name already exists in this project.");
@@ -69,8 +71,8 @@ namespace BLL.Services
             await _labelRepo.SaveChangesAsync();
 
             await _logService.LogActionAsync(
-                "System",
-                "Create",
+                userId,
+                "CreateLabel",
                 "LabelClass",
                 label.Id.ToString(),
                 $"Created label '{label.Name}' for Project {label.ProjectId}"
@@ -88,7 +90,7 @@ namespace BLL.Services
             };
         }
 
-        public async Task<LabelResponse> UpdateLabelAsync(int labelId, UpdateLabelRequest request)
+        public async Task<LabelResponse> UpdateLabelAsync(string userId, int labelId, UpdateLabelRequest request)
         {
             var label = await _labelRepo.GetByIdAsync(labelId);
             if (label == null) throw new Exception("Label not found");
@@ -112,6 +114,8 @@ namespace BLL.Services
             _labelRepo.Update(label);
             await _labelRepo.SaveChangesAsync();
 
+            await _logService.LogActionAsync(userId, "UpdateLabel", "LabelClass", label.Id.ToString(), $"Updated label '{request.Name}' in Project {label.ProjectId}");
+
             if (isCriticalChange)
             {
                 int activeTasks = await _assignmentRepo.CountActiveTasksAsync(label.ProjectId);
@@ -123,13 +127,7 @@ namespace BLL.Services
                         $"AUTO-RESET: Label '{oldName}' updated to '{request.Name}'. Please review."
                     );
 
-                    await _logService.LogActionAsync(
-                        "System",
-                        "ResetTasks",
-                        "Project",
-                        label.ProjectId.ToString(),
-                        $"Reset {activeTasks} tasks because Label '{oldName}' was updated."
-                    );
+                    await _logService.LogActionAsync(userId, "ResetTasks", "Project", label.ProjectId.ToString(), $"Reset {activeTasks} tasks because Label '{oldName}' was updated.");
                 }
             }
 
@@ -147,10 +145,11 @@ namespace BLL.Services
             };
         }
 
-        public async Task DeleteLabelAsync(int labelId)
+        public async Task DeleteLabelAsync(string userId, int labelId)
         {
             var label = await _labelRepo.GetByIdAsync(labelId);
             if (label == null) throw new Exception("Label not found");
+
             int activeTasks = await _assignmentRepo.CountActiveTasksAsync(label.ProjectId);
 
             if (activeTasks > 0)
@@ -160,17 +159,13 @@ namespace BLL.Services
                     $"AUTO-RESET: Label '{label.Name}' was deleted. Please review annotations."
                 );
 
-                await _logService.LogActionAsync(
-                    "System",
-                    "ResetTasks",
-                    "Project",
-                    label.ProjectId.ToString(),
-                    $"Reset {activeTasks} tasks because Label '{label.Name}' was deleted."
-                );
+                await _logService.LogActionAsync(userId, "ResetTasks", "Project", label.ProjectId.ToString(), $"Reset {activeTasks} tasks because Label '{label.Name}' was deleted.");
             }
 
             _labelRepo.Delete(label);
             await _labelRepo.SaveChangesAsync();
+
+            await _logService.LogActionAsync(userId, "DeleteLabel", "LabelClass", labelId.ToString(), $"Deleted label '{label.Name}' from Project {label.ProjectId}");
         }
     }
 }

@@ -16,7 +16,7 @@ namespace BLL.Services
         private readonly IStatisticService _statisticService;
         private readonly IUserRepository _userRepo;
         private readonly IProjectRepository _projectRepo;
-        private readonly IActivityLogRepository _activityLogRepo;
+        private readonly IActivityLogService _logService; 
         private readonly IAppNotificationService _notification;
 
         public TaskService(
@@ -27,7 +27,7 @@ namespace BLL.Services
             IUserRepository userRepo,
             IProjectRepository projectRepo,
             IAppNotificationService notification,
-            IActivityLogRepository activityLogRepo)
+            IActivityLogService logService) 
         {
             _assignmentRepo = assignmentRepo;
             _dataItemRepo = dataItemRepo;
@@ -35,9 +35,10 @@ namespace BLL.Services
             _statisticService = statisticService;
             _userRepo = userRepo;
             _projectRepo = projectRepo;
-            _activityLogRepo = activityLogRepo;
+            _logService = logService;
             _notification = notification;
         }
+
         public async Task AssignTeamAsync(string managerId, AssignTeamRequest request)
         {
             var project = await _projectRepo.GetByIdAsync(request.ProjectId);
@@ -101,23 +102,20 @@ namespace BLL.Services
                     newAssignments.Add(assignment);
                     await _assignmentRepo.AddAsync(assignment);
 
-                    if (totalRev > 0) revIndex++; 
+                    if (totalRev > 0) revIndex++;
                 }
             }
 
             await _assignmentRepo.SaveChangesAsync();
             await _dataItemRepo.SaveChangesAsync();
 
-            await _activityLogRepo.AddAsync(new ActivityLog
-            {
-                UserId = managerId,
-                ActionType = "AssignTeam",
-                EntityName = "Project",
-                EntityId = project.Id.ToString(),
-                Description = $"Manager assigned {dataItems.Count} tasks to EVERY annotator ({validAnnotators.Count} people). Total Assignments created: {newAssignments.Count}.",
-                Timestamp = DateTime.UtcNow
-            });
-            await _activityLogRepo.SaveChangesAsync();
+            await _logService.LogActionAsync(
+                managerId,
+                "AssignTeam",
+                "Project",
+                project.Id.ToString(),
+                $"Manager assigned {dataItems.Count} tasks to EVERY annotator ({validAnnotators.Count} people). Total Assignments created: {newAssignments.Count}."
+            );
 
             var annotatorGroups = newAssignments.GroupBy(a => a.AnnotatorId);
             foreach (var group in annotatorGroups)
@@ -141,6 +139,7 @@ namespace BLL.Services
                 }
             }
         }
+
         private int? ExtractClassIdFromJSON(string? json)
         {
             if (string.IsNullOrWhiteSpace(json)) return null;
@@ -309,6 +308,7 @@ namespace BLL.Services
                     "Info");
             }
         }
+
         public async Task<AssignmentResponse> GetAssignmentByIdAsync(int assignmentId, string userId)
         {
             var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(assignmentId);
@@ -345,6 +345,7 @@ namespace BLL.Services
                     : ""
             };
         }
+
         public async Task<AnnotatorStatsResponse> GetAnnotatorStatsAsync(string annotatorId)
         {
             return await _assignmentRepo.GetAnnotatorStatsAsync(annotatorId);
@@ -474,6 +475,14 @@ namespace BLL.Services
                 _assignmentRepo.Update(assignment);
             }
 
+            await _logService.LogActionAsync(
+                userId,
+                "SaveDraft",
+                "Assignment",
+                assignment.Id.ToString(),
+                $"Annotator saved draft for Task {assignment.Id}."
+            );
+
             await _annotationRepo.SaveChangesAsync();
             await _assignmentRepo.SaveChangesAsync();
         }
@@ -506,16 +515,13 @@ namespace BLL.Services
 
             _assignmentRepo.Update(assignment);
 
-            var log = new ActivityLog
-            {
-                UserId = userId,
-                ActionType = "SubmitTask",
-                EntityName = "Project",
-                EntityId = assignment.ProjectId.ToString(),
-                Description = $"Annotator submitted task {assignment.Id} for review.",
-                Timestamp = DateTime.UtcNow
-            };
-            await _activityLogRepo.AddAsync(log);
+            await _logService.LogActionAsync(
+                userId,
+                "SubmitTask",
+                "Assignment",
+                assignment.Id.ToString(),
+                $"Annotator submitted task {assignment.Id} for review."
+            );
 
             await _assignmentRepo.SaveChangesAsync();
 
@@ -577,18 +583,16 @@ namespace BLL.Services
 
             if (response.SuccessCount > 0)
             {
+
                 if (lastProjectId.HasValue)
                 {
-                    var log = new ActivityLog
-                    {
-                        UserId = userId,
-                        ActionType = "SubmitBatchTasks",
-                        EntityName = "Project",
-                        EntityId = lastProjectId.Value.ToString(),
-                        Description = $"Annotator batch submitted {response.SuccessCount} tasks for review.",
-                        Timestamp = DateTime.UtcNow
-                    };
-                    await _activityLogRepo.AddAsync(log);
+                    await _logService.LogActionAsync(
+                        userId,
+                        "SubmitBatchTasks",
+                        "Project",
+                        lastProjectId.Value.ToString(),
+                        $"Annotator batch submitted {response.SuccessCount} tasks for review."
+                    );
                 }
 
                 await _assignmentRepo.SaveChangesAsync();
