@@ -4,20 +4,23 @@ using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 
 namespace API.Controllers
 {
     [Route("api/auth")]
     [ApiController]
-    [AllowAnonymous]
     [Tags("1. Authentication")]
     public class AuthController : ControllerBase
     {
         private readonly IUserService _userService;
+        private readonly IActivityLogService _logService;
 
-        public AuthController(IUserService userService)
+        public AuthController(IUserService userService, IActivityLogService logService)
         {
             _userService = userService;
+            _logService = logService;
         }
 
         /// <summary>
@@ -44,6 +47,7 @@ namespace API.Controllers
         /// </response>
         /// <response code="409">Email is already in use.</response>
         [HttpPost("register")]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 409)]
@@ -83,6 +87,7 @@ namespace API.Controllers
         /// <response code="403">Account is deactivated or banned.</response>
         /// <response code="500">Internal server error.</response>
         [HttpPost("login")]
+        [AllowAnonymous]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         [ProducesResponseType(typeof(ErrorResponse), 403)]
@@ -94,6 +99,21 @@ namespace API.Controllers
                 var token = await _userService.LoginAsync(request.Email, request.Password);
                 if (token == null)
                     return Unauthorized(new ErrorResponse { Message = "Invalid email or password." });
+
+                var handler = new JwtSecurityTokenHandler();
+                var jwtToken = handler.ReadJwtToken(token);
+                var userId = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    await _logService.LogActionAsync(
+                        userId,
+                        "Login",
+                        "User",
+                        userId,
+                        "User logged into the system."
+                    );
+                }
 
                 return Ok(new
                 {
@@ -109,6 +129,50 @@ namespace API.Controllers
             catch (Exception)
             {
                 return StatusCode(500, new ErrorResponse { Message = "An error occurred during login. Please try again later." });
+            }
+        }
+
+        /// <summary>
+        /// Logs out the current user (Records action in Activity Log).
+        /// </summary>
+        /// <remarks>
+        /// **IMPORTANT FOR FRONTEND:** /// Because this system uses JWT (which is stateless), calling this API will **NOT** invalidate the token on the server side.
+        /// <br/>
+        /// This API exists purely to record a "Logout" event in the database for auditing purposes. 
+        /// <br/>
+        /// **After receiving a 200 OK from this endpoint, the frontend MUST delete the token from LocalStorage/Cookies to actually log the user out.**
+        /// </remarks>
+        /// <returns>
+        /// A message confirming the logout action was logged.
+        /// </returns>
+        /// <response code="200">Logout logged successfully. Frontend must now clear the token.</response>
+        /// <response code="401">Unauthorized. Valid JWT token is missing in the header.</response>
+        [HttpPost("logout")]
+        [Authorize]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(401)]
+        public async Task<IActionResult> Logout()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    await _logService.LogActionAsync(
+                        userId,
+                        "Logout",
+                        "User",
+                        userId,
+                        "User logged out of the system."
+                    );
+                }
+
+                return Ok(new { Message = "Logout successful. Please clear the token on the client side." });
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new ErrorResponse { Message = "An error occurred during logout." });
             }
         }
     }
