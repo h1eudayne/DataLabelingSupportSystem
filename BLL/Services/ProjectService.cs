@@ -1,36 +1,36 @@
-    using BLL.Interfaces;
-    using DAL.Interfaces;
-    using Core.Constants;
-    using Core.Entities;
-    using System.Text.Json;
-    using System.Text;
-    using Core.DTOs.Requests;
-    using Core.DTOs.Responses;
+using BLL.Interfaces;
+using DAL.Interfaces;
+using Core.Constants;
+using Core.Entities;
+using System.Text.Json;
+using System.Text;
+using Core.DTOs.Requests;
+using Core.DTOs.Responses;
 
-
-    namespace BLL.Services
+namespace BLL.Services
+{
+    public class ProjectService : IProjectService
     {
-        public class ProjectService : IProjectService
-        {
-            private readonly IProjectRepository _projectRepository;
-            private readonly IUserRepository _userRepository;
-            private readonly IRepository<UserProjectStat> _statsRepo;
-            private readonly IAssignmentRepository _assignmentRepo;
-            private readonly IActivityLogRepository _activityLogRepo;
+        private readonly IProjectRepository _projectRepository;
+        private readonly IUserRepository _userRepository;
+        private readonly IRepository<UserProjectStat> _statsRepo;
+        private readonly IAssignmentRepository _assignmentRepo;
+        private readonly IActivityLogService _logService; 
 
-            public ProjectService(
-                IProjectRepository projectRepository,
-                IUserRepository userRepository,
-                IRepository<UserProjectStat> statsRepo,
-                IAssignmentRepository assignmentRepo,
-                IActivityLogRepository activityLogRepo)
-            {
-                _projectRepository = projectRepository;
-                _userRepository = userRepository;
-                _statsRepo = statsRepo;
-                _assignmentRepo = assignmentRepo;
-                _activityLogRepo = activityLogRepo;
-            }
+        public ProjectService(
+            IProjectRepository projectRepository,
+            IUserRepository userRepository,
+            IRepository<UserProjectStat> statsRepo,
+            IAssignmentRepository assignmentRepo,
+            IActivityLogService logService) 
+        {
+            _projectRepository = projectRepository;
+            _userRepository = userRepository;
+            _statsRepo = statsRepo;
+            _assignmentRepo = assignmentRepo;
+            _logService = logService;
+        }
+
         public async Task<object> GetUserProjectsByUserIdAsync(string userId)
         {
             var user = await _userRepository.GetByIdAsync(userId);
@@ -44,42 +44,43 @@
                 return await GetAssignedProjectsAsync(userId);
             }
         }
+
         public async Task<int> UploadDirectDataItemsAsync(int projectId, List<Microsoft.AspNetCore.Http.IFormFile> files, string webRootPath)
+        {
+            var project = await _projectRepository.GetByIdAsync(projectId);
+            if (project == null) throw new Exception("Project not found");
+
+            if (files == null || !files.Any()) throw new Exception("No files provided.");
+
+            var uploadFolder = Path.Combine(webRootPath, "uploads", projectId.ToString());
+            if (!Directory.Exists(uploadFolder))
             {
-                var project = await _projectRepository.GetByIdAsync(projectId);
-                if (project == null) throw new Exception("Project not found");
-
-                if (files == null || !files.Any()) throw new Exception("No files provided.");
-
-                var uploadFolder = Path.Combine(webRootPath, "uploads", projectId.ToString());
-                if (!Directory.Exists(uploadFolder))
-                {
-                    Directory.CreateDirectory(uploadFolder);
-                }
-
-                var storageUrls = new List<string>();
-
-                foreach (var file in files)
-                {
-                    if (file.Length > 0)
-                    {
-                        var fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
-                        var filePath = Path.Combine(uploadFolder, fileName);
-
-                        using (var stream = new FileStream(filePath, FileMode.Create))
-                        {
-                            await file.CopyToAsync(stream);
-                        }
-
-                        var fileUrl = $"/uploads/{projectId}/{fileName}";
-                        storageUrls.Add(fileUrl);
-                    }
-                }
-
-                await ImportDataItemsAsync(projectId, storageUrls);
-
-                return storageUrls.Count;
+                Directory.CreateDirectory(uploadFolder);
             }
+
+            var storageUrls = new List<string>();
+
+            foreach (var file in files)
+            {
+                if (file.Length > 0)
+                {
+                    var fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
+                    var filePath = Path.Combine(uploadFolder, fileName);
+
+                    using (var stream = new FileStream(filePath, FileMode.Create))
+                    {
+                        await file.CopyToAsync(stream);
+                    }
+
+                    var fileUrl = $"/uploads/{projectId}/{fileName}";
+                    storageUrls.Add(fileUrl);
+                }
+            }
+
+            await ImportDataItemsAsync(projectId, storageUrls);
+
+            return storageUrls.Count;
+        }
 
         public async Task<ProjectDetailResponse> CreateProjectAsync(string managerId, CreateProjectRequest request)
         {
@@ -142,16 +143,13 @@
             await _projectRepository.AddAsync(project);
             await _projectRepository.SaveChangesAsync();
 
-            await _activityLogRepo.AddAsync(new ActivityLog
-            {
-                UserId = managerId,
-                ActionType = "CreateProject",
-                EntityName = "Project",
-                EntityId = project.Id.ToString(),
-                Description = $"Created a new project: {project.Name}",
-                Timestamp = DateTime.UtcNow
-            });
-            await _activityLogRepo.SaveChangesAsync();
+            await _logService.LogActionAsync(
+                managerId,
+                "CreateProject",
+                "Project",
+                project.Id.ToString(),
+                $"Created a new project: {project.Name}"
+            );
 
             return new ProjectDetailResponse
             {
@@ -230,167 +228,162 @@
             _projectRepository.Update(project);
             await _projectRepository.SaveChangesAsync();
 
-            await _activityLogRepo.AddAsync(new ActivityLog
-            {
-                UserId = project.ManagerId,
-                ActionType = "UpdateProject",
-                EntityName = "Project",
-                EntityId = project.Id.ToString(),
-                Description = $"Updated project details: {project.Name}",
-                Timestamp = DateTime.UtcNow
-            });
-            await _activityLogRepo.SaveChangesAsync();
+            await _logService.LogActionAsync(
+                project.ManagerId,
+                "UpdateProject",
+                "Project",
+                project.Id.ToString(),
+                $"Updated project details: {project.Name}"
+            );
         }
+
         public async Task<List<AnnotatorProjectStatsResponse>> GetAssignedProjectsAsync(string annotatorId)
+        {
+            var projects = await _projectRepository.GetProjectsByAnnotatorAsync(annotatorId);
+            var result = new List<AnnotatorProjectStatsResponse>();
+
+            foreach (var p in projects)
             {
-                var projects = await _projectRepository.GetProjectsByAnnotatorAsync(annotatorId);
-                var result = new List<AnnotatorProjectStatsResponse>();
-
-                foreach (var p in projects)
-                {
-                    var myAssignments = p.DataItems
-                        .SelectMany(d => d.Assignments)
-                        .Where(a => a.AnnotatorId == annotatorId)
-                        .ToList();
-                    var total = myAssignments.Count;
-                    var completed = myAssignments.Count(a => a.Status == TaskStatusConstants.Submitted || a.Status == TaskStatusConstants.Approved);
-                    var nextTask = myAssignments
-                        .OrderByDescending(a => a.Status == TaskStatusConstants.InProgress)
-                        .ThenByDescending(a => a.Status == TaskStatusConstants.Rejected)
-                        .ThenByDescending(a => a.Status == TaskStatusConstants.Assigned)
-                        .FirstOrDefault(a => a.Status == TaskStatusConstants.InProgress || a.Status == TaskStatusConstants.Rejected || a.Status == TaskStatusConstants.Assigned);
-
-                    string status = "Active";
-                    if (DateTime.UtcNow > p.Deadline) status = "Expired";
-                    else if (total > 0 && total == completed) status = "Completed";
-
-                    result.Add(new AnnotatorProjectStatsResponse
-                    {
-                        ProjectId = p.Id,
-                        ProjectName = p.Name,
-                        TotalImages = total,
-                        CompletedImages = completed,
-                        Status = status,
-                        Deadline = p.Deadline,
-                        AssignmentId = nextTask?.Id
-                    });
-                }
-
-                return result;
-            }
-
-            public async Task ImportDataItemsAsync(int projectId, List<string> storageUrls)
-            {
-                var project = await _projectRepository.GetByIdAsync(projectId);
-                if (project == null) throw new Exception("Project not found");
-                int currentTotalItems = project.DataItems.Count;
-                int bucketSize = 50;
-                foreach (var url in storageUrls)
-                {
-                    currentTotalItems++;
-                    int bucketId = (currentTotalItems - 1) / bucketSize + 1;
-
-                    var dataItem = new DataItem
-                    {
-                        ProjectId = projectId,
-                        StorageUrl = url,
-                        UploadedDate = DateTime.UtcNow,
-                        Status = TaskStatusConstants.New,
-                        BucketId = bucketId,
-                        MetaData = "{}",
-                        Assignments = new List<Assignment>()
-                    };
-                    project.DataItems.Add(dataItem);
-                }
-                await _projectRepository.SaveChangesAsync();
-
-                await _activityLogRepo.AddAsync(new ActivityLog
-                {
-                    UserId = project.ManagerId,
-                    ActionType = "ImportData",
-                    EntityName = "Project",
-                    EntityId = project.Id.ToString(),
-                    Description = $"Imported {storageUrls.Count} data items into project {project.Name}",
-                    Timestamp = DateTime.UtcNow
-                });
-                await _activityLogRepo.SaveChangesAsync();
-            }
-
-            public async Task<ProjectDetailResponse?> GetProjectDetailsAsync(int projectId)
-            {
-                var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
-                if (project == null) return null;
-
-                var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
-                int total = project.DataItems.Count;
-                int done = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
-                int progressPercent = (total > 0) ? (int)((double)done / total * 100) : 0;
-
-                var annotators = allAssignments
-                    .Where(a => a.Annotator != null)
-                    .GroupBy(a => a.AnnotatorId)
-                    .Select(g => new MemberResponse
-                    {
-                        Id = g.Key,
-                        FullName = g.First().Annotator.FullName ?? g.First().Annotator.Email,
-                        Email = g.First().Annotator.Email,
-                        Role = g.First().Annotator.Role,
-                        TasksAssigned = g.Count(),
-                        TasksCompleted = g.Count(a => a.Status == TaskStatusConstants.Approved),
-                        Progress = g.Count() > 0
-                            ? Math.Round((decimal)g.Count(a => a.Status == TaskStatusConstants.Approved) / g.Count() * 100, 2)
-                            : 0
-                    }).ToList();
-
-                var reviewers = allAssignments
-                    .Where(a => a.Reviewer != null)
-                    .GroupBy(a => a.ReviewerId)
-                    .Select(g => new MemberResponse
-                    {
-                        Id = g.Key!,
-                        FullName = g.First().Reviewer!.FullName ?? g.First().Reviewer!.Email,
-                        Email = g.First().Reviewer!.Email,
-                        Role = g.First().Reviewer!.Role,
-                        TasksAssigned = g.Count(),
-                        TasksCompleted = g.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected),
-                        Progress = g.Count() > 0
-                            ? Math.Round((decimal)g.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected) / g.Count() * 100, 2)
-                            : 0
-                    }).ToList();
-
-                var members = annotators.Concat(reviewers)
-                    .GroupBy(m => m.Id)
-                    .Select(g => g.First())
+                var myAssignments = p.DataItems
+                    .SelectMany(d => d.Assignments)
+                    .Where(a => a.AnnotatorId == annotatorId)
                     .ToList();
+                var total = myAssignments.Count;
+                var completed = myAssignments.Count(a => a.Status == TaskStatusConstants.Submitted || a.Status == TaskStatusConstants.Approved);
+                var nextTask = myAssignments
+                    .OrderByDescending(a => a.Status == TaskStatusConstants.InProgress)
+                    .ThenByDescending(a => a.Status == TaskStatusConstants.Rejected)
+                    .ThenByDescending(a => a.Status == TaskStatusConstants.Assigned)
+                    .FirstOrDefault(a => a.Status == TaskStatusConstants.InProgress || a.Status == TaskStatusConstants.Rejected || a.Status == TaskStatusConstants.Assigned);
 
-                return new ProjectDetailResponse
+                string status = "Active";
+                if (DateTime.UtcNow > p.Deadline) status = "Expired";
+                else if (total > 0 && total == completed) status = "Completed";
+
+                result.Add(new AnnotatorProjectStatsResponse
                 {
-                    Id = project.Id,
-                    Name = project.Name,
-                    Description = project.Description,
-                    Deadline = project.Deadline,
-                    AllowGeometryTypes = project.AllowGeometryTypes,
-                    ManagerId = project.ManagerId,
-                    ManagerName = project.Manager?.FullName ?? "Unknown",
-                    ManagerEmail = project.Manager?.Email ?? "",
-                    Labels = project.LabelClasses.Select(l => new LabelResponse
-                    {
-                        Id = l.Id,
-                        Name = l.Name,
-                        Color = l.Color,
-                        GuideLine = l.GuideLine,
-                        ExampleImageUrl = l.ExampleImageUrl,
-                        IsDefault = l.IsDefault,
-                        Checklist = !string.IsNullOrEmpty(l.DefaultChecklist)
-                                    ? JsonSerializer.Deserialize<List<string>>(l.DefaultChecklist, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<string>()
-                                    : new List<string>()
-                    }).ToList(),
-                    TotalDataItems = total,
-                    ProcessedItems = done,
-                    Progress = progressPercent,
-                    Members = members
-                };
+                    ProjectId = p.Id,
+                    ProjectName = p.Name,
+                    TotalImages = total,
+                    CompletedImages = completed,
+                    Status = status,
+                    Deadline = p.Deadline,
+                    AssignmentId = nextTask?.Id
+                });
             }
+
+            return result;
+        }
+
+        public async Task ImportDataItemsAsync(int projectId, List<string> storageUrls)
+        {
+            var project = await _projectRepository.GetByIdAsync(projectId);
+            if (project == null) throw new Exception("Project not found");
+            int currentTotalItems = project.DataItems.Count;
+            int bucketSize = 50;
+            foreach (var url in storageUrls)
+            {
+                currentTotalItems++;
+                int bucketId = (currentTotalItems - 1) / bucketSize + 1;
+
+                var dataItem = new DataItem
+                {
+                    ProjectId = projectId,
+                    StorageUrl = url,
+                    UploadedDate = DateTime.UtcNow,
+                    Status = TaskStatusConstants.New,
+                    BucketId = bucketId,
+                    MetaData = "{}",
+                    Assignments = new List<Assignment>()
+                };
+                project.DataItems.Add(dataItem);
+            }
+            await _projectRepository.SaveChangesAsync();
+
+            await _logService.LogActionAsync(
+                project.ManagerId,
+                "ImportData",
+                "Project",
+                project.Id.ToString(),
+                $"Imported {storageUrls.Count} data items into project {project.Name}"
+            );
+        }
+
+        public async Task<ProjectDetailResponse?> GetProjectDetailsAsync(int projectId)
+        {
+            var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
+            if (project == null) return null;
+
+            var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
+            int total = project.DataItems.Count;
+            int done = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
+            int progressPercent = (total > 0) ? (int)((double)done / total * 100) : 0;
+
+            var annotators = allAssignments
+                .Where(a => a.Annotator != null)
+                .GroupBy(a => a.AnnotatorId)
+                .Select(g => new MemberResponse
+                {
+                    Id = g.Key,
+                    FullName = g.First().Annotator.FullName ?? g.First().Annotator.Email,
+                    Email = g.First().Annotator.Email,
+                    Role = g.First().Annotator.Role,
+                    TasksAssigned = g.Count(),
+                    TasksCompleted = g.Count(a => a.Status == TaskStatusConstants.Approved),
+                    Progress = g.Count() > 0
+                        ? Math.Round((decimal)g.Count(a => a.Status == TaskStatusConstants.Approved) / g.Count() * 100, 2)
+                        : 0
+                }).ToList();
+
+            var reviewers = allAssignments
+                .Where(a => a.Reviewer != null)
+                .GroupBy(a => a.ReviewerId)
+                .Select(g => new MemberResponse
+                {
+                    Id = g.Key!,
+                    FullName = g.First().Reviewer!.FullName ?? g.First().Reviewer!.Email,
+                    Email = g.First().Reviewer!.Email,
+                    Role = g.First().Reviewer!.Role,
+                    TasksAssigned = g.Count(),
+                    TasksCompleted = g.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected),
+                    Progress = g.Count() > 0
+                        ? Math.Round((decimal)g.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected) / g.Count() * 100, 2)
+                        : 0
+                }).ToList();
+
+            var members = annotators.Concat(reviewers)
+                .GroupBy(m => m.Id)
+                .Select(g => g.First())
+                .ToList();
+
+            return new ProjectDetailResponse
+            {
+                Id = project.Id,
+                Name = project.Name,
+                Description = project.Description,
+                Deadline = project.Deadline,
+                AllowGeometryTypes = project.AllowGeometryTypes,
+                ManagerId = project.ManagerId,
+                ManagerName = project.Manager?.FullName ?? "Unknown",
+                ManagerEmail = project.Manager?.Email ?? "",
+                Labels = project.LabelClasses.Select(l => new LabelResponse
+                {
+                    Id = l.Id,
+                    Name = l.Name,
+                    Color = l.Color,
+                    GuideLine = l.GuideLine,
+                    ExampleImageUrl = l.ExampleImageUrl,
+                    IsDefault = l.IsDefault,
+                    Checklist = !string.IsNullOrEmpty(l.DefaultChecklist)
+                                ? JsonSerializer.Deserialize<List<string>>(l.DefaultChecklist, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<string>()
+                                : new List<string>()
+                }).ToList(),
+                TotalDataItems = total,
+                ProcessedItems = done,
+                Progress = progressPercent,
+                Members = members
+            };
+        }
 
         public async Task<List<ProjectSummaryResponse>> GetProjectsByManagerAsync(string managerId)
         {
@@ -437,251 +430,245 @@
                 };
             }).ToList();
         }
+
         public async Task DeleteProjectAsync(int projectId)
-            {
-                var project = await _projectRepository.GetByIdAsync(projectId);
-                if (project == null) throw new Exception("Project not found");
+        {
+            var project = await _projectRepository.GetByIdAsync(projectId);
+            if (project == null) throw new Exception("Project not found");
 
-                var managerId = project.ManagerId;
-                var projectName = project.Name;
+            var managerId = project.ManagerId;
+            var projectName = project.Name;
 
-                _projectRepository.Delete(project);
-                await _projectRepository.SaveChangesAsync();
+            _projectRepository.Delete(project);
+            await _projectRepository.SaveChangesAsync();
 
-                await _activityLogRepo.AddAsync(new ActivityLog
+            await _logService.LogActionAsync(
+                managerId,
+                "DeleteProject",
+                "Project",
+                projectId.ToString(),
+                $"Deleted project: {projectName}"
+            );
+        }
+
+        public async Task<byte[]> ExportProjectDataAsync(int projectId, string userId)
+        {
+            var project = await _projectRepository.GetProjectForExportAsync(projectId);
+            if (project == null) throw new Exception("Project not found");
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null) throw new Exception("User not found");
+            if (user.Role != UserRoles.Admin && project.ManagerId != userId)
+                throw new Exception("Unauthorized to export this project.");
+
+            var dataItems = project.DataItems
+                .Select(d => new
                 {
-                    UserId = managerId,
-                    ActionType = "DeleteProject",
-                    EntityName = "Project",
-                    EntityId = projectId.ToString(),
-                    Description = $"Deleted project: {projectName}",
-                    Timestamp = DateTime.UtcNow
-                });
-                await _activityLogRepo.SaveChangesAsync();
-            }
-
-            public async Task<byte[]> ExportProjectDataAsync(int projectId, string userId)
-            {
-                var project = await _projectRepository.GetProjectForExportAsync(projectId);
-                if (project == null) throw new Exception("Project not found");
-                var user = await _userRepository.GetByIdAsync(userId);
-                if (user == null) throw new Exception("User not found");
-                if (user.Role != UserRoles.Admin && project.ManagerId != userId)
-                    throw new Exception("Unauthorized to export this project.");
-
-                var dataItems = project.DataItems
-                    .Select(d => new
+                    DataItemId = d.Id,
+                    StorageUrl = d.StorageUrl,
+                    ItemStatus = d.Status,
+                    Assignments = d.Assignments.Select(a => new
                     {
-                        DataItemId = d.Id,
-                        StorageUrl = d.StorageUrl,
-                        ItemStatus = d.Status,
-                        Assignments = d.Assignments.Select(a => new
-                        {
-                            AssignmentId = a.Id,
-                            Annotator = a.Annotator?.Email ?? "Unknown",
-                            Reviewer = a.Reviewer?.Email ?? "None",
-                            TaskStatus = a.Status,
-                            AssignedDate = a.AssignedDate,
-                            SubmittedAt = a.SubmittedAt,
-                            ReviewComment = a.ReviewLogs?
-                                .OrderByDescending(r => r.CreatedAt)
-                                .FirstOrDefault()?.Comment,
-                            Annotation = a.Annotations?
-                                .OrderByDescending(an => an.CreatedAt)
-                                .Select(an => new
-                                {
-                                    ClassId = an.ClassId,
-                                    ClassName = an.ClassId.HasValue
-                                        ? project.LabelClasses.FirstOrDefault(l => l.Id == an.ClassId)?.Name
-                                        : "See DataJSON",
-                                    Data = !string.IsNullOrEmpty(an.DataJSON)
-                                        ? JsonDocument.Parse(an.DataJSON).RootElement
-                                        : (!string.IsNullOrEmpty(an.Value) ? JsonDocument.Parse(an.Value).RootElement : default)
-                                }).FirstOrDefault()
-                        }).ToList()
-                    })
-                    .ToList();
-
-                int totalItems = project.DataItems.Count;
-                int completedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
-                double progressPercent = totalItems > 0 ? Math.Round((double)completedItems / totalItems * 100, 2) : 0;
-                string currentStatus = DateTime.UtcNow > project.Deadline ? "Expired" : (totalItems > 0 && totalItems == completedItems ? "Completed" : "Active");
-
-                var projectMembers = project.DataItems
-                    .SelectMany(d => d.Assignments)
-                    .Where(a => a.Annotator != null)
-                    .Select(a => new { UserId = a.AnnotatorId, Role = a.Annotator.Role, Email = a.Annotator.Email })
-                    .Distinct()
-                    .ToList();
-
-                var exportData = new
-                {
-                    ProjectId = project.Id,
-                    ProjectName = project.Name,
-                    ExportedAt = DateTime.UtcNow,
-                    Description = project.Description,
-                    Status = currentStatus,
-                    Deadline = project.Deadline,
-                    Progress = progressPercent,
-                    TotalDataItems = totalItems,
-                    Labels = project.LabelClasses.Select(l => new { l.Id, l.Name, l.Color }),
-                    Members = projectMembers,
-                    TotalImages = dataItems.Count,
-                    Data = dataItems
-                };
-
-                var json = JsonSerializer.Serialize(exportData, new JsonSerializerOptions { WriteIndented = true });
-
-                await _activityLogRepo.AddAsync(new ActivityLog
-                {
-                    UserId = userId,
-                    ActionType = "ExportProject",
-                    EntityName = "Project",
-                    EntityId = projectId.ToString(),
-                    Description = $"Exported data for project: {project.Name}",
-                    Timestamp = DateTime.UtcNow
-                });
-                await _activityLogRepo.SaveChangesAsync();
-
-                return Encoding.UTF8.GetBytes(json);
-            }
-
-            public async Task<ProjectStatisticsResponse> GetProjectStatisticsAsync(int projectId)
-            {
-                var project = await _projectRepository.GetProjectWithStatsDataAsync(projectId);
-                if (project == null) throw new Exception("Project not found");
-
-                var allStats = await _statsRepo.GetAllAsync();
-                var projectUserStats = allStats.Where(s => s.ProjectId == projectId).ToList();
-
-                var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
-                var allReviewLogs = allAssignments.SelectMany(a => a.ReviewLogs ?? new List<ReviewLog>()).ToList();
-                var totalReviewed = allReviewLogs.Count;
-                var totalRejectedLogs = allReviewLogs.Count(l => l.Verdict == "Rejected" || l.Verdict == "Reject");
-
-                var totalFirstPassCorrect = projectUserStats
-                    .Where(s => s.TotalFirstPassCorrect > 0)
-                    .Sum(s => s.TotalFirstPassCorrect);
-                var totalItems = project.DataItems.Count;
-                double projectAccuracy = totalItems > 0
-                    ? Math.Round((double)totalFirstPassCorrect / totalItems * 100, 2)
-                    : 0;
-
-                var stats = new ProjectStatisticsResponse
-                {
-                    ProjectId = project.Id,
-                    ProjectName = project.Name,
-                    TotalItems = project.DataItems.Count,
-                    CompletedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved),
-                    TotalAssignments = allAssignments.Count,
-                    PendingAssignments = project.DataItems.Count(d => d.Status == TaskStatusConstants.New) +
-                                     allAssignments.Count(a => a.Status == TaskStatusConstants.New || a.Status == TaskStatusConstants.Assigned || a.Status == TaskStatusConstants.InProgress),
-                    SubmittedAssignments = allAssignments.Count(a => a.Status == TaskStatusConstants.Submitted),
-                    ApprovedAssignments = allAssignments.Count(a => a.Status == TaskStatusConstants.Approved),
-                    RejectedAssignments = allAssignments.Count(a => a.Status == TaskStatusConstants.Rejected),
-                    RejectionRate = totalReviewed > 0
-                        ? Math.Round((double)totalRejectedLogs / totalReviewed * 100, 2)
-                        : 0,
-                    ErrorBreakdown = allReviewLogs
-                        .Where(l => (l.Verdict == "Rejected" || l.Verdict == "Reject") && !string.IsNullOrEmpty(l.ErrorCategory))
-                        .GroupBy(l => l.ErrorCategory!)
-                        .ToDictionary(g => g.Key, g => g.Count()),
-                    ProjectAccuracy = projectAccuracy
-                };
-
-                if (stats.TotalItems > 0)
-                {
-                    stats.ProgressPercentage = Math.Round((decimal)stats.CompletedItems / stats.TotalItems * 100, 2);
-                }
-
-                stats.AnnotatorPerformances = allAssignments
-                    .GroupBy(a => a.AnnotatorId)
-                    .Select(g =>
-                    {
-                        var annotatorId = g.Key;
-                        var userStat = projectUserStats.FirstOrDefault(s => s.UserId == annotatorId);
-                        double annotatorAccuracy = 0;
-                        if (userStat != null && userStat.TotalManagerDecisions > 0)
-                        {
-                            annotatorAccuracy = Math.Round((double)userStat.TotalCorrectByManager / userStat.TotalManagerDecisions * 100, 2);
-                        }
-                        else
-                        {
-                            var assignmentIds = g.Select(a => a.Id).ToHashSet();
-                            var logsForAnnotator = allReviewLogs.Where(rl => assignmentIds.Contains(rl.AssignmentId)).ToList();
-                            if (logsForAnnotator.Count > 0)
+                        AssignmentId = a.Id,
+                        Annotator = a.Annotator?.Email ?? "Unknown",
+                        Reviewer = a.Reviewer?.Email ?? "None",
+                        TaskStatus = a.Status,
+                        AssignedDate = a.AssignedDate,
+                        SubmittedAt = a.SubmittedAt,
+                        ReviewComment = a.ReviewLogs?
+                            .OrderByDescending(r => r.CreatedAt)
+                            .FirstOrDefault()?.Comment,
+                        Annotation = a.Annotations?
+                            .OrderByDescending(an => an.CreatedAt)
+                            .Select(an => new
                             {
-                                var approvedLogs = logsForAnnotator.Count(rl => rl.Verdict == "Approved" || rl.Verdict == "Approve");
-                                annotatorAccuracy = Math.Round((double)approvedLogs / logsForAnnotator.Count * 100, 2);
-                            }
-                        }
+                                ClassId = an.ClassId,
+                                ClassName = an.ClassId.HasValue
+                                    ? project.LabelClasses.FirstOrDefault(l => l.Id == an.ClassId)?.Name
+                                    : "See DataJSON",
+                                Data = !string.IsNullOrEmpty(an.DataJSON)
+                                    ? JsonDocument.Parse(an.DataJSON).RootElement
+                                    : (!string.IsNullOrEmpty(an.Value) ? JsonDocument.Parse(an.Value).RootElement : default)
+                            }).FirstOrDefault()
+                    }).ToList()
+                })
+                .ToList();
 
-                        return new AnnotatorPerformance
-                        {
-                            AnnotatorId = annotatorId,
-                            AnnotatorName = g.FirstOrDefault()?.Annotator?.FullName ?? "Unknown",
-                            TasksAssigned = g.Count(),
-                            TasksCompleted = g.Count(a => a.Status == TaskStatusConstants.Approved),
-                            TasksRejected = g.Count(a => a.Status == TaskStatusConstants.Rejected),
-                            AverageDurationSeconds = 0,
-                            AverageQualityScore = userStat?.AverageQualityScore ?? 100,
-                            TotalCriticalErrors = userStat?.TotalCriticalErrors ?? 0,
-                            AnnotatorAccuracy = annotatorAccuracy
-                        };
-                    }).ToList();
+            int totalItems = project.DataItems.Count;
+            int completedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
+            double progressPercent = totalItems > 0 ? Math.Round((double)completedItems / totalItems * 100, 2) : 0;
+            string currentStatus = DateTime.UtcNow > project.Deadline ? "Expired" : (totalItems > 0 && totalItems == completedItems ? "Completed" : "Active");
 
+            var projectMembers = project.DataItems
+                .SelectMany(d => d.Assignments)
+                .Where(a => a.Annotator != null)
+                .Select(a => new { UserId = a.AnnotatorId, Role = a.Annotator.Role, Email = a.Annotator.Email })
+                .Distinct()
+                .ToList();
 
-                var reviewerIds = allAssignments
-                    .Where(a => !string.IsNullOrEmpty(a.ReviewerId))
-                    .Select(a => a.ReviewerId!)
-                    .Distinct()
-                    .ToList();
+            var exportData = new
+            {
+                ProjectId = project.Id,
+                ProjectName = project.Name,
+                ExportedAt = DateTime.UtcNow,
+                Description = project.Description,
+                Status = currentStatus,
+                Deadline = project.Deadline,
+                Progress = progressPercent,
+                TotalDataItems = totalItems,
+                Labels = project.LabelClasses.Select(l => new { l.Id, l.Name, l.Color }),
+                Members = projectMembers,
+                TotalImages = dataItems.Count,
+                Data = dataItems
+            };
 
-                var reviewLogsByReviewer = allReviewLogs
-                    .Where(rl => !string.IsNullOrEmpty(rl.ReviewerId))
-                    .GroupBy(rl => rl.ReviewerId!)
-                    .ToDictionary(g => g.Key, g => g.Count());
+            var json = JsonSerializer.Serialize(exportData, new JsonSerializerOptions { WriteIndented = true });
 
-                stats.ReviewerPerformances = reviewerIds.Select(reviewerId =>
+            await _logService.LogActionAsync(
+                userId,
+                "ExportProject",
+                "Project",
+                projectId.ToString(),
+                $"Exported data for project: {project.Name}"
+            );
+
+            return Encoding.UTF8.GetBytes(json);
+        }
+
+        public async Task<ProjectStatisticsResponse> GetProjectStatisticsAsync(int projectId)
+        {
+            var project = await _projectRepository.GetProjectWithStatsDataAsync(projectId);
+            if (project == null) throw new Exception("Project not found");
+
+            var projectUserStats = (await _statsRepo.FindAsync(s => s.ProjectId == projectId)).ToList();
+
+            var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
+            var allReviewLogs = allAssignments.SelectMany(a => a.ReviewLogs ?? new List<ReviewLog>()).ToList();
+            var totalReviewed = allReviewLogs.Count;
+            var totalRejectedLogs = allReviewLogs.Count(l => l.Verdict == "Rejected" || l.Verdict == "Reject");
+
+            var totalFirstPassCorrect = projectUserStats
+                .Where(s => s.TotalFirstPassCorrect > 0)
+                .Sum(s => s.TotalFirstPassCorrect);
+            var totalItems = project.DataItems.Count;
+            double projectAccuracy = totalItems > 0
+                ? Math.Round((double)totalFirstPassCorrect / totalItems * 100, 2)
+                : 0;
+
+            var stats = new ProjectStatisticsResponse
+            {
+                ProjectId = project.Id,
+                ProjectName = project.Name,
+                TotalItems = project.DataItems.Count,
+                CompletedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved),
+                TotalAssignments = allAssignments.Count,
+                PendingAssignments = project.DataItems.Count(d => d.Status == TaskStatusConstants.New) +
+                                     allAssignments.Count(a => a.Status == TaskStatusConstants.New || a.Status == TaskStatusConstants.Assigned || a.Status == TaskStatusConstants.InProgress),
+                SubmittedAssignments = allAssignments.Count(a => a.Status == TaskStatusConstants.Submitted),
+                ApprovedAssignments = allAssignments.Count(a => a.Status == TaskStatusConstants.Approved),
+                RejectedAssignments = allAssignments.Count(a => a.Status == TaskStatusConstants.Rejected),
+                RejectionRate = totalReviewed > 0
+                    ? Math.Round((double)totalRejectedLogs / totalReviewed * 100, 2)
+                    : 0,
+                ErrorBreakdown = allReviewLogs
+                    .Where(l => (l.Verdict == "Rejected" || l.Verdict == "Reject") && !string.IsNullOrEmpty(l.ErrorCategory))
+                    .GroupBy(l => l.ErrorCategory!)
+                    .ToDictionary(g => g.Key, g => g.Count()),
+                ProjectAccuracy = projectAccuracy
+            };
+
+            if (stats.TotalItems > 0)
+            {
+                stats.ProgressPercentage = Math.Round((decimal)stats.CompletedItems / stats.TotalItems * 100, 2);
+            }
+
+            stats.AnnotatorPerformances = allAssignments
+                .GroupBy(a => a.AnnotatorId)
+                .Select(g =>
                 {
-                    var reviewerStat = projectUserStats.FirstOrDefault(s => s.UserId == reviewerId);
-                    var reviewer = allAssignments.FirstOrDefault(a => a.ReviewerId == reviewerId)?.Reviewer;
-                    int statReviewsDone = reviewerStat?.TotalReviewsDone ?? 0;
-                    int logReviewsDone = reviewLogsByReviewer.ContainsKey(reviewerId) ? reviewLogsByReviewer[reviewerId] : 0;
-                    int totalReviewsDone = Math.Max(statReviewsDone, logReviewsDone);
-                    int correctDecisions = reviewerStat?.TotalReviewerCorrectByManager ?? 0;
-                    int totalMgrDecisions = reviewerStat?.TotalReviewerManagerDecisions ?? 0;
-                    double reviewerAccuracy = totalMgrDecisions > 0
-                        ? Math.Round((double)correctDecisions / totalMgrDecisions * 100, 2)
-                        : 0;
-
-                    return new ReviewerPerformance
+                    var annotatorId = g.Key;
+                    var userStat = projectUserStats.FirstOrDefault(s => s.UserId == annotatorId);
+                    double annotatorAccuracy = 0;
+                    if (userStat != null && userStat.TotalManagerDecisions > 0)
                     {
-                        ReviewerId = reviewerId,
-                        ReviewerName = reviewer?.FullName ?? reviewer?.Email ?? "Unknown",
-                        TotalReviews = totalReviewsDone,
-                        CorrectDecisions = correctDecisions,
-                        TotalManagerDecisions = totalMgrDecisions,
-                        ReviewerAccuracy = reviewerAccuracy
+                        annotatorAccuracy = Math.Round((double)userStat.TotalCorrectByManager / userStat.TotalManagerDecisions * 100, 2);
+                    }
+                    else
+                    {
+                        var assignmentIds = g.Select(a => a.Id).ToHashSet();
+                        var logsForAnnotator = allReviewLogs.Where(rl => assignmentIds.Contains(rl.AssignmentId)).ToList();
+                        if (logsForAnnotator.Count > 0)
+                        {
+                            var approvedLogs = logsForAnnotator.Count(rl => rl.Verdict == "Approved" || rl.Verdict == "Approve");
+                            annotatorAccuracy = Math.Round((double)approvedLogs / logsForAnnotator.Count * 100, 2);
+                        }
+                    }
+
+                    return new AnnotatorPerformance
+                    {
+                        AnnotatorId = annotatorId,
+                        AnnotatorName = g.FirstOrDefault()?.Annotator?.FullName ?? "Unknown",
+                        TasksAssigned = g.Count(),
+                        TasksCompleted = g.Count(a => a.Status == TaskStatusConstants.Approved),
+                        TasksRejected = g.Count(a => a.Status == TaskStatusConstants.Rejected),
+                        AverageDurationSeconds = 0,
+                        AverageQualityScore = userStat?.AverageQualityScore ?? 100,
+                        TotalCriticalErrors = userStat?.TotalCriticalErrors ?? 0,
+                        AnnotatorAccuracy = annotatorAccuracy
                     };
                 }).ToList();
 
-                var labelCounts = await _projectRepository.GetProjectLabelCountsAsync(projectId);
 
-                stats.LabelDistributions = project.LabelClasses.Select(lc => new LabelDistribution
+            var reviewerIds = allAssignments
+                .Where(a => !string.IsNullOrEmpty(a.ReviewerId))
+                .Select(a => a.ReviewerId!)
+                .Distinct()
+                .ToList();
+
+            var reviewLogsByReviewer = allReviewLogs
+                .Where(rl => !string.IsNullOrEmpty(rl.ReviewerId))
+                .GroupBy(rl => rl.ReviewerId!)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            stats.ReviewerPerformances = reviewerIds.Select(reviewerId =>
+            {
+                var reviewerStat = projectUserStats.FirstOrDefault(s => s.UserId == reviewerId);
+                var reviewer = allAssignments.FirstOrDefault(a => a.ReviewerId == reviewerId)?.Reviewer;
+                int statReviewsDone = reviewerStat?.TotalReviewsDone ?? 0;
+                int logReviewsDone = reviewLogsByReviewer.ContainsKey(reviewerId) ? reviewLogsByReviewer[reviewerId] : 0;
+                int totalReviewsDone = Math.Max(statReviewsDone, logReviewsDone);
+                int correctDecisions = reviewerStat?.TotalReviewerCorrectByManager ?? 0;
+                int totalMgrDecisions = reviewerStat?.TotalReviewerManagerDecisions ?? 0;
+                double reviewerAccuracy = totalMgrDecisions > 0
+                    ? Math.Round((double)correctDecisions / totalMgrDecisions * 100, 2)
+                    : 0;
+
+                return new ReviewerPerformance
                 {
-                    ClassName = lc.Name,
-                    Count = labelCounts.ContainsKey(lc.Id) ? labelCounts[lc.Id] : 0
-                }).ToList();
+                    ReviewerId = reviewerId,
+                    ReviewerName = reviewer?.FullName ?? reviewer?.Email ?? "Unknown",
+                    TotalReviews = totalReviewsDone,
+                    CorrectDecisions = correctDecisions,
+                    TotalManagerDecisions = totalMgrDecisions,
+                    ReviewerAccuracy = reviewerAccuracy
+                };
+            }).ToList();
 
-                return stats;
-            }
+            var labelCounts = await _projectRepository.GetProjectLabelCountsAsync(projectId);
+
+            stats.LabelDistributions = project.LabelClasses.Select(lc => new LabelDistribution
+            {
+                ClassName = lc.Name,
+                Count = labelCounts.ContainsKey(lc.Id) ? labelCounts[lc.Id] : 0
+            }).ToList();
+
+            return stats;
+        }
 
         public async Task<ManagerStatsResponse> GetManagerStatsAsync(string managerId)
         {
             var projects = await _projectRepository.GetProjectsByManagerIdAsync(managerId);
-            var allUsers = await _userRepository.GetAllAsync();
-            var totalMembers = allUsers.Count(u => u.ManagerId == managerId);
+            var myMembers = await _userRepository.FindAsync(u => u.ManagerId == managerId);
+            var totalMembers = myMembers.Count();
 
             return new ManagerStatsResponse
             {
@@ -767,11 +754,10 @@
             if (!allAssignments.Any())
                 throw new Exception("No tasks found in this project. Please assign tasks to annotators first.");
 
-            var allUsers = await _userRepository.GetAllAsync();
-            var validReviewers = allUsers
-                .Where(u => request.ReviewerIds.Contains(u.Id) &&
-                            (u.Role == UserRoles.Reviewer || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin))
-                .ToList();
+            var validReviewers = (await _userRepository.FindAsync(u =>
+                request.ReviewerIds.Contains(u.Id) &&
+                (u.Role == UserRoles.Reviewer || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin)
+            )).ToList();
 
             if (validReviewers.Count != request.ReviewerIds.Count)
                 throw new Exception("One or more provided reviewer IDs are invalid or lack the required role.");
@@ -788,18 +774,15 @@
 
             await _assignmentRepo.SaveChangesAsync();
 
-            await _activityLogRepo.AddAsync(new ActivityLog
-            {
-                UserId = project.ManagerId,
-                ActionType = "AssignReviewers",
-                EntityName = "Project",
-                EntityId = project.Id.ToString(),
-                Description = $"Assigned {totalReviewers} reviewers to project {project.Name} across {allAssignments.Count} tasks.",
-                Timestamp = DateTime.UtcNow
-            });
-
-            await _activityLogRepo.SaveChangesAsync();
+            await _logService.LogActionAsync(
+                project.ManagerId,
+                "AssignReviewers",
+                "Project",
+                project.Id.ToString(),
+                $"Assigned {totalReviewers} reviewers to project {project.Name} across {allAssignments.Count} tasks."
+            );
         }
+
         public async Task CompleteProjectAsync(int projectId, string managerId)
         {
             var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
@@ -816,19 +799,17 @@
             project.Status = "Completed";
             _projectRepository.Update(project);
 
-            await _activityLogRepo.AddAsync(new ActivityLog
-            {
-                UserId = managerId,
-                ActionType = "CompleteProject",
-                EntityName = "Project",
-                EntityId = project.Id.ToString(),
-                Description = $"Manager completed project: {project.Name}",
-                Timestamp = DateTime.UtcNow
-            });
-
             await _projectRepository.SaveChangesAsync();
-            await _activityLogRepo.SaveChangesAsync();
+
+            await _logService.LogActionAsync(
+                managerId,
+                "CompleteProject",
+                "Project",
+                project.Id.ToString(),
+                $"Manager completed project: {project.Name}"
+            );
         }
+
         public async Task<byte[]> ExportProjectCsvAsync(int projectId, string userId)
         {
             var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
@@ -857,6 +838,7 @@
 
             return System.Text.Encoding.UTF8.GetBytes(builder.ToString());
         }
+
         public async Task RemoveUserFromProjectAsync(int projectId, string userId)
         {
             var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
@@ -884,16 +866,13 @@
                 await _projectRepository.SaveChangesAsync();
             }
 
-            await _activityLogRepo.AddAsync(new ActivityLog
-            {
-                UserId = project.ManagerId,
-                ActionType = "RemoveUser",
-                EntityName = "Project",
-                EntityId = projectId.ToString(),
-                Description = $"Removed user {userId} from project and revoked {pendingAssignments.Count} pending tasks.",
-                Timestamp = DateTime.UtcNow
-            });
-            await _activityLogRepo.SaveChangesAsync();
+            await _logService.LogActionAsync(
+                project.ManagerId,
+                "RemoveUser",
+                "Project",
+                projectId.ToString(),
+                $"Removed user {userId} from project and revoked {pendingAssignments.Count} pending tasks."
+            );
         }
     }
 }

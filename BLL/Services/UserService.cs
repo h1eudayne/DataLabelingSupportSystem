@@ -21,6 +21,7 @@ namespace BLL.Services
         private readonly IActivityLogService _logService;
         private readonly IAssignmentRepository _assignmentRepo;
         private readonly IProjectRepository _projectRepo;
+
         public UserService(
             IUserRepository userRepository,
             IConfiguration configuration,
@@ -33,7 +34,6 @@ namespace BLL.Services
             _assignmentRepo = assignmentRepo;
             _logService = logService;
             _projectRepo = projectRepo;
-
         }
 
         public async Task<User> RegisterAsync(string fullName, string email, string password, string role, string? managerId = null)
@@ -66,6 +66,7 @@ namespace BLL.Services
 
             return user;
         }
+
         public async Task UpdateAvatarAsync(string userId, string avatarUrl)
         {
             var user = await _userRepository.GetByIdAsync(userId);
@@ -114,50 +115,56 @@ namespace BLL.Services
 
         public async Task<PagedResponse<UserResponse>> GetAllUsersAsync(int page, int pageSize)
         {
-            var allUsers = await _userRepository.GetAllAsync();
-            var allProjects = await _projectRepo.GetAllAsync();
-            var allAssignments = await _assignmentRepo.GetAllAsync();
+            var allUsers = (await _userRepository.GetAllAsync()).ToList();
 
-            var totalCount = allUsers.Count();
+            var totalCount = allUsers.Count;
             var stats = new
             {
                 TotalAdmins = allUsers.Count(u => u.Role == UserRoles.Admin),
                 TotalWorkers = allUsers.Count(u => u.Role != UserRoles.Admin)
             };
 
-            var items = allUsers
+            var pagedUsers = allUsers
                 .OrderByDescending(u => u.Id)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(u =>
+                .ToList();
+
+            var managerIds = pagedUsers.Where(u => u.Role == UserRoles.Manager || u.Role == UserRoles.Admin).Select(u => u.Id).ToList();
+            var relevantProjects = await _projectRepo.FindAsync(p => managerIds.Contains(p.ManagerId));
+
+            var workerIds = pagedUsers.Where(u => u.Role != UserRoles.Manager && u.Role != UserRoles.Admin).Select(u => u.Id).ToList();
+            var relevantAssignments = await _assignmentRepo.FindAsync(a => workerIds.Contains(a.AnnotatorId) || (a.ReviewerId != null && workerIds.Contains(a.ReviewerId)));
+
+            var items = pagedUsers.Select(u =>
+            {
+                int totalProjects;
+
+                if (u.Role == UserRoles.Manager || u.Role == UserRoles.Admin)
                 {
-                    int totalProjects;
+                    totalProjects = relevantProjects.Count(p => p.ManagerId == u.Id);
+                }
+                else
+                {
+                    totalProjects = relevantAssignments
+                        .Where(a => a.AnnotatorId == u.Id || a.ReviewerId == u.Id)
+                        .Select(a => a.ProjectId)
+                        .Distinct()
+                        .Count();
+                }
 
-                    if (u.Role == UserRoles.Manager || u.Role == UserRoles.Admin)
-                    {
-                        totalProjects = allProjects.Count(p => p.ManagerId == u.Id);
-                    }
-                    else
-                    {
-                        totalProjects = allAssignments
-                            .Where(a => a.AnnotatorId == u.Id || a.ReviewerId == u.Id)
-                            .Select(a => a.ProjectId)
-                            .Distinct()
-                            .Count();
-                    }
-
-                    return new UserResponse
-                    {
-                        Id = u.Id,
-                        FullName = u.FullName ?? "",
-                        Email = u.Email ?? "",
-                        Role = u.Role ?? "",
-                        AvatarUrl = u.AvatarUrl ?? "",
-                        IsActive = u.IsActive,
-                        ManagerId = u.ManagerId,
-                        TotalProjects = totalProjects
-                    };
-                }).ToList();
+                return new UserResponse
+                {
+                    Id = u.Id,
+                    FullName = u.FullName ?? "",
+                    Email = u.Email ?? "",
+                    Role = u.Role ?? "",
+                    AvatarUrl = u.AvatarUrl ?? "",
+                    IsActive = u.IsActive,
+                    ManagerId = u.ManagerId,
+                    TotalProjects = totalProjects
+                };
+            }).ToList();
 
             return new PagedResponse<UserResponse>
             {
@@ -171,9 +178,9 @@ namespace BLL.Services
 
         public async Task<List<UserResponse>> GetManagedUsersAsync(string managerId)
         {
-            var allUsers = await _userRepository.GetAllAsync();
-            var managedUsers = allUsers
-                .Where(u => u.ManagerId == managerId && u.IsActive)
+            var users = await _userRepository.FindAsync(u => u.ManagerId == managerId && u.IsActive);
+
+            var managedUsers = users
                 .Select(u => new UserResponse
                 {
                     Id = u.Id,
@@ -232,7 +239,7 @@ namespace BLL.Services
             {
                 user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             }
-            // Allow setting or clearing ManagerId
+
             if (request.ManagerId != null)
             {
                 user.ManagerId = string.IsNullOrEmpty(request.ManagerId) ? null : request.ManagerId;
@@ -242,6 +249,7 @@ namespace BLL.Services
             await _userRepository.SaveChangesAsync();
             await _logService.LogActionAsync(userId, "UpdateUser", "User", userId, "Admin updated user details.");
         }
+
         public async Task ChangePasswordAsync(string userId, string oldPassword, string newPassword)
         {
             var user = await _userRepository.GetByIdAsync(userId);
@@ -320,6 +328,11 @@ namespace BLL.Services
 
             int rowNumber = 1;
 
+            var allUsers = await _userRepository.GetAllAsync();
+            var existingEmails = allUsers.Select(u => u.Email.ToLower()).ToHashSet();
+            var validManagers = allUsers.Where(u => u.Role == UserRoles.Manager || u.Role == UserRoles.Admin)
+                                        .ToDictionary(u => u.Email.ToLower(), u => u.Id);
+
             foreach (var row in rows)
             {
                 rowNumber++;
@@ -343,7 +356,8 @@ namespace BLL.Services
                     continue;
                 }
 
-                if (await _userRepository.IsEmailExistsAsync(email))
+                var emailLower = email.ToLower();
+                if (existingEmails.Contains(emailLower))
                 {
                     response.FailureCount++;
                     response.Errors.Add($"Row {rowNumber}: Email '{email}' already exists.");
@@ -353,14 +367,16 @@ namespace BLL.Services
                 string? managerIdToAssign = null;
                 if (!string.IsNullOrEmpty(managerEmail))
                 {
-                    var manager = await _userRepository.GetUserByEmailAsync(managerEmail);
-                    if (manager == null || (manager.Role != "Manager" && manager.Role != "Admin"))
+                    if (validManagers.TryGetValue(managerEmail.ToLower(), out var mId))
+                    {
+                        managerIdToAssign = mId;
+                    }
+                    else
                     {
                         response.FailureCount++;
                         response.Errors.Add($"Row {rowNumber}: Manager with email '{managerEmail}' not found or is not a Manager.");
                         continue;
                     }
-                    managerIdToAssign = manager.Id;
                 }
 
                 var user = new User
@@ -373,6 +389,7 @@ namespace BLL.Services
                 };
 
                 await _userRepository.AddAsync(user);
+                existingEmails.Add(emailLower);
                 response.SuccessCount++;
             }
 
@@ -391,6 +408,7 @@ namespace BLL.Services
 
             return response;
         }
+
         private string GenerateJwtToken(User user)
         {
             var jwtSettings = _configuration.GetSection("Jwt");
@@ -419,12 +437,12 @@ namespace BLL.Services
             var token = tokenHandler.CreateToken(tokenDescriptor);
             return tokenHandler.WriteToken(token);
         }
+
         public async Task<List<UserResponse>> GetManagementBoardAsync()
         {
-            var allUsers = await _userRepository.GetAllAsync();
+            var users = await _userRepository.FindAsync(u => u.Role == UserRoles.Admin || u.Role == UserRoles.Manager);
 
-            return allUsers
-                .Where(u => u.Role == UserRoles.Admin || u.Role == UserRoles.Manager)
+            return users
                 .Select(u => new UserResponse
                 {
                     Id = u.Id,
