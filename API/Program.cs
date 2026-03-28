@@ -59,7 +59,26 @@ builder.Services.AddCors(options =>
 });
 
 var jwtSettings = builder.Configuration.GetSection("Jwt");
-var key = Encoding.ASCII.GetBytes(jwtSettings["Key"] ?? "SecretKeyMustBeLongerThan16Characters");
+var jwtKey = jwtSettings["Key"];
+
+// Validate JWT Key at startup - fail fast with clear error message
+if (string.IsNullOrEmpty(jwtKey))
+{
+    throw new InvalidOperationException(
+        "FATAL: JWT Key is not configured. " +
+        "Please set 'Jwt:Key' in appsettings.json with at least 16 characters. " +
+        "For production, use a cryptographically secure random key of 32+ characters.");
+}
+
+var keyBytes = Encoding.ASCII.GetBytes(jwtKey);
+if (keyBytes.Length < 16)
+{
+    throw new InvalidOperationException(
+        $"FATAL: JWT Key is too short ({keyBytes.Length} characters). " +
+        "JWT Key must be at least 16 characters long for HMAC-SHA256 security. " +
+        $"Current key: '{jwtKey.Substring(0, Math.Min(8, jwtKey.Length))}...' " +
+        "Please update 'Jwt:Key' in appsettings.json with a longer, secure key.");
+}
 
 builder.Services.AddAuthentication(options =>
 {
@@ -74,7 +93,7 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(key),
+        IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidIssuer = jwtSettings["Issuer"],

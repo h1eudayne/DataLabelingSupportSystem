@@ -173,7 +173,16 @@ namespace DAL.Repositories
                 .Include(a => a.ReviewLogs)
                 .Where(a => a.DataItemId == dataItemId &&
                             a.AnnotatorId == annotatorId &&
-                            a.Id != assignmentId) 
+                            a.Id != assignmentId)
+                .ToListAsync();
+        }
+
+        public async Task<List<int>> GetProjectIdsByReviewerAsync(string reviewerId)
+        {
+            return await AppContext.Assignments
+                .Where(a => a.ReviewerId == reviewerId)
+                .Select(a => a.ProjectId)
+                .Distinct()
                 .ToListAsync();
         }
     }

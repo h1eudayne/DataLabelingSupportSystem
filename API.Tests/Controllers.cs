@@ -252,6 +252,11 @@ namespace API.Tests.Controllers
 
             var okResult = Assert.IsType<OkObjectResult>(result);
             Assert.NotNull(okResult.Value);
+
+            var response = okResult.Value as dynamic;
+            Assert.NotNull(response);
+            string message = response.Message;
+            Assert.Contains("new password", message.ToLower());
         }
 
         [Fact]
@@ -260,6 +265,24 @@ namespace API.Tests.Controllers
             var request = new ForgotPasswordRequest
             {
                 Email = "nonexistent@test.com"
+            };
+
+            _userServiceMock.Setup(s => s.ForgotPasswordAsync(request.Email))
+                .ThrowsAsync(new Exception("Email not found in the system."));
+
+            var controller = CreateController();
+            var result = await controller.ForgotPassword(request);
+
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.NotNull(badRequestResult.Value);
+        }
+
+        [Fact]
+        public async Task ForgotPassword_WithEmptyEmail_ReturnsBadRequest()
+        {
+            var request = new ForgotPasswordRequest
+            {
+                Email = ""
             };
 
             _userServiceMock.Setup(s => s.ForgotPasswordAsync(request.Email))

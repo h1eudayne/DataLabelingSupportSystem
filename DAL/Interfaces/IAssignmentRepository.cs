@@ -15,5 +15,6 @@ namespace DAL.Interfaces
         Task<bool> HasPendingTasksAsync(string userId, string currentRole);
         Task<int> CountActiveTasksAsync(int projectId);
         Task<List<Assignment>> GetRelatedAssignmentsForDisputeAsync(int assignmentId, string annotatorId, int dataItemId);
+        Task<List<int>> GetProjectIdsByReviewerAsync(string reviewerId);
     }
 }

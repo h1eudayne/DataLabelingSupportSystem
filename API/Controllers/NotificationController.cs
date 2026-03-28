@@ -19,10 +19,15 @@ namespace API.Controllers
             _context = context;
         }
 
-        /// <summary>
-        /// GetMyNotifications endpoint.
-        /// </summary>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpGet]
         [ProducesResponseType(200)]
         [ProducesResponseType(401)]
@@ -48,11 +53,13 @@ namespace API.Controllers
             return Ok(notifications);
         }
 
-        /// <summary>
-        /// MarkAsRead endpoint.
-        /// </summary>
-        /// <param name="id">The id.</param>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
+        
+        
+        
+        
+        
+        
+        
         [HttpPut("{id}/read")]
         [ProducesResponseType(200)]
         [ProducesResponseType(404)]
@@ -71,15 +78,17 @@ namespace API.Controllers
             return Ok(new { message = "Marked as read successfully." });
         }
 
-        /// <summary>
-        /// MarkAllAsRead endpoint.
-        /// </summary>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
+        
+        
+        
+        
+        
         [HttpPut("read-all")]
         [ProducesResponseType(200)]
         public async Task<IActionResult> MarkAllAsRead()
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
             var unreadNotifs = await _context.AppNotifications
                 .Where(n => n.UserId == userId && !n.IsRead)

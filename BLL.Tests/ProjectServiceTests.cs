@@ -165,6 +165,7 @@ namespace BLL.Tests
             Assert.NotNull(result);
             Assert.Equal("Test Project", result.Name);
             Assert.Equal(1, result.TotalDataItems);
+            Assert.Equal(0, result.UnassignedDataItemCount);
             Assert.Equal(1, result.ProcessedItems);
             Assert.Single(result.Labels);
         }

@@ -2,6 +2,7 @@ using BLL.Interfaces;
 using Core.Constants;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
+using DAL;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.IdentityModel.Tokens.Jwt;
@@ -16,45 +17,15 @@ namespace API.Controllers
     {
         private readonly IUserService _userService;
         private readonly IActivityLogService _logService;
-        private readonly IAppNotificationService _notificationService;
+        private readonly ApplicationDbContext _context;
 
-        public AuthController(IUserService userService, IActivityLogService logService, IAppNotificationService notificationService)
+        public AuthController(IUserService userService, IActivityLogService logService, ApplicationDbContext context)
         {
             _userService = userService;
             _logService = logService;
-            _notificationService = notificationService;
+            _context = context;
         }
 
-        /// <summary>
-        /// Register endpoint.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
-        [HttpPost("register")]
-        [AllowAnonymous]
-        [ProducesResponseType(typeof(object), 200)]
-        [ProducesResponseType(typeof(ErrorResponse), 400)]
-        [ProducesResponseType(typeof(ErrorResponse), 409)]
-        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
-        {
-            try
-            {
-                await _userService.RegisterAsync(request.FullName, request.Email, request.Password, UserRoles.Annotator);
-                return Ok(new { Message = "Registration successful." });
-            }
-            catch (Exception ex)
-            {
-                if (ex.Message.Contains("Email already exists"))
-                    return Conflict(new ErrorResponse { Message = "Email is already in use. Please use a different email." });
-                return BadRequest(new ErrorResponse { Message = "Registration failed. Please check your information and try again." });
-            }
-        }
-
-        /// <summary>
-        /// Login endpoint.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("login")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(object), 200)]
@@ -65,7 +36,6 @@ namespace API.Controllers
         {
             try
             {
-
                 var (accessToken, refreshToken) = await _userService.LoginAsync(request.Email, request.Password);
                 if (accessToken == null || refreshToken == null)
                     return Unauthorized(new ErrorResponse { Message = "Invalid email or password." });
@@ -73,8 +43,6 @@ namespace API.Controllers
                 var handler = new JwtSecurityTokenHandler();
                 var jwtToken = handler.ReadJwtToken(accessToken);
                 var userId = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
-
-                int unreadCount = 0;
 
                 if (!string.IsNullOrEmpty(userId))
                 {
@@ -85,8 +53,13 @@ namespace API.Controllers
                         userId,
                         "User logged into the system."
                     );
+                }
 
-                    unreadCount = await _notificationService.GetUnreadCountAsync(userId);
+                int unreadCount = 0;
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    unreadCount = _context.AppNotifications
+                        .Count(n => n.UserId == userId && !n.IsRead);
                 }
 
                 return Ok(new
@@ -103,17 +76,17 @@ namespace API.Controllers
             {
                 return StatusCode(403, new ErrorResponse { Message = "Account is deactivated or banned." });
             }
-            catch (Exception)
+            catch (InvalidOperationException ex)
             {
+                return StatusCode(400, new ErrorResponse { Message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Login Error] {ex}");
                 return StatusCode(500, new ErrorResponse { Message = "An error occurred during login. Please try again later." });
             }
         }
 
-        /// <summary>
-        /// RefreshToken endpoint.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("refresh-token")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(object), 200)]
@@ -135,16 +108,13 @@ namespace API.Controllers
                     expiresIn = 1800
                 });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Console.WriteLine($"[RefreshToken Error] {ex}");
                 return StatusCode(500, new ErrorResponse { Message = "An error occurred during token refresh. Please try again later." });
             }
         }
 
-        /// <summary>
-        /// Logout endpoint.
-        /// </summary>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("logout")]
         [Authorize]
         [ProducesResponseType(typeof(object), 200)]
@@ -157,7 +127,6 @@ namespace API.Controllers
 
                 if (!string.IsNullOrEmpty(userId))
                 {
-
                     await _userService.RevokeRefreshTokenAsync(userId);
 
                     await _logService.LogActionAsync(
@@ -171,26 +140,32 @@ namespace API.Controllers
 
                 return Ok(new { Message = "Logout successful. All tokens have been invalidated." });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Console.WriteLine($"[Logout Error] {ex}");
                 return StatusCode(500, new ErrorResponse { Message = "An error occurred during logout." });
             }
         }
 
-        /// <summary>
-        /// ForgotPassword endpoint.
-        /// </summary>
-        /// <param name="request">The request.</param>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("forgot-password")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(object), 200)]
-        public IActionResult ForgotPassword([FromBody] ForgotPasswordRequest request)
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
         {
-            return Ok(new
+            try
             {
-                Message = "Please contact your Administrator to reset your password. Self-service password reset is not allowed for security reasons."
-            });
+                var newPassword = await _userService.ForgotPasswordAsync(request.Email);
+                return Ok(new
+                {
+                    Message = "A new password has been generated and sent to your email. Please check your inbox and use it to login.",
+                    NewPassword = newPassword
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
         }
     }
 }

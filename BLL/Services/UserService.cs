@@ -51,7 +51,6 @@ namespace BLL.Services
             if (await _userRepository.IsEmailExistsAsync(email))
                 throw new Exception("Email already exists.");
 
-            
             if (role == UserRoles.Admin)
             {
                 bool hasExistingAdmin = await _userRepository.HasAdminRoleAsync();
@@ -413,29 +412,34 @@ namespace BLL.Services
                 bool hasPendingTasks = await _assignmentRepo.HasPendingTasksAsync(user.Id, user.Role);
                 if (hasPendingTasks)
                 {
-                    throw new Exception($"Cannot deactivate this user. They still have unfinished tasks as an {user.Role}.");
+                    throw new Exception($"Cannot deactivate this user. They still have unfinished tasks as an {user.Role}. Please reassign or complete their tasks first.");
                 }
 
-                
+                // Notify managers of active projects when locking annotator/reviewer
                 if (user.Role == UserRoles.Annotator || user.Role == UserRoles.Reviewer)
                 {
                     var userAssignments = await _assignmentRepo.GetAllAsync();
                     var allProjects = await _projectRepo.GetAllAsync();
 
-                    bool hasActiveProjectAssignment = userAssignments.Any(a =>
-                        (a.AnnotatorId == user.Id || a.ReviewerId == user.Id) &&
-                        (a.Status == TaskStatusConstants.Assigned || a.Status == TaskStatusConstants.InProgress));
+                    var activeProjects = allProjects.Where(p => p.Status == "Active").ToList();
+                    var affectedProjectIds = userAssignments
+                        .Where(a => (a.AnnotatorId == user.Id || a.ReviewerId == user.Id) &&
+                                    activeProjects.Any(p => p.Id == a.ProjectId))
+                        .Select(a => a.ProjectId)
+                        .Distinct()
+                        .ToList();
 
-                    if (hasActiveProjectAssignment)
+                    // Send notification to each affected project's manager
+                    foreach (var projectId in affectedProjectIds)
                     {
-                        var activeProjects = allProjects.Where(p => p.Status == "Active").ToList();
-                        bool isInActiveProject = userAssignments.Any(a =>
-                            (a.AnnotatorId == user.Id || a.ReviewerId == user.Id) &&
-                            activeProjects.Any(p => p.Id == a.ProjectId));
-
-                        if (isInActiveProject)
+                        var project = activeProjects.FirstOrDefault(p => p.Id == projectId);
+                        if (project != null && !string.IsNullOrEmpty(project.ManagerId))
                         {
-                            throw new Exception("BR-ADM-13: Cannot block user in active project. Get Manager approval first.");
+                            await _notification.SendNotificationAsync(
+                                project.ManagerId,
+                                $"Admin has locked the account of {user.Role} \"{user.FullName}\" ({user.Email}) who is assigned to your project \"{project.Name}\". Please reassign their tasks to another member.",
+                                "UserLocked"
+                            );
                         }
                     }
                 }
@@ -467,7 +471,7 @@ namespace BLL.Services
 
             using var workbook = new XLWorkbook(stream);
             var worksheet = workbook.Worksheet(1);
-            var rows = worksheet.RangeUsed().RowsUsed().Skip(1).ToList();
+            var rows = worksheet.RangeUsed()?.RowsUsed()?.Skip(1).ToList() ?? new List<IXLRangeRow>();
 
             
             if (rows.Count > maxRowCount)
@@ -551,7 +555,19 @@ namespace BLL.Services
         private string GenerateJwtToken(User user, int expiresInMinutes = 30)
         {
             var jwtSettings = _configuration.GetSection("Jwt");
-            var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
+            var keyString = jwtSettings["Key"];
+            if (string.IsNullOrEmpty(keyString))
+                throw new InvalidOperationException(
+                    "JWT Key is not configured. " +
+                    "Please set 'Jwt:Key' in appsettings.json with at least 16 characters for production use. " +
+                    "Example: \"Jwt\": { \"Key\": \"YourSecureKeyAtLeast16Chars!\" }");
+
+            var keyBytes = Encoding.ASCII.GetBytes(keyString);
+            if (keyBytes.Length < 16)
+                throw new InvalidOperationException(
+                    $"JWT Key must be at least 16 characters long for security. " +
+                    $"Current length: {keyBytes.Length} characters. " +
+                    $"Please update 'Jwt:Key' in appsettings.json with a longer, secure key.");
 
             string safeAvatarUrl = string.IsNullOrEmpty(user.AvatarUrl)
                 ? $"https://ui-avatars.com/api/?name={Uri.EscapeDataString(user.FullName ?? "User")}&background=random"
@@ -568,7 +584,7 @@ namespace BLL.Services
                     new Claim("AvatarUrl", safeAvatarUrl)
                 }),
                 Expires = DateTime.UtcNow.AddMinutes(expiresInMinutes),
-                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(keyBytes), SecurityAlgorithms.HmacSha256Signature),
                 Issuer = jwtSettings["Issuer"],
                 Audience = jwtSettings["Audience"]
             };

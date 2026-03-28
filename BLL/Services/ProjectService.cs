@@ -24,6 +24,23 @@ namespace BLL.Services
         
         private const string GUIDELINE_DECISION_NOTE = "Decision based on official project guidelines";
 
+        private static string SafeSerializeAnnotations(IEnumerable<Annotation>? annotations)
+        {
+            try
+            {
+                if (annotations == null) return "[]";
+                var latest = annotations.OrderByDescending(a => a.CreatedAt).FirstOrDefault();
+                if (latest == null || string.IsNullOrWhiteSpace(latest.DataJSON)) return "[]";
+                // Validate JSON is parseable
+                using var doc = JsonDocument.Parse(latest.DataJSON);
+                return latest.DataJSON;
+            }
+            catch
+            {
+                return "[]";
+            }
+        }
+
         public ProjectService(
             IProjectRepository projectRepository,
             IUserRepository userRepository,
@@ -222,6 +239,7 @@ namespace BLL.Services
                                 : new List<string>()
                 }).ToList(),
                 TotalDataItems = 0,
+                UnassignedDataItemCount = 0,
                 ProcessedItems = 0
             };
         }
@@ -383,6 +401,7 @@ namespace BLL.Services
 
                 var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
                 int total = project.DataItems.Count;
+                int unassignedCount = project.DataItems.Count(d => d.Status == TaskStatusConstants.New);
                 int done = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
                 int progressPercent = (total > 0) ? (int)((double)done / total * 100) : 0;
 
@@ -446,6 +465,7 @@ namespace BLL.Services
                                     : new List<string>()
                     }).ToList(),
                     TotalDataItems = total,
+                    UnassignedDataItemCount = unassignedCount,
                     ProcessedItems = done,
                     Progress = progressPercent,
                     Members = members
@@ -555,18 +575,7 @@ namespace BLL.Services
                             ReviewComment = a.ReviewLogs?
                                 .OrderByDescending(r => r.CreatedAt)
                                 .FirstOrDefault()?.Comment,
-                            Annotation = a.Annotations?
-                                .OrderByDescending(an => an.CreatedAt)
-                                .Select(an => new
-                                {
-                                    ClassId = an.ClassId,
-                                    ClassName = an.ClassId.HasValue
-                                        ? project.LabelClasses.FirstOrDefault(l => l.Id == an.ClassId)?.Name
-                                        : "See DataJSON",
-                                    Data = !string.IsNullOrEmpty(an.DataJSON)
-                                        ? JsonDocument.Parse(an.DataJSON).RootElement
-                                        : (!string.IsNullOrEmpty(an.Value) ? JsonDocument.Parse(an.Value).RootElement : default)
-                                }).FirstOrDefault()
+                            Annotation = SafeSerializeAnnotations(a.Annotations)
                         }).ToList()
                     })
                     .ToList();
@@ -764,16 +773,17 @@ namespace BLL.Services
             var dataItems = await _projectRepository.GetProjectDataItemsAsync(projectId);
 
             if (!dataItems.Any()) return new List<Core.DTOs.Responses.BucketResponse>();
-            var buckets = dataItems.GroupBy(d => d.BucketId)
-                                .OrderBy(g => g.Key)
-                                .Select(g => new Core.DTOs.Responses.BucketResponse
-                                {
-                                    BucketId = g.Key,
-                                    Name = $"Lô số {g.Key}",
-                                    TotalItems = g.Count(),
-                                    CompletedItems = 0,
-                                    Status = "New"
-                                }).ToList();
+            var buckets = dataItems
+                .GroupBy(d => d.BucketId)
+                .OrderBy(g => g.Key)
+                .Select(g => new Core.DTOs.Responses.BucketResponse
+                {
+                    BucketId = g.Key,
+                    Name = $"Lô số {g.Key}",
+                    TotalItems = g.Count(),
+                    CompletedItems = 0,
+                    Status = "New"
+                }).ToList();
 
             return buckets;
         }
@@ -797,14 +807,8 @@ namespace BLL.Services
 
         private async Task<List<AnnotatorProjectStatsResponse>> GetAssignedProjectsAsReviewerAsync(string reviewerId)
         {
-            var allAssignments = await _assignmentRepo.GetAllAsync();
-            var assignedProjectIds = allAssignments
-                .Where(a => a.ReviewerId == reviewerId)
-                .Select(a => a.DataItem?.ProjectId)
-                .Where(id => id.HasValue)
-                .Select(id => id!.Value)
-                .Distinct()
-                .ToList();
+            var assignedProjectIds = await _assignmentRepo.GetProjectIdsByReviewerAsync(reviewerId);
+            if (!assignedProjectIds.Any()) return new List<AnnotatorProjectStatsResponse>();
 
             var projects = await _projectRepository.GetProjectsByIdsAsync(assignedProjectIds);
             var result = new List<AnnotatorProjectStatsResponse>();

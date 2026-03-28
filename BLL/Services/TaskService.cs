@@ -247,18 +247,18 @@ namespace BLL.Services
             var existingAssignments = await _assignmentRepo.GetAssignmentsByBucketAsync(projectId, bucketId, userId);
             if (existingAssignments.Any())
             {
-                return existingAssignments.Select(a => new AssignmentResponse
-                {
-                    Id = a.Id,
-                    DataItemId = a.DataItemId,
-                    DataItemUrl = a.DataItem.StorageUrl,
-                    Status = a.Status,
-                    AssignedDate = a.AssignedDate,
-                    AnnotationData = a.Annotations?
-                        .OrderByDescending(an => an.CreatedAt)
-                        .FirstOrDefault()
-                        ?.DataJSON ?? ""
-                }).ToList();
+            return existingAssignments.Select(a => new AssignmentResponse
+            {
+                Id = a.Id,
+                DataItemId = a.DataItemId,
+                DataItemUrl = a.DataItem?.StorageUrl ?? "",
+                Status = a.Status,
+                AssignedDate = a.AssignedDate,
+                AnnotationData = a.Annotations?
+                    .OrderByDescending(an => an.CreatedAt)
+                    .FirstOrDefault()
+                    ?.DataJSON ?? ""
+            }).ToList();
             }
 
             var dataItems = await _projectRepo.GetDataItemsByBucketIdAsync(projectId, bucketId);
@@ -394,17 +394,17 @@ namespace BLL.Services
             if (assignment.AnnotatorId != userId)
                 throw new UnauthorizedAccessException("Unauthorized access to this task");
 
-            var taskDeadline = assignment.AssignedDate.AddHours(assignment.Project.MaxTaskDurationHours);
+            var taskDeadline = assignment.AssignedDate.AddHours(assignment.Project?.MaxTaskDurationHours ?? 24);
 
-            var effectiveDeadline = taskDeadline < assignment.Project.Deadline
+            var effectiveDeadline = taskDeadline < (assignment.Project?.Deadline ?? DateTime.UtcNow)
                 ? taskDeadline
-                : assignment.Project.Deadline;
+                : (assignment.Project?.Deadline ?? DateTime.UtcNow);
 
             return new AssignmentResponse
             {
                 Id = assignment.Id,
                 DataItemId = assignment.DataItemId,
-                DataItemUrl = assignment.DataItem.StorageUrl ?? "",
+                DataItemUrl = assignment.DataItem?.StorageUrl ?? "",
                 Status = assignment.Status ?? "",
                 AnnotationData = assignment.Annotations?
                     .OrderByDescending(an => an.CreatedAt)
@@ -435,11 +435,11 @@ namespace BLL.Services
                 .Select(g => new AssignedProjectResponse
                 {
                     ProjectId = g.Key,
-                    ProjectName = g.First().Project.Name,
-                    Description = g.First().Project.Description,
-                    ThumbnailUrl = g.First().DataItem.StorageUrl,
+                    ProjectName = g.First().Project?.Name ?? "Unknown Project",
+                    Description = g.First().Project?.Description ?? "",
+                    ThumbnailUrl = g.First().DataItem?.StorageUrl ?? "",
                     AssignedDate = g.Min(a => a.AssignedDate),
-                    Deadline = g.First().Project.Deadline,
+                    Deadline = g.First().Project?.Deadline ?? DateTime.UtcNow,
                     TotalImages = g.Count(),
                     CompletedImages = g.Count(a =>
                         a.Status == TaskStatusConstants.Submitted ||
@@ -459,16 +459,16 @@ namespace BLL.Services
 
             return assignments.Select(a =>
             {
-                var taskDeadline = a.AssignedDate.AddHours(a.Project.MaxTaskDurationHours);
-                var effectiveDeadline = taskDeadline < a.Project.Deadline
+                var taskDeadline = a.AssignedDate.AddHours(a.Project?.MaxTaskDurationHours ?? 24);
+                var effectiveDeadline = taskDeadline < (a.Project?.Deadline ?? DateTime.UtcNow)
                     ? taskDeadline
-                    : a.Project.Deadline;
+                    : (a.Project?.Deadline ?? DateTime.UtcNow);
 
                 return new AssignmentResponse
                 {
                     Id = a.Id,
                     DataItemId = a.DataItemId,
-                    DataItemUrl = a.DataItem.StorageUrl,
+                    DataItemUrl = a.DataItem?.StorageUrl ?? "",
                     Status = a.Status,
                     AnnotationData = a.Annotations?
                         .OrderByDescending(an => an.CreatedAt)

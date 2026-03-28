@@ -7,7 +7,9 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-
+    
+    
+    
     [Route("api/projects")]
     [ApiController]
     [Authorize]
@@ -23,12 +25,18 @@ namespace API.Controllers
             _env = env;
         }
 
-        /// <summary>
-        /// ImportData endpoint.
-        /// </summary>
-        /// <param name="projectId">The projectId.</param>
-        /// <param name="request">The request.</param>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpPost("{projectId}/imports")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -47,12 +55,18 @@ namespace API.Controllers
             }
         }
 
-        /// <summary>
-        /// UploadDirect endpoint.
-        /// </summary>
-        /// <param name="projectId">The projectId.</param>
-        /// <param name="files">The files.</param>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpPost("{projectId}/uploads/direct")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -68,7 +82,7 @@ namespace API.Controllers
 
             try
             {
-
+                
                 var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp" };
                 const long maxFileSizeBytes = 10 * 1024 * 1024; 
 
@@ -104,27 +118,38 @@ namespace API.Controllers
             }
         }
 
-        /// <summary>
-        /// GetBuckets endpoint.
-        /// </summary>
-        /// <param name="projectId">The projectId.</param>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpGet("{projectId}/buckets")]
         [Authorize(Roles = "Annotator,Manager,Admin")]
         [ProducesResponseType(typeof(object), 200)] 
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> GetBuckets(int projectId)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
             var buckets = await _projectService.GetBucketsAsync(projectId, userId);
             return Ok(buckets);
         }
 
-        /// <summary>
-        /// ExportData endpoint.
-        /// </summary>
-        /// <param name="projectId">The projectId.</param>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpGet("{projectId}/exports")]
         [Authorize(Roles = "Manager,Admin")]
         [ProducesResponseType(typeof(FileContentResult), 200)]
@@ -146,12 +171,9 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-
-        /// <summary>
-        /// ExportCsv endpoint.
-        /// </summary>
-        /// <param name="projectId">The projectId.</param>
-        /// <returns>An IActionResult representing the operation outcome.</returns>
+        
+        
+        
         [HttpGet("{projectId}/export-csv")]
         [Authorize(Roles = "Manager,Admin")]
         public async Task<IActionResult> ExportCsv(int projectId)

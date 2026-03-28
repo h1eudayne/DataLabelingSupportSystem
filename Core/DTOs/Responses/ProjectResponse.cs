@@ -60,6 +60,11 @@ namespace Core.DTOs.Responses
         
         public int TotalDataItems { get; set; }
 
+        /// <summary>
+        /// Data items still in &quot;New&quot; status (no manager assignment yet). Matches task pick-up logic.
+        /// </summary>
+        public int UnassignedDataItemCount { get; set; }
+
         
         
         
