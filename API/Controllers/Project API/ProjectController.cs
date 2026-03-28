@@ -7,9 +7,7 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    
-    
-    
+
     [Route("api/projects")]
     [ApiController]
     [Authorize]
@@ -22,6 +20,11 @@ namespace API.Controllers
         {
             _projectService = projectService;
         }
+        /// <summary>
+        /// AssignReviewers endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("assign-reviewers")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -38,16 +41,12 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
+        /// <summary>
+        /// GetUserProjectsForAdmin endpoint.
+        /// </summary>
+        /// <param name="userId">The userId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("user/{userId}")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -64,17 +63,12 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
+        /// <summary>
+        /// CreateProject endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -116,23 +110,27 @@ namespace API.Controllers
 
                 Console.WriteLine($"[DEBUG] CreateProject - ManagerId: {managerId}");
                 Console.WriteLine($"[DEBUG] CreateProject - Request: {System.Text.Json.JsonSerializer.Serialize(request)}");
-                
+
                 var result = await _projectService.CreateProjectAsync(managerId, request);
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                
+
                 Console.WriteLine($"[ERROR] CreateProject failed: {ex}");
                 Console.WriteLine($"[ERROR] Inner Exception: {ex.InnerException?.Message}");
                 Console.WriteLine($"[ERROR] Stack Trace: {ex.StackTrace}");
-                
+
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
+
+        /// <summary>
+        /// RemoveUserFromProject endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <param name="userId">The userId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpDelete("{projectId}/users/{userId}")]
         [Authorize(Roles = "Manager")]
         public async Task<IActionResult> RemoveUserFromProject(int projectId, string userId)
@@ -147,18 +145,13 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
+        /// <summary>
+        /// UpdateProject endpoint.
+        /// </summary>
+        /// <param name="id">The id.</param>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPut("{id}")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -179,17 +172,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetProjectDetails endpoint.
+        /// </summary>
+        /// <param name="id">The id.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("{id}")]
         [Authorize(Roles = "Admin,Manager,Reviewer,Annotator")]
         [ProducesResponseType(typeof(object), 200)]
@@ -209,6 +196,10 @@ namespace API.Controllers
             }
         }
 
+        /// <summary>
+        /// GetAllProjects endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet]
         [Authorize(Roles = "Admin,Manager,Reviewer,Annotator")]
         [ProducesResponseType(typeof(List<ProjectSummaryResponse>), 200)]
@@ -246,17 +237,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetProjectsByManager endpoint.
+        /// </summary>
+        /// <param name="managerId">The managerId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("managers/{managerId}")]
         [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -275,17 +260,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// DeleteProject endpoint.
+        /// </summary>
+        /// <param name="id">The id.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpDelete("{id}")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -303,16 +282,11 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
+        /// <summary>
+        /// GetAllProjectsForAdmin endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("all")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(List<ProjectSummaryResponse>), 200)]
@@ -331,17 +305,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// CompleteProject endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("{projectId}/complete")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -363,18 +331,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// ArchiveProject endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("{projectId}/archive")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]

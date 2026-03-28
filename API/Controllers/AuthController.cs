@@ -25,6 +25,11 @@ namespace API.Controllers
             _notificationService = notificationService;
         }
 
+        /// <summary>
+        /// Register endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("register")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(object), 200)]
@@ -45,7 +50,11 @@ namespace API.Controllers
             }
         }
 
-
+        /// <summary>
+        /// Login endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("login")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(object), 200)]
@@ -100,6 +109,11 @@ namespace API.Controllers
             }
         }
 
+        /// <summary>
+        /// RefreshToken endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("refresh-token")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(object), 200)]
@@ -127,6 +141,10 @@ namespace API.Controllers
             }
         }
 
+        /// <summary>
+        /// Logout endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("logout")]
         [Authorize]
         [ProducesResponseType(typeof(object), 200)]
@@ -159,7 +177,11 @@ namespace API.Controllers
             }
         }
 
-
+        /// <summary>
+        /// ForgotPassword endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("forgot-password")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(object), 200)]

@@ -5,9 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace API.Controllers
 {
-    
-    
-    
+
     [Route("api/logs")]
     [ApiController]
     [Authorize]
@@ -21,16 +19,10 @@ namespace API.Controllers
             _logService = logService;
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetSystemLogs endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("system")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)] 
@@ -49,17 +41,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetProjectLogs endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("projects/{projectId}")]
         [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(object), 200)] 

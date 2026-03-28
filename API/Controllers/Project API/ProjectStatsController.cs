@@ -5,9 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace API.Controllers
 {
-    
-    
-    
+
     [Route("api/projects")]
     [ApiController]
     [Authorize]
@@ -21,18 +19,11 @@ namespace API.Controllers
             _projectService = projectService;
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetProjectStatistics endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("{projectId}/statistics")]
         [Authorize(Roles = "Admin,Manager,Reviewer,Annotator")]
         [ProducesResponseType(typeof(object), 200)]
@@ -51,17 +42,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetManagerStats endpoint.
+        /// </summary>
+        /// <param name="managerId">The managerId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("managers/{managerId}/statistics")]
         [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -79,11 +64,14 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
-        
-        
+
+        /// <summary>
+        /// ToggleUserLock endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <param name="userId">The userId.</param>
+        /// <param name="lockStatus">The lockStatus.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("{projectId}/users/{userId}/toggle-lock")]
         [Authorize(Roles = "Manager")]
         public async Task<IActionResult> ToggleUserLock(int projectId, string userId, [FromQuery] bool lockStatus)

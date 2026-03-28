@@ -7,10 +7,7 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    
-    
-    
-    
+
     [Route("api/reviews")]
     [ApiController]
     [Authorize]
@@ -26,20 +23,10 @@ namespace API.Controllers
             _statisticService = statisticService;
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetReviewerProjects endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("projects")]
         [Authorize(Roles = "Admin,Manager,Reviewer")]
         [ProducesResponseType(typeof(IEnumerable<AssignedProjectResponse>), 200)]
@@ -61,17 +48,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetTasksForReview endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("projects/{projectId}/tasks")]
         [Authorize(Roles = "Admin,Manager,Reviewer,Annotator")]
         [ProducesResponseType(typeof(IEnumerable<TaskResponse>), 200)]
@@ -93,21 +74,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// ReviewTask endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost]
         [Authorize(Roles = "Admin,Manager,Reviewer")]
         [ProducesResponseType(typeof(object), 200)] 
@@ -132,22 +103,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// AuditReview endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("audits")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -169,17 +129,10 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetReviewerStats endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("stats")]
         [Authorize(Roles = "Admin,Manager,Reviewer")]
         [ProducesResponseType(typeof(ReviewerStatsResponse), 200)]
@@ -201,19 +154,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetReviewQueueGroupedByAnnotator endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("projects/{projectId}/queue")]
         [Authorize(Roles = "Admin,Manager,Reviewer")]
         [ProducesResponseType(typeof(ReviewQueueResponse), 200)]
@@ -235,18 +180,10 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// DeductOverdueReliabilityScores endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("deduct-overdue-reliability")]
         [Authorize(Roles = "Manager,Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -265,19 +202,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetBatchCompletionStatus endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("projects/{projectId}/batch-status")]
         [Authorize(Roles = "Admin,Manager,Reviewer")]
         [ProducesResponseType(typeof(BatchCompletionStatusResponse), 200)]

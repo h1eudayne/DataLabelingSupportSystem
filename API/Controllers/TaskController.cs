@@ -7,10 +7,7 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    
-    
-    
-    
+
     [Route("api/tasks")]
     [ApiController]
     [Authorize]
@@ -24,21 +21,11 @@ namespace API.Controllers
             _taskService = taskService;
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// AssignTeamTasks endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("assign-team")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -65,18 +52,12 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetTasksByBucket endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <param name="bucketId">The bucketId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("projects/{projectId}/buckets/{bucketId}")]
         [Authorize(Roles = "Admin,Manager,Annotator")]
         [ProducesResponseType(typeof(object), 200)] 
@@ -98,20 +79,10 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetMyProjects endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("projects")]
         [ProducesResponseType(typeof(List<AssignedProjectResponse>), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
@@ -124,21 +95,11 @@ namespace API.Controllers
             return Ok(projects);
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// SubmitMultipleTasks endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("submissions/batch")]
         [Authorize(Roles = "Annotator")]
         [ProducesResponseType(typeof(object), 200)] 
@@ -163,18 +124,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetProjectImages endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("projects/{projectId}/images")]
         [ProducesResponseType(typeof(List<AssignmentResponse>), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -195,18 +149,12 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// JumpToImage endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <param name="dataItemId">The dataItemId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("projects/{projectId}/items/{dataItemId}")]
         [ProducesResponseType(typeof(AssignmentResponse), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -227,18 +175,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetSingleAssignment endpoint.
+        /// </summary>
+        /// <param name="id">The id.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("assignments/{id}")]
         [ProducesResponseType(typeof(AssignmentResponse), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -260,22 +201,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// SaveDraft endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPut("drafts")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -296,17 +226,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// SubmitTask endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("submissions")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]

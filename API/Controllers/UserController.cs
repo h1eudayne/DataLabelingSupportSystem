@@ -7,9 +7,7 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    
-    
-    
+
     [Route("api/users")]
     [ApiController]
     [Authorize]
@@ -23,20 +21,10 @@ namespace API.Controllers
             _userService = userService;
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetMyProfile endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("me")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
@@ -59,17 +47,11 @@ namespace API.Controllers
             });
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// UpdateProfile endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPut("me")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -90,18 +72,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// UploadAvatar endpoint.
+        /// </summary>
+        /// <param name="file">The file.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("me/avatar")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -140,18 +115,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// ChangePassword endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPut("me/password")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -176,22 +144,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// ImportUsers endpoint.
+        /// </summary>
+        /// <param name="file">The file.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("import")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -218,16 +175,10 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetManagedUsers endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("managed")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(List<UserResponse>), 200)]
@@ -241,15 +192,10 @@ namespace API.Controllers
             return Ok(users);
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetAllUsersNoPaging endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("all")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(List<UserResponse>), 200)]
@@ -260,17 +206,12 @@ namespace API.Controllers
             return Ok(users);
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetAllUsers endpoint.
+        /// </summary>
+        /// <param name="page">The page.</param>
+        /// <param name="pageSize">The pageSize.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet]
         [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(PagedResponse<UserResponse>), 200)]
@@ -281,18 +222,11 @@ namespace API.Controllers
             return Ok(result);
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// CreateUser endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -326,18 +260,12 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// AdminChangePassword endpoint.
+        /// </summary>
+        /// <param name="id">The id.</param>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPut("{id}/change-password")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -367,23 +295,12 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// UpdateUser endpoint.
+        /// </summary>
+        /// <param name="id">The id.</param>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -410,21 +327,12 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// ToggleUserStatus endpoint.
+        /// </summary>
+        /// <param name="id">The id.</param>
+        /// <param name="isActive">The isActive.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPatch("{id}/status")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -448,18 +356,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// DeleteUser endpoint.
+        /// </summary>
+        /// <param name="id">The id.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -481,16 +382,10 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetManagementBoard endpoint.
+        /// </summary>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("management-board")]
         [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(List<UserResponse>), 200)]

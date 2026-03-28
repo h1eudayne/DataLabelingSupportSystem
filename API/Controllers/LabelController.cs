@@ -20,17 +20,11 @@ namespace API.Controllers
             _labelService = labelService;
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// CreateLabel endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost]
         [ProducesResponseType(typeof(LabelResponse), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -43,7 +37,6 @@ namespace API.Controllers
                 var userRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
                 if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-                
                 if (userRole == UserRoles.Manager)
                     return StatusCode(403, new ErrorResponse { Message = "BR-MNG-17: Manager must not create or edit annotations directly" });
 
@@ -56,18 +49,12 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// UpdateLabel endpoint.
+        /// </summary>
+        /// <param name="id">The id.</param>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPut("{id}")]
         [ProducesResponseType(typeof(LabelResponse), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -80,7 +67,6 @@ namespace API.Controllers
                 var userRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
                 if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-                
                 if (userRole == UserRoles.Manager)
                     return StatusCode(403, new ErrorResponse { Message = "BR-MNG-17: Manager must not create or edit annotations directly" });
 
@@ -93,16 +79,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// DeleteLabel endpoint.
+        /// </summary>
+        /// <param name="id">The id.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpDelete("{id}")]
         [ProducesResponseType(200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -115,7 +96,6 @@ namespace API.Controllers
                 var userRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
                 if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-                
                 if (userRole == UserRoles.Manager)
                     return StatusCode(403, new ErrorResponse { Message = "BR-MNG-17: Manager must not create or edit annotations directly" });
 
@@ -128,16 +108,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetLabelUsageCount endpoint.
+        /// </summary>
+        /// <param name="id">The id.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet("{id}/usage-count")]
         [Authorize(Roles = "Manager,Admin")]
         public async Task<IActionResult> GetLabelUsageCount(int id)
@@ -158,14 +133,11 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetLabels endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet]
         [ProducesResponseType(typeof(List<LabelResponse>), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]

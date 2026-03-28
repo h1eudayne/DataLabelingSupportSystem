@@ -7,9 +7,7 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    
-    
-    
+
     [Route("api/disputes")]
     [ApiController]
     [Authorize]
@@ -23,16 +21,11 @@ namespace API.Controllers
             _disputeService = disputeService;
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// CreateDispute endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost]
         [Authorize(Roles = "Annotator")]
         [ProducesResponseType(200)]
@@ -45,16 +38,11 @@ namespace API.Controllers
             return Ok(new { Message = "Dispute submitted successfully." });
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// ResolveDispute endpoint.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpPost("resolve")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(200)]
@@ -69,16 +57,11 @@ namespace API.Controllers
             return Ok(new { Message = "Dispute resolved." });
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        /// <summary>
+        /// GetDisputes endpoint.
+        /// </summary>
+        /// <param name="projectId">The projectId.</param>
+        /// <returns>An IActionResult representing the operation outcome.</returns>
         [HttpGet]
         [ProducesResponseType(200)] 
         [ProducesResponseType(typeof(ErrorResponse), 400)]
