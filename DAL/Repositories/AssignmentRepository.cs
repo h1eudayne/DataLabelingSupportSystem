@@ -1,4 +1,4 @@
-﻿using Core.DTOs.Responses;
+using Core.DTOs.Responses;
 using DAL.Interfaces;
 using Core.Constants;
 using Core.Entities;
@@ -162,6 +162,28 @@ namespace DAL.Repositories
             }
 
             return false;
+        }
+
+        
+        
+        
+        public async Task<List<Assignment>> GetRelatedAssignmentsForDisputeAsync(int assignmentId, string annotatorId, int dataItemId)
+        {
+            return await AppContext.Assignments
+                .Include(a => a.ReviewLogs)
+                .Where(a => a.DataItemId == dataItemId &&
+                            a.AnnotatorId == annotatorId &&
+                            a.Id != assignmentId)
+                .ToListAsync();
+        }
+
+        public async Task<List<int>> GetProjectIdsByReviewerAsync(string reviewerId)
+        {
+            return await AppContext.Assignments
+                .Where(a => a.ReviewerId == reviewerId)
+                .Select(a => a.ProjectId)
+                .Distinct()
+                .ToListAsync();
         }
     }
 }

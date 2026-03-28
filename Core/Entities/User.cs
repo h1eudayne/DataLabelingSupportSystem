@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Core.Entities
@@ -13,13 +13,19 @@ namespace Core.Entities
         public string FullName { get; set; } = string.Empty;
 
         [Required]
-        [EmailAddress]
+        [MaxLength(50)]
+        public string Username { get; set; } = string.Empty;
+
+        [Required]
         public string Email { get; set; } = string.Empty;
         public bool IsActive { get; set; } = true;
+        public bool IsEmailVerified { get; set; } = false;
         public string PasswordHash { get; set; } = string.Empty;
         public string? AvatarUrl { get; set; }
         [Required]
         public string Role { get; set; } = "Annotator";
+
+        public DateTime LastActivityAt { get; set; } = DateTime.UtcNow;
 
         public string? ManagerId { get; set; }
 

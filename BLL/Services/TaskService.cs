@@ -19,6 +19,10 @@ namespace BLL.Services
         private readonly IActivityLogService _logService; 
         private readonly IAppNotificationService _notification;
 
+        
+        
+        private const string GUIDELINE_REFERENCE_COMMENT = "Decision based on official project guidelines";
+
         public TaskService(
             IAssignmentRepository assignmentRepo,
             IRepository<DataItem> dataItemRepo,
@@ -48,11 +52,22 @@ namespace BLL.Services
             if (project.ManagerId != managerId)
                 throw new UnauthorizedAccessException("You are not the manager of this project.");
 
+            
+            if (project.Status == "Completed" || project.Status == "Archived")
+                throw new InvalidOperationException("BR-MNG-20: Tasks cannot be assigned in Completed or Archived projects");
+
+            
+            if (request.AnnotatorIds.Contains(managerId))
+                throw new InvalidOperationException("BR-MNG-27: Manager cannot assign tasks to themselves");
+
+            if (request.ReviewerIds != null && request.ReviewerIds.Contains(managerId))
+                throw new InvalidOperationException("BR-MNG-27: Manager cannot assign tasks to themselves");
+
             var allUsers = await _userRepo.GetAllAsync();
 
             var validAnnotators = allUsers
                 .Where(u => request.AnnotatorIds.Contains(u.Id) &&
-                            (u.Role == UserRoles.Annotator || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin))
+                            u.Role == UserRoles.Annotator)
                 .ToList();
 
             if (validAnnotators.Count != request.AnnotatorIds.Count)
@@ -63,7 +78,7 @@ namespace BLL.Services
             {
                 validReviewers = allUsers
                     .Where(u => request.ReviewerIds.Contains(u.Id) &&
-                                (u.Role == UserRoles.Reviewer || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin))
+                                u.Role == UserRoles.Reviewer)
                     .ToList();
 
                 if (validReviewers.Count != request.ReviewerIds.Count)
@@ -74,67 +89,109 @@ namespace BLL.Services
             if (!dataItems.Any())
                 throw new Exception("Not enough available data items in this project.");
 
+            
+            
+            
+            
+            
+
+            int totalAnn = validAnnotators.Count;
             int totalRev = validReviewers.Count;
-            int revIndex = 0;
+            int totalItems = dataItems.Count;
+            int baseAssignments = totalItems * totalAnn; 
+            int totalRecords = totalRev > 0 ? baseAssignments * totalRev : baseAssignments; 
 
             var newAssignments = new List<Assignment>();
 
+            
             foreach (var item in dataItems)
             {
                 item.Status = TaskStatusConstants.Assigned;
                 _dataItemRepo.Update(item);
+            }
 
+            
+            
+            foreach (var item in dataItems)
+            {
                 foreach (var annotator in validAnnotators)
                 {
-
-                    string? assignedReviewer = totalRev > 0 ? validReviewers[revIndex % totalRev].Id : null;
-
-                    var assignment = new Assignment
+                    if (totalRev > 0)
                     {
-                        ProjectId = request.ProjectId,
-                        DataItemId = item.Id,
-                        AnnotatorId = annotator.Id,
-                        ReviewerId = assignedReviewer,
-                        Status = TaskStatusConstants.Assigned,
-                        AssignedDate = DateTime.UtcNow
-                    };
-
-                    newAssignments.Add(assignment);
-                    await _assignmentRepo.AddAsync(assignment);
-
-                    if (totalRev > 0) revIndex++;
+                        
+                        foreach (var reviewer in validReviewers)
+                        {
+                            var assignment = new Assignment
+                            {
+                                ProjectId = request.ProjectId,
+                                DataItemId = item.Id,
+                                AnnotatorId = annotator.Id,
+                                ReviewerId = reviewer.Id, 
+                                Status = TaskStatusConstants.Assigned,
+                                AssignedDate = DateTime.UtcNow
+                            };
+                            newAssignments.Add(assignment);
+                        }
+                    }
+                    else
+                    {
+                        
+                        var assignment = new Assignment
+                        {
+                            ProjectId = request.ProjectId,
+                            DataItemId = item.Id,
+                            AnnotatorId = annotator.Id,
+                            ReviewerId = null,
+                            Status = TaskStatusConstants.Assigned,
+                            AssignedDate = DateTime.UtcNow
+                        };
+                        newAssignments.Add(assignment);
+                    }
                 }
+            }
+
+            
+            foreach (var assignment in newAssignments)
+            {
+                await _assignmentRepo.AddAsync(assignment);
             }
 
             await _assignmentRepo.SaveChangesAsync();
             await _dataItemRepo.SaveChangesAsync();
 
+            
             await _logService.LogActionAsync(
                 managerId,
                 "AssignTeam",
                 "Project",
                 project.Id.ToString(),
-                $"Manager assigned {dataItems.Count} tasks to EVERY annotator ({validAnnotators.Count} people). Total Assignments created: {newAssignments.Count}."
+                $"Manager assigned {totalItems} items to {totalAnn} annotators. " +
+                $"Each annotator received {totalItems} items. " +
+                $"Base assignments: {baseAssignments}. " +
+                $"With {totalRev} reviewers, total records in DB: {totalRecords}. " +
+                $"Each reviewer reviews {baseAssignments} assignments (all annotators' work on all items)."
             );
 
-            var annotatorGroups = newAssignments.GroupBy(a => a.AnnotatorId);
-            foreach (var group in annotatorGroups)
+            
+            foreach (var annotator in validAnnotators)
             {
-                await _statisticService.TrackNewAssignmentAsync(group.Key, request.ProjectId, group.Count());
+                await _statisticService.TrackNewAssignmentAsync(annotator.Id, request.ProjectId, totalItems);
                 await _notification.SendNotificationAsync(
-                    group.Key,
-                    $"Manager has assigned you {group.Count()} new tasks in project {project.Name}!",
+                    annotator.Id,
+                    $"Manager has assigned you {totalItems} tasks in project {project.Name}! " +
+                    $"(Each of your tasks will be reviewed by {totalRev} reviewers.)",
                     "Success");
             }
 
+            
             if (totalRev > 0)
             {
-                var reviewerGroups = newAssignments.Where(a => a.ReviewerId != null).GroupBy(a => a.ReviewerId);
-                foreach (var group in reviewerGroups)
+                foreach (var reviewer in validReviewers)
                 {
                     await _notification.SendNotificationAsync(
-                        group.Key!,
-                        $"You have been assigned to review {group.Count()} tasks in project {project.Name}!",
+                        reviewer.Id,
+                        $"You have been assigned to review ALL {baseAssignments} tasks " +
+                        $"(from {totalAnn} annotators, {totalItems} items each) in project {project.Name}!",
                         "Info");
                 }
             }
@@ -190,18 +247,18 @@ namespace BLL.Services
             var existingAssignments = await _assignmentRepo.GetAssignmentsByBucketAsync(projectId, bucketId, userId);
             if (existingAssignments.Any())
             {
-                return existingAssignments.Select(a => new AssignmentResponse
-                {
-                    Id = a.Id,
-                    DataItemId = a.DataItemId,
-                    DataItemUrl = a.DataItem.StorageUrl,
-                    Status = a.Status,
-                    AssignedDate = a.AssignedDate,
-                    AnnotationData = a.Annotations?
-                        .OrderByDescending(an => an.CreatedAt)
-                        .FirstOrDefault()
-                        ?.DataJSON ?? ""
-                }).ToList();
+            return existingAssignments.Select(a => new AssignmentResponse
+            {
+                Id = a.Id,
+                DataItemId = a.DataItemId,
+                DataItemUrl = a.DataItem?.StorageUrl ?? "",
+                Status = a.Status,
+                AssignedDate = a.AssignedDate,
+                AnnotationData = a.Annotations?
+                    .OrderByDescending(an => an.CreatedAt)
+                    .FirstOrDefault()
+                    ?.DataJSON ?? ""
+            }).ToList();
             }
 
             var dataItems = await _projectRepo.GetDataItemsByBucketIdAsync(projectId, bucketId);
@@ -248,6 +305,32 @@ namespace BLL.Services
             if (project.ManagerId != managerId)
                 throw new UnauthorizedAccessException("You are not the manager of this project.");
 
+            
+            if (project.Status == "Completed" || project.Status == "Archived")
+                throw new InvalidOperationException("BR-MNG-20: Tasks cannot be assigned in Completed or Archived projects");
+
+            
+            if (request.AnnotatorId == managerId)
+                throw new InvalidOperationException("BR-MNG-27: Manager cannot assign tasks to themselves");
+
+            if (!string.IsNullOrEmpty(request.ReviewerId) && request.ReviewerId == managerId)
+                throw new InvalidOperationException("BR-MNG-27: Manager cannot assign tasks to themselves");
+
+            
+            
+            var dataItems = await _assignmentRepo
+                .GetUnassignedDataItemsAsync(request.ProjectId, int.MaxValue);
+
+            if (!dataItems.Any())
+                throw new Exception("No available data items in this project to assign.");
+
+            
+            var annotator = await _userRepo.GetByIdAsync(request.AnnotatorId);
+            if (annotator == null)
+                throw new Exception("Annotator not found");
+            if (annotator.Role != UserRoles.Annotator)
+                throw new Exception("Selected user is not an Annotator");
+
             if (string.IsNullOrWhiteSpace(request.ReviewerId))
             {
                 request.ReviewerId = null;
@@ -257,17 +340,9 @@ namespace BLL.Services
                 var reviewer = await _userRepo.GetByIdAsync(request.ReviewerId);
                 if (reviewer == null)
                     throw new Exception("Reviewer not found");
+                if (reviewer.Role != UserRoles.Reviewer)
+                    throw new Exception("Selected user is not a Reviewer");
             }
-
-            var annotator = await _userRepo.GetByIdAsync(request.AnnotatorId);
-            if (annotator == null)
-                throw new Exception("Annotator not found");
-
-            var dataItems = await _assignmentRepo
-                .GetUnassignedDataItemsAsync(request.ProjectId, request.Quantity);
-
-            if (!dataItems.Any())
-                throw new Exception("Not enough available data items in this project.");
 
             foreach (var item in dataItems)
             {
@@ -297,14 +372,14 @@ namespace BLL.Services
 
             await _notification.SendNotificationAsync(
                 request.AnnotatorId,
-                $"Manager has assigned you {request.Quantity} new tasks in the project!",
+                $"Manager has assigned you {dataItems.Count} new tasks in the project!",
                 "Success");
 
             if (!string.IsNullOrEmpty(request.ReviewerId))
             {
                 await _notification.SendNotificationAsync(
                     request.ReviewerId,
-                    $"You have been assigned as a Reviewer for {request.Quantity} new tasks!",
+                    $"You have been assigned as a Reviewer for {dataItems.Count} new tasks!",
                     "Info");
             }
         }
@@ -319,17 +394,17 @@ namespace BLL.Services
             if (assignment.AnnotatorId != userId)
                 throw new UnauthorizedAccessException("Unauthorized access to this task");
 
-            var taskDeadline = assignment.AssignedDate.AddHours(assignment.Project.MaxTaskDurationHours);
+            var taskDeadline = assignment.AssignedDate.AddHours(assignment.Project?.MaxTaskDurationHours ?? 24);
 
-            var effectiveDeadline = taskDeadline < assignment.Project.Deadline
+            var effectiveDeadline = taskDeadline < (assignment.Project?.Deadline ?? DateTime.UtcNow)
                 ? taskDeadline
-                : assignment.Project.Deadline;
+                : (assignment.Project?.Deadline ?? DateTime.UtcNow);
 
             return new AssignmentResponse
             {
                 Id = assignment.Id,
                 DataItemId = assignment.DataItemId,
-                DataItemUrl = assignment.DataItem.StorageUrl ?? "",
+                DataItemUrl = assignment.DataItem?.StorageUrl ?? "",
                 Status = assignment.Status ?? "",
                 AnnotationData = assignment.Annotations?
                     .OrderByDescending(an => an.CreatedAt)
@@ -360,11 +435,11 @@ namespace BLL.Services
                 .Select(g => new AssignedProjectResponse
                 {
                     ProjectId = g.Key,
-                    ProjectName = g.First().Project.Name,
-                    Description = g.First().Project.Description,
-                    ThumbnailUrl = g.First().DataItem.StorageUrl,
+                    ProjectName = g.First().Project?.Name ?? "Unknown Project",
+                    Description = g.First().Project?.Description ?? "",
+                    ThumbnailUrl = g.First().DataItem?.StorageUrl ?? "",
                     AssignedDate = g.Min(a => a.AssignedDate),
-                    Deadline = g.First().Project.Deadline,
+                    Deadline = g.First().Project?.Deadline ?? DateTime.UtcNow,
                     TotalImages = g.Count(),
                     CompletedImages = g.Count(a =>
                         a.Status == TaskStatusConstants.Submitted ||
@@ -384,16 +459,16 @@ namespace BLL.Services
 
             return assignments.Select(a =>
             {
-                var taskDeadline = a.AssignedDate.AddHours(a.Project.MaxTaskDurationHours);
-                var effectiveDeadline = taskDeadline < a.Project.Deadline
+                var taskDeadline = a.AssignedDate.AddHours(a.Project?.MaxTaskDurationHours ?? 24);
+                var effectiveDeadline = taskDeadline < (a.Project?.Deadline ?? DateTime.UtcNow)
                     ? taskDeadline
-                    : a.Project.Deadline;
+                    : (a.Project?.Deadline ?? DateTime.UtcNow);
 
                 return new AssignmentResponse
                 {
                     Id = a.Id,
                     DataItemId = a.DataItemId,
-                    DataItemUrl = a.DataItem.StorageUrl,
+                    DataItemUrl = a.DataItem?.StorageUrl ?? "",
                     Status = a.Status,
                     AnnotationData = a.Annotations?
                         .OrderByDescending(an => an.CreatedAt)
@@ -439,8 +514,9 @@ namespace BLL.Services
             if (assignment.AnnotatorId != userId)
                 throw new UnauthorizedAccessException("Unauthorized");
 
+            
             if (assignment.Status == TaskStatusConstants.Approved)
-                throw new InvalidOperationException("Cannot edit approved task");
+                throw new InvalidOperationException("BR-MNG-08: Approved data items cannot be reassigned");
 
             var latestAnnotation = assignment.Annotations?
                 .OrderByDescending(a => a.CreatedAt)
@@ -497,6 +573,14 @@ namespace BLL.Services
             if (assignment.AnnotatorId != userId)
                 throw new UnauthorizedAccessException("Unauthorized");
 
+            
+            if (assignment.Status == TaskStatusConstants.Submitted)
+                throw new InvalidOperationException("Task has already been submitted. Cannot submit again.");
+
+            
+            if (assignment.Status == TaskStatusConstants.Approved)
+                throw new InvalidOperationException("BR-MNG-08: Approved data items cannot be reassigned");
+
             if (string.IsNullOrEmpty(request.DataJSON) || request.DataJSON == "[]")
                 throw new InvalidOperationException("Annotation data is empty. Please save a draft before submitting.");
 
@@ -525,6 +609,16 @@ namespace BLL.Services
 
             await _assignmentRepo.SaveChangesAsync();
 
+            
+            var project = await _projectRepo.GetByIdAsync(assignment.ProjectId);
+            if (project != null && !string.IsNullOrEmpty(project.ManagerId))
+            {
+                await _notification.SendNotificationAsync(
+                    project.ManagerId,
+                    $"Task #{assignment.Id} has been submitted by annotator and is awaiting review.",
+                    "Info");
+            }
+
             if (!string.IsNullOrEmpty(assignment.ReviewerId))
             {
                 await _notification.SendNotificationAsync(
@@ -539,66 +633,81 @@ namespace BLL.Services
             var response = new SubmitMultipleTasksResponse();
             int? lastProjectId = null;
 
-            foreach (var id in request.AssignmentIds)
+            
+            using var transaction = await _assignmentRepo.BeginTransactionAsync();
+            try
             {
-                var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(id);
-
-                if (assignment == null)
+                foreach (var id in request.AssignmentIds)
                 {
-                    response.FailureCount++;
-                    response.Errors.Add($"Task ID {id}: Not found.");
-                    continue;
+                    var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(id);
+
+                    if (assignment == null)
+                    {
+                        response.FailureCount++;
+                        response.Errors.Add($"Task ID {id}: Not found.");
+                        continue;
+                    }
+
+                    if (assignment.AnnotatorId != userId)
+                    {
+                        response.FailureCount++;
+                        response.Errors.Add($"Task ID {id}: Unauthorized access.");
+                        continue;
+                    }
+
+                    
+                    if (assignment.Status == TaskStatusConstants.Submitted || assignment.Status == TaskStatusConstants.Approved)
+                    {
+                        response.FailureCount++;
+                        response.Errors.Add($"Task ID {id}: Task has already been submitted or approved.");
+                        continue;
+                    }
+
+                    var latestAnnotation = assignment.Annotations?.OrderByDescending(a => a.CreatedAt).FirstOrDefault();
+
+                    if (latestAnnotation == null || string.IsNullOrEmpty(latestAnnotation.DataJSON) || latestAnnotation.DataJSON == "[]")
+                    {
+                        response.FailureCount++;
+                        response.Errors.Add($"Task ID {id}: Missing annotation data. Please save draft before submitting.");
+                        continue;
+                    }
+
+                    assignment.Status = TaskStatusConstants.Submitted;
+                    assignment.SubmittedAt = DateTime.UtcNow;
+
+                    _assignmentRepo.Update(assignment);
+                    response.SuccessCount++;
+                    lastProjectId = assignment.ProjectId;
                 }
 
-                if (assignment.AnnotatorId != userId)
+                if (response.SuccessCount > 0)
                 {
-                    response.FailureCount++;
-                    response.Errors.Add($"Task ID {id}: Unauthorized access.");
-                    continue;
+                    if (lastProjectId.HasValue)
+                    {
+                        await _logService.LogActionAsync(
+                            userId,
+                            "SubmitBatchTasks",
+                            "Project",
+                            lastProjectId.Value.ToString(),
+                            $"Annotator batch submitted {response.SuccessCount} tasks for review."
+                        );
+                    }
+
+                    await _assignmentRepo.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                }
+                else
+                {
+                    await transaction.RollbackAsync();
                 }
 
-                if (assignment.Status == TaskStatusConstants.Submitted || assignment.Status == TaskStatusConstants.Approved)
-                {
-                    response.FailureCount++;
-                    response.Errors.Add($"Task ID {id}: Task is already submitted or approved.");
-                    continue;
-                }
-
-                var latestAnnotation = assignment.Annotations?.OrderByDescending(a => a.CreatedAt).FirstOrDefault();
-
-                if (latestAnnotation == null || string.IsNullOrEmpty(latestAnnotation.DataJSON) || latestAnnotation.DataJSON == "[]")
-                {
-                    response.FailureCount++;
-                    response.Errors.Add($"Task ID {id}: Missing annotation data. Please save draft before submitting.");
-                    continue;
-                }
-
-                assignment.Status = TaskStatusConstants.Submitted;
-                assignment.SubmittedAt = DateTime.UtcNow;
-
-                _assignmentRepo.Update(assignment);
-                response.SuccessCount++;
-                lastProjectId = assignment.ProjectId;
+                return response;
             }
-
-            if (response.SuccessCount > 0)
+            catch (Exception)
             {
-
-                if (lastProjectId.HasValue)
-                {
-                    await _logService.LogActionAsync(
-                        userId,
-                        "SubmitBatchTasks",
-                        "Project",
-                        lastProjectId.Value.ToString(),
-                        $"Annotator batch submitted {response.SuccessCount} tasks for review."
-                    );
-                }
-
-                await _assignmentRepo.SaveChangesAsync();
+                await transaction.RollbackAsync();
+                throw;
             }
-
-            return response;
         }
     }
 }

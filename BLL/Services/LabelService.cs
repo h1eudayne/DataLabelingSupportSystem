@@ -1,4 +1,4 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using DAL.Interfaces;
@@ -13,17 +13,20 @@ namespace BLL.Services
         private readonly IAssignmentRepository _assignmentRepo;
         private readonly IActivityLogService _logService;
         private readonly IRepository<Annotation> _annotationRepo;
+        private readonly IProjectRepository _projectRepo;
 
         public LabelService(
             ILabelRepository labelRepo,
             IAssignmentRepository assignmentRepo,
             IActivityLogService logService,
-            IRepository<Annotation> annotationRepo)
+            IRepository<Annotation> annotationRepo,
+            IProjectRepository projectRepo)
         {
             _labelRepo = labelRepo;
             _assignmentRepo = assignmentRepo;
             _logService = logService;
             _annotationRepo = annotationRepo;
+            _projectRepo = projectRepo;
         }
 
         public async Task<List<LabelResponse>> GetLabelsByProjectIdAsync(int projectId)
@@ -43,16 +46,34 @@ namespace BLL.Services
             }).ToList();
         }
 
-        public async Task<int> CheckLabelUsageAsync(int labelId)
+        
+        public async Task<LabelUsageResponse> CheckLabelUsageAsync(int labelId)
         {
             var annotations = await _annotationRepo.FindAsync(a => a.ClassId == labelId);
-            return annotations.Count();
+            var count = annotations.Count();
+
+            var label = await _labelRepo.GetByIdAsync(labelId);
+
+            return new LabelUsageResponse
+            {
+                LabelId = labelId,
+                LabelName = label?.Name ?? "Unknown",
+                UsageCount = count,
+                WarningMessage = count > 0
+                    ? $"Warning: This label is currently being used in {count} annotation(s). Editing will reset those tasks."
+                    : "This label is not currently in use.",
+                AffectedTasksCount = count,
+                RequiresConfirmation = count > 0
+            };
         }
 
         public async Task<LabelResponse> CreateLabelAsync(string userId, CreateLabelRequest request)
         {
             if (await _labelRepo.ExistsInProjectAsync(request.ProjectId, request.Name))
                 throw new Exception("Label name already exists in this project.");
+
+            var project = await _projectRepo.GetByIdAsync(request.ProjectId);
+            var guidelineVersion = project?.GuidelineVersion ?? "1.0";
 
             var label = new LabelClass
             {
@@ -64,7 +85,11 @@ namespace BLL.Services
                 IsDefault = request.IsDefault,
                 DefaultChecklist = (request.Checklist != null && request.Checklist.Any())
                                     ? JsonSerializer.Serialize(request.Checklist)
-                                    : "[]"
+                                    : "[]",
+                
+                Version = guidelineVersion,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             };
 
             await _labelRepo.AddAsync(label);
@@ -75,7 +100,7 @@ namespace BLL.Services
                 "CreateLabel",
                 "LabelClass",
                 label.Id.ToString(),
-                $"Created label '{label.Name}' for Project {label.ProjectId}"
+                $"Created label '{label.Name}' for Project {label.ProjectId} (v{label.Version})"
             );
 
             return new LabelResponse
@@ -88,6 +113,17 @@ namespace BLL.Services
                 IsDefault = label.IsDefault,
                 Checklist = request.Checklist ?? new List<string>()
             };
+        }
+
+        
+        private static string IncrementVersion(string version)
+        {
+            var parts = version.Split('.');
+            if (parts.Length == 2 && int.TryParse(parts[1], out int minor))
+            {
+                return $"{parts[0]}.{minor + 1}";
+            }
+            return $"{version}.1";
         }
 
         public async Task<LabelResponse> UpdateLabelAsync(string userId, int labelId, UpdateLabelRequest request)
@@ -111,10 +147,17 @@ namespace BLL.Services
                                          : "[]";
             }
 
+            
+            if (isCriticalChange)
+            {
+                label.Version = IncrementVersion(label.Version);
+            }
+            label.UpdatedAt = DateTime.UtcNow;
+
             _labelRepo.Update(label);
             await _labelRepo.SaveChangesAsync();
 
-            await _logService.LogActionAsync(userId, "UpdateLabel", "LabelClass", label.Id.ToString(), $"Updated label '{request.Name}' in Project {label.ProjectId}");
+            await _logService.LogActionAsync(userId, "UpdateLabel", "LabelClass", label.Id.ToString(), $"Updated label '{request.Name}' in Project {label.ProjectId} (v{label.Version})");
 
             if (isCriticalChange)
             {

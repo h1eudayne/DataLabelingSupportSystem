@@ -1,4 +1,4 @@
-﻿using Core.Entities;
+using Core.Entities;
 
 namespace DAL.Interfaces
 {
@@ -6,5 +6,6 @@ namespace DAL.Interfaces
     {
         Task<User?> GetUserByEmailAsync(string email);
         Task<bool> IsEmailExistsAsync(string email);
+        Task<bool> HasAdminRoleAsync();
     }
 }

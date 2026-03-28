@@ -10,4 +10,17 @@ namespace Core.DTOs.Responses
         public List<string> Checklist { get; set; } = new List<string>();
         public bool IsDefault { get; set; } = false;
     }
+
+    
+    
+    
+    public class LabelUsageResponse
+    {
+        public int LabelId { get; set; }
+        public string LabelName { get; set; } = string.Empty;
+        public int UsageCount { get; set; }
+        public int AffectedTasksCount { get; set; }
+        public string WarningMessage { get; set; } = string.Empty;
+        public bool RequiresConfirmation { get; set; }
+    }
 }

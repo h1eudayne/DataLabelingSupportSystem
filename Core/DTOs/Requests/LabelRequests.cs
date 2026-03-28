@@ -1,69 +1,86 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Core.DTOs.Requests
 {
-    /// <summary>
-    /// Request model for creating a new label.
-    /// </summary>
+    
+    
+    
     public class CreateLabelRequest
     {
-        /// <summary>
-        /// The unique identifier of the project the label belongs to.
-        /// </summary>
-        /// <example>1</example>
+        
+        
+        
+        
         [Required]
+        [JsonPropertyName("projectId")]
         public int ProjectId { get; set; }
 
-        /// <summary>
-        /// The name of the label.
-        /// </summary>
-        /// <example>Pedestrian</example>
+        
+        
+        
+        
         [Required]
+        [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The color of the label in hex format. Defaults to "#FFFFFF".
-        /// </summary>
-        /// <example>#FF0000</example>
+        
+        
+        
+        
+        [JsonPropertyName("color")]
         public string Color { get; set; } = "#FFFFFF";
 
-        /// <summary>
-        /// Optional guidelines or description for the label.
-        /// </summary>
-        /// <example>Mark all pedestrians visible in the frame.</example>
+        
+        
+        
+        
+        [JsonPropertyName("guideLine")]
         public string? GuideLine { get; set; }
 
+        [JsonPropertyName("exampleImageUrl")]
         public string? ExampleImageUrl { get; set; }
+        
+        [JsonPropertyName("checklist")]
         public List<string>? Checklist { get; set; }
+        
+        [JsonPropertyName("isDefault")]
         public bool IsDefault { get; set; } = false;
     }
 
-    /// <summary>
-    /// Request model for updating an existing label.
-    /// </summary>
+    
+    
+    
     public class UpdateLabelRequest
     {
-        /// <summary>
-        /// The new name of the label.
-        /// </summary>
-        /// <example>Vehicle</example>
+        
+        
+        
+        
+        [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The new color of the label in hex format.
-        /// </summary>
-        /// <example>#00FF00</example>
+        
+        
+        
+        
+        [JsonPropertyName("color")]
         public string Color { get; set; } = string.Empty;
 
-        /// <summary>
-        /// The new guidelines for the label.
-        /// </summary>
-        /// <example>Mark all types of vehicles.</example>
+        
+        
+        
+        
+        [JsonPropertyName("guideLine")]
         public string? GuideLine { get; set; }
+        
+        [JsonPropertyName("exampleImageUrl")]
         public string? ExampleImageUrl { get; set; }
 
+        [JsonPropertyName("checklist")]
         public List<string>? Checklist { get; set; }
 
+        [JsonPropertyName("isDefault")]
         public bool IsDefault { get; set; } = false;
     }
 }

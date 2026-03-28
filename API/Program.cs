@@ -10,6 +10,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
 using API;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -31,6 +32,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<IAssignmentRepository, AssignmentRepository>();
 builder.Services.AddScoped<ILabelRepository, LabelRepository>();
@@ -57,7 +59,26 @@ builder.Services.AddCors(options =>
 });
 
 var jwtSettings = builder.Configuration.GetSection("Jwt");
-var key = Encoding.ASCII.GetBytes(jwtSettings["Key"] ?? "SecretKeyMustBeLongerThan16Characters");
+var jwtKey = jwtSettings["Key"];
+
+// Validate JWT Key at startup - fail fast with clear error message
+if (string.IsNullOrEmpty(jwtKey))
+{
+    throw new InvalidOperationException(
+        "FATAL: JWT Key is not configured. " +
+        "Please set 'Jwt:Key' in appsettings.json with at least 16 characters. " +
+        "For production, use a cryptographically secure random key of 32+ characters.");
+}
+
+var keyBytes = Encoding.ASCII.GetBytes(jwtKey);
+if (keyBytes.Length < 16)
+{
+    throw new InvalidOperationException(
+        $"FATAL: JWT Key is too short ({keyBytes.Length} characters). " +
+        "JWT Key must be at least 16 characters long for HMAC-SHA256 security. " +
+        $"Current key: '{jwtKey.Substring(0, Math.Min(8, jwtKey.Length))}...' " +
+        "Please update 'Jwt:Key' in appsettings.json with a longer, secure key.");
+}
 
 builder.Services.AddAuthentication(options =>
 {
@@ -72,7 +93,7 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(key),
+        IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidIssuer = jwtSettings["Issuer"],
@@ -90,6 +111,22 @@ builder.Services.AddAuthentication(options =>
                 context.Token = accessToken;
             }
             return Task.CompletedTask;
+        },
+        OnForbidden = async context =>
+        {
+            var path = context.HttpContext.Request.Path.Value ?? string.Empty;
+            if (!path.StartsWith("/api/projects", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.ContentType = "application/json";
+            var method = context.HttpContext.Request.Method;
+            var isAdmin = context.HttpContext.User.IsInRole("Admin");
+            var isRead = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
+            var message = isAdmin && !isRead
+                ? "BR-ADM-18: Admin is not allowed to modify project information"
+                : "BR-MNG-01: Only a Manager can create and manage labeling projects";
+            await context.Response.WriteAsync(JsonSerializer.Serialize(new { message }));
         }
     };
 });
@@ -99,12 +136,14 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
     });
 builder.Services.AddSignalR(options =>
 {
     options.KeepAliveInterval = TimeSpan.FromSeconds(15);
     options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
-    options.MaximumReceiveMessageSize = 32 * 1024; // 32 KB
+    options.MaximumReceiveMessageSize = 32 * 1024; 
     options.EnableDetailedErrors = builder.Environment.IsDevelopment();
 }).AddMessagePackProtocol();
 builder.Services.AddEndpointsApiExplorer();

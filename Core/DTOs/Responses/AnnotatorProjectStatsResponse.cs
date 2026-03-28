@@ -1,4 +1,4 @@
-﻿namespace Core.DTOs.Responses
+namespace Core.DTOs.Responses
 {
     public class AnnotatorProjectStatsResponse
     {
@@ -10,6 +10,8 @@
         public int TotalImages { get; set; }
 
         public int CompletedImages { get; set; }
+
+        public int PendingReview { get; set; }
 
         public string Status { get; set; } = "Active";
         public DateTime Deadline { get; set; }

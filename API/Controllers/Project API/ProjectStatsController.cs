@@ -1,13 +1,13 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using Core.DTOs.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace API.Controllers
 {
-    /// <summary>
-    /// Controller for retrieving statistical data and performance metrics for projects and managers.
-    /// </summary>
+    
+    
+    
     [Route("api/projects")]
     [ApiController]
     [Authorize]
@@ -21,20 +21,20 @@ namespace API.Controllers
             _projectService = projectService;
         }
 
-        /// <summary>
-        /// Retrieves comprehensive statistics for a specific project.
-        /// </summary>
-        /// <remarks>
-        /// Accessible by Managers, Admins, and Reviewers. 
-        /// Provides metrics such as completion percentage, task statuses, and reviewer performance.
-        /// </remarks>
-        /// <param name="projectId">The ID of the target project.</param>
-        /// <returns>Statistical data for the requested project.</returns>
-        /// <response code="200">Statistics retrieved successfully.</response>
-        /// <response code="400">Failed to retrieve statistics (e.g., project not found).</response>
-        /// <response code="401">User is not authenticated or not authorized.</response>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpGet("{projectId}/statistics")]
-        [Authorize(Roles = "Manager,Admin,Reviewer,Annotator")]
+        [Authorize(Roles = "Admin,Manager,Reviewer,Annotator")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
@@ -51,19 +51,19 @@ namespace API.Controllers
             }
         }
 
-        /// <summary>
-        /// Retrieves aggregated statistics for all projects managed by a specific user.
-        /// </summary>
-        /// <remarks>
-        /// Accessible by Managers and Admins. Provides a high-level overview of the manager's portfolio performance.
-        /// </remarks>
-        /// <param name="managerId">The target manager's user ID.</param>
-        /// <returns>Aggregated statistical data across all managed projects.</returns>
-        /// <response code="200">Manager statistics retrieved successfully.</response>
-        /// <response code="400">Failed to retrieve manager statistics.</response>
-        /// <response code="401">User is not authenticated or not authorized.</response>
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         [HttpGet("managers/{managerId}/statistics")]
-        [Authorize(Roles = "Manager,Admin")]
+        [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
@@ -79,15 +79,22 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        /// <summary>
-        /// Manages locking / unlocking of an Annotator within a project.
-        /// </summary>
+        
+        
+        
+        
+        
         [HttpPost("{projectId}/users/{userId}/toggle-lock")]
-        [Authorize(Roles = "Manager,Admin")]
+        [Authorize(Roles = "Manager")]
         public async Task<IActionResult> ToggleUserLock(int projectId, string userId, [FromQuery] bool lockStatus)
         {
             try
             {
+                var managerId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(managerId)) return Unauthorized();
+
+                await _projectService.ToggleUserLockAsync(projectId, userId, lockStatus, managerId);
+
                 string action = lockStatus ? "locked" : "unlocked";
                 return Ok(new { Message = $"Successfully {action} this user." });
             }
