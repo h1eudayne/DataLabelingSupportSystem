@@ -3,6 +3,7 @@ using BLL.Interfaces;
 using Core.Entities;
 using DAL;           
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Threading.Tasks;
 
@@ -20,7 +21,10 @@ namespace API.Services
             _hubContext = hubContext;
             _context = context;
         }
-
+        public async Task<int> GetUnreadCountAsync(string userId)
+        {
+            return await _context.AppNotifications.CountAsync(n => n.UserId == userId && !n.IsRead);
+        }
         public async Task SendNotificationAsync(string userId, string message, string type = "Info")
         {
 
