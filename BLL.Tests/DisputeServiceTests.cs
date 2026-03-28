@@ -51,7 +51,6 @@ namespace BLL.Tests
         [Fact]
         public async Task CreateDisputeAsync_WithValidData_CreatesDispute()
         {
-            
             string annotatorId = "annotator-1";
             int assignmentId = 1;
 
@@ -79,10 +78,8 @@ namespace BLL.Tests
                 Reason = "Test dispute reason"
             };
 
-            
             var result = await _disputeService.CreateDisputeAsync(annotatorId, request);
 
-            
             Assert.NotNull(result);
             Assert.Equal(assignmentId, result.AssignmentId);
             Assert.Equal("Pending", result.Status);
@@ -93,13 +90,11 @@ namespace BLL.Tests
         [Fact]
         public async Task CreateDisputeAsync_AssignmentNotFound_ThrowsException()
         {
-            
             _assignmentRepoMock.Setup(r => r.GetAssignmentWithDetailsAsync(It.IsAny<int>()))
                 .ReturnsAsync((Assignment?)null);
 
             var request = new CreateDisputeRequest { AssignmentId = 999, Reason = "Test" };
 
-            
             await Assert.ThrowsAsync<Exception>(() =>
                 _disputeService.CreateDisputeAsync("annotator-1", request));
         }
@@ -107,7 +102,6 @@ namespace BLL.Tests
         [Fact]
         public async Task CreateDisputeAsync_NotOwner_ThrowsUnauthorizedAccessException()
         {
-            
             var assignment = new Assignment
             {
                 Id = 1,
@@ -120,7 +114,6 @@ namespace BLL.Tests
 
             var request = new CreateDisputeRequest { AssignmentId = 1, Reason = "Test" };
 
-            
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
                 _disputeService.CreateDisputeAsync("annotator-1", request));
         }
@@ -128,7 +121,6 @@ namespace BLL.Tests
         [Fact]
         public async Task CreateDisputeAsync_NotRejected_ThrowsException()
         {
-            
             var assignment = new Assignment
             {
                 Id = 1,
@@ -141,7 +133,6 @@ namespace BLL.Tests
 
             var request = new CreateDisputeRequest { AssignmentId = 1, Reason = "Test" };
 
-            
             var ex = await Assert.ThrowsAsync<Exception>(() =>
                 _disputeService.CreateDisputeAsync("annotator-1", request));
             Assert.Contains("rejected", ex.Message);
@@ -150,7 +141,6 @@ namespace BLL.Tests
         [Fact]
         public async Task CreateDisputeAsync_After48Hours_ThrowsException()
         {
-            
             var assignment = new Assignment
             {
                 Id = 1,
@@ -172,7 +162,6 @@ namespace BLL.Tests
 
             var request = new CreateDisputeRequest { AssignmentId = 1, Reason = "Test" };
 
-            
             var ex = await Assert.ThrowsAsync<Exception>(() =>
                 _disputeService.CreateDisputeAsync("annotator-1", request));
             Assert.Contains("48", ex.Message);
@@ -181,7 +170,6 @@ namespace BLL.Tests
         [Fact]
         public async Task CreateDisputeAsync_SendsNotificationToReviewerAndManager()
         {
-            
             var assignment = new Assignment
             {
                 Id = 1,
@@ -201,10 +189,8 @@ namespace BLL.Tests
 
             var request = new CreateDisputeRequest { AssignmentId = 1, Reason = "Test dispute" };
 
-            
             await _disputeService.CreateDisputeAsync("annotator-1", request);
 
-            
             _notificationMock.Verify(n => n.SendNotificationAsync(
                 "manager-1", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
@@ -216,7 +202,6 @@ namespace BLL.Tests
         [Fact]
         public async Task ResolveDisputeAsync_WhenAccepted_TracksAccuracyForAnnotatorAndAllReviewers()
         {
-            
             string managerId = "manager-1";
             int projectId = 1;
             string annotatorId = "annotator-1";
@@ -269,10 +254,8 @@ namespace BLL.Tests
                 ManagerComment = "Correct per guideline v1.0"
             };
 
-            
             await _disputeService.ResolveDisputeAsync(managerId, request);
 
-            
             _statisticServiceMock.Verify(s => s.TrackDisputeResolutionAsync(
                 annotatorId,
                 It.Is<List<(string reviewerId, bool wasCorrect)>>(results => results.Count == 10),
@@ -283,7 +266,6 @@ namespace BLL.Tests
         [Fact]
         public async Task ResolveDisputeAsync_RequiresManagerComment()
         {
-            
             var assignment = new Assignment { Id = 1, AnnotatorId = "annotator-1", Status = TaskStatusConstants.Rejected };
             var dispute = new Dispute { Id = 100, AssignmentId = 1, Assignment = assignment, Status = "Pending" };
 
@@ -292,42 +274,38 @@ namespace BLL.Tests
 
             var request = new ResolveDisputeRequest { DisputeId = 100, IsAccepted = true, ManagerComment = "" };
 
-            
             await Assert.ThrowsAsync<Exception>(() => _disputeService.ResolveDisputeAsync("manager-1", request));
         }
 
         [Fact]
         public async Task ResolveDisputeAsync_OnlyAllowsPendingDisputes()
         {
-            
             var dispute = new Dispute { Id = 100, Status = "Resolved", Assignment = new Assignment { Id = 1 } };
             _disputeRepoMock.Setup(r => r.GetDisputeWithDetailsAsync(100)).ReturnsAsync(dispute);
 
             var request = new ResolveDisputeRequest { DisputeId = 100, IsAccepted = true, ManagerComment = "Test" };
 
-            
             await Assert.ThrowsAsync<Exception>(() => _disputeService.ResolveDisputeAsync("manager-1", request));
         }
 
         [Fact]
         public async Task ResolveDisputeAsync_UpdatesDataItemStatus_WhenAccepted()
         {
-            
             int dataItemId = 1;
-            var assignment = new Assignment 
-            { 
-                Id = 1, 
-                DataItemId = dataItemId, 
-                AnnotatorId = "annotator-1", 
+            var assignment = new Assignment
+            {
+                Id = 1,
+                DataItemId = dataItemId,
+                AnnotatorId = "annotator-1",
                 Status = TaskStatusConstants.Rejected,
                 ProjectId = 1
             };
-            var dispute = new Dispute 
-            { 
-                Id = 100, 
-                AssignmentId = 1, 
-                Assignment = assignment, 
-                Status = "Pending" 
+            var dispute = new Dispute
+            {
+                Id = 100,
+                AssignmentId = 1,
+                Assignment = assignment,
+                Status = "Pending"
             };
             var dataItem = new DataItem { Id = dataItemId, ProjectId = 1, Status = TaskStatusConstants.Rejected };
 
@@ -338,10 +316,8 @@ namespace BLL.Tests
 
             var request = new ResolveDisputeRequest { DisputeId = 100, IsAccepted = true, ManagerComment = "Correct" };
 
-            
             await _disputeService.ResolveDisputeAsync("manager-1", request);
 
-            
             Assert.Equal(TaskStatusConstants.Approved, dataItem.Status);
         }
 
@@ -352,7 +328,6 @@ namespace BLL.Tests
         [Fact]
         public async Task GetDisputesAsync_AsManager_ReturnsAllProjectDisputes()
         {
-            
             var disputes = new List<Dispute>
             {
                 new Dispute { Id = 1, Status = "Pending", Assignment = new Assignment { ProjectId = 1 } },
@@ -361,24 +336,19 @@ namespace BLL.Tests
 
             _disputeRepoMock.Setup(r => r.GetDisputesByProjectAsync(1)).ReturnsAsync(disputes);
 
-            
             var result = await _disputeService.GetDisputesAsync(1, "manager-1", UserRoles.Manager);
 
-            
             Assert.Equal(2, result.Count);
         }
 
         [Fact]
         public async Task GetDisputesAsync_AsAnnotator_ReturnsOnlyOwnDisputes()
         {
-            
             var disputes = new List<Dispute> { new Dispute { Id = 1, AnnotatorId = "annotator-1", Status = "Pending" } };
             _disputeRepoMock.Setup(r => r.GetDisputesByAnnotatorAsync("annotator-1")).ReturnsAsync(disputes);
 
-            
             var result = await _disputeService.GetDisputesAsync(1, "annotator-1", UserRoles.Annotator);
 
-            
             Assert.Single(result);
         }
 

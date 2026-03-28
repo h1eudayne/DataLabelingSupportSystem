@@ -84,7 +84,6 @@ builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-
 })
 .AddJwtBearer(options =>
 {
@@ -136,14 +135,14 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
-        
+
         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
     });
 builder.Services.AddSignalR(options =>
 {
     options.KeepAliveInterval = TimeSpan.FromSeconds(15);
     options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
-    options.MaximumReceiveMessageSize = 32 * 1024; 
+    options.MaximumReceiveMessageSize = 32 * 1024;
     options.EnableDetailedErrors = builder.Environment.IsDevelopment();
 }).AddMessagePackProtocol();
 builder.Services.AddEndpointsApiExplorer();

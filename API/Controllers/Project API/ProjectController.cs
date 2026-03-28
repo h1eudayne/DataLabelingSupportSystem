@@ -7,9 +7,6 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    
-    
-    
     [Route("api/projects")]
     [ApiController]
     [Authorize]
@@ -38,16 +35,7 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
         [HttpGet("user/{userId}")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -64,17 +52,7 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
         [HttpPost]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -116,23 +94,20 @@ namespace API.Controllers
 
                 Console.WriteLine($"[DEBUG] CreateProject - ManagerId: {managerId}");
                 Console.WriteLine($"[DEBUG] CreateProject - Request: {System.Text.Json.JsonSerializer.Serialize(request)}");
-                
+
                 var result = await _projectService.CreateProjectAsync(managerId, request);
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                
                 Console.WriteLine($"[ERROR] CreateProject failed: {ex}");
                 Console.WriteLine($"[ERROR] Inner Exception: {ex.InnerException?.Message}");
                 Console.WriteLine($"[ERROR] Stack Trace: {ex.StackTrace}");
-                
+
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
+
         [HttpDelete("{projectId}/users/{userId}")]
         [Authorize(Roles = "Manager")]
         public async Task<IActionResult> RemoveUserFromProject(int projectId, string userId)
@@ -147,18 +122,7 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
         [HttpPut("{id}")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -179,17 +143,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("{id}")]
         [Authorize(Roles = "Admin,Manager,Reviewer,Annotator")]
         [ProducesResponseType(typeof(object), 200)]
@@ -246,17 +199,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("managers/{managerId}")]
         [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -275,17 +217,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpDelete("{id}")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -303,16 +234,7 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
         [HttpGet("all")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(List<ProjectSummaryResponse>), 200)]
@@ -331,17 +253,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("{projectId}/complete")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -363,18 +274,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("{projectId}/archive")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]

@@ -1,11 +1,7 @@
 namespace Core.Constants
 {
-    
-    
-    
     public static class FlagTypeConstants
     {
-        
         public const string CorruptedImage = "CorruptedImage";
         public const string NoMatchingLabel = "NoMatchingLabel";
         public const string DataQualityIssue = "DataQualityIssue";

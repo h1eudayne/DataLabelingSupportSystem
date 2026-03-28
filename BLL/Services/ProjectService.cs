@@ -7,7 +7,6 @@ using System.Text;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 
-
 namespace BLL.Services
 {
     public class ProjectService : IProjectService
@@ -20,8 +19,6 @@ namespace BLL.Services
         private readonly IRepository<ProjectFlag> _flagRepo;
         private readonly IAppNotificationService _notification;
 
-        
-        
         private const string GUIDELINE_DECISION_NOTE = "Decision based on official project guidelines";
 
         private static string SafeSerializeAnnotations(IEnumerable<Annotation>? annotations)
@@ -72,7 +69,6 @@ namespace BLL.Services
             }
         }
 
-        
         private static string GetFlagDescription(string flagType)
         {
             return flagType switch
@@ -152,8 +148,7 @@ namespace BLL.Services
                 AnnotationGuide = request.AnnotationGuide ?? "",
                 MaxTaskDurationHours = request.MaxTaskDurationHours > 0 ? request.MaxTaskDurationHours : 24,
                 PenaltyUnit = penaltyUnit,
-                
-                
+
                 Status = ProjectStatusConstants.Draft
             };
 
@@ -189,7 +184,6 @@ namespace BLL.Services
             await _projectRepository.AddAsync(project);
             await _projectRepository.SaveChangesAsync();
 
-            
             foreach (var flagType in FlagTypeConstants.DefaultFlags)
             {
                 var flag = new ProjectFlag
@@ -549,7 +543,6 @@ namespace BLL.Services
             if (user.Role != UserRoles.Admin && project.ManagerId != userId)
                 throw new Exception("Unauthorized to export this project.");
 
-            
             var totalItems = project.DataItems.Count;
             var completedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
             if (totalItems > 0 && completedItems < totalItems)
@@ -705,7 +698,6 @@ namespace BLL.Services
                             AnnotatorAccuracy = annotatorAccuracy
                         };
                     }).ToList();
-
 
                 var reviewerIds = allAssignments
                     .Where(a => !string.IsNullOrEmpty(a.ReviewerId))
@@ -934,16 +926,12 @@ namespace BLL.Services
             await _activityLogRepo.SaveChangesAsync();
         }
 
-        
-        
         public async Task CompleteProjectAsync(int projectId, string managerId)
         {
             var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
             if (project == null) throw new Exception("Project not found.");
             if (project.ManagerId != managerId) throw new UnauthorizedAccessException("You are not the manager of this project.");
 
-            
-            
             var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
 
             if (allAssignments.Any() && allAssignments.Any(a => a.Status != TaskStatusConstants.Approved))
@@ -951,13 +939,11 @@ namespace BLL.Services
                 throw new Exception("BR-MNG-33: Cannot complete project: All tasks must be Approved before completing. Manager approval required.");
             }
 
-            
             if (project.Status != ProjectStatusConstants.Active)
             {
                 throw new Exception("BR-MNG-33: Only Active projects can be completed. Please activate the project first.");
             }
 
-            
             project.Status = ProjectStatusConstants.Completed;
             _projectRepository.Update(project);
 
@@ -975,7 +961,6 @@ namespace BLL.Services
             await _activityLogRepo.SaveChangesAsync();
         }
 
-        
         public async Task ActivateProjectAsync(int projectId, string managerId)
         {
             var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
@@ -1014,8 +999,6 @@ namespace BLL.Services
             if (project == null) throw new Exception("Project not found.");
             if (project.ManagerId != managerId) throw new UnauthorizedAccessException("You are not the manager of this project.");
 
-            
-            
             if (project.Status == ProjectStatusConstants.Draft)
             {
                 throw new Exception("Cannot archive a Draft project. Please complete or activate it first.");
@@ -1046,7 +1029,6 @@ namespace BLL.Services
             if (user.Role != UserRoles.Admin && project.ManagerId != userId)
                 throw new Exception("Unauthorized to export this project.");
 
-            
             var totalItems = project.DataItems.Count;
             var completedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
             if (totalItems > 0 && completedItems < totalItems)
@@ -1068,7 +1050,6 @@ namespace BLL.Services
 
             foreach (var task in approvedTasks)
             {
-
                 var annotationJson = System.Text.Json.JsonSerializer.Serialize(task.Annotations);
 
                 var safeJson = annotationJson.Replace("\"", "\"\"");
@@ -1116,7 +1097,6 @@ namespace BLL.Services
             });
             await _activityLogRepo.SaveChangesAsync();
 
-            
             var removedUser = await _userRepository.GetByIdAsync(userId);
             if (removedUser != null && removedUser.Role == UserRoles.Annotator)
             {
@@ -1128,7 +1108,6 @@ namespace BLL.Services
             }
         }
 
-        
         public async Task ToggleUserLockAsync(int projectId, string userId, bool lockStatus, string managerId)
         {
             var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
@@ -1143,7 +1122,6 @@ namespace BLL.Services
 
             if (lockStatus)
             {
-                
                 foreach (var assignment in userAssignments)
                 {
                     if (assignment.Status == TaskStatusConstants.Assigned ||
@@ -1171,7 +1149,6 @@ namespace BLL.Services
             }
             else
             {
-                
                 foreach (var stat in userStats)
                 {
                     stat.IsLocked = false;

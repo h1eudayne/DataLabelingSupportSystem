@@ -11,9 +11,6 @@ namespace Core.DTOs.Responses
         public bool IsDefault { get; set; } = false;
     }
 
-    
-    
-    
     public class LabelUsageResponse
     {
         public int LabelId { get; set; }

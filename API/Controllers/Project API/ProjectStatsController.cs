@@ -5,9 +5,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace API.Controllers
 {
-    
-    
-    
     [Route("api/projects")]
     [ApiController]
     [Authorize]
@@ -21,18 +18,6 @@ namespace API.Controllers
             _projectService = projectService;
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("{projectId}/statistics")]
         [Authorize(Roles = "Admin,Manager,Reviewer,Annotator")]
         [ProducesResponseType(typeof(object), 200)]
@@ -51,17 +36,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("managers/{managerId}/statistics")]
         [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -79,11 +53,7 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
-        
-        
+
         [HttpPost("{projectId}/users/{userId}/toggle-lock")]
         [Authorize(Roles = "Manager")]
         public async Task<IActionResult> ToggleUserLock(int projectId, string userId, [FromQuery] bool lockStatus)

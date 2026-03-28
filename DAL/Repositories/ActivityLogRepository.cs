@@ -2,7 +2,6 @@
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
 
-
 namespace DAL.Repositories
 {
     public class ActivityLogRepository : Repository<ActivityLog>, IActivityLogRepository

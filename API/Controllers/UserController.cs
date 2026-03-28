@@ -7,9 +7,6 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    
-    
-    
     [Route("api/users")]
     [ApiController]
     [Authorize]
@@ -23,20 +20,6 @@ namespace API.Controllers
             _userService = userService;
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("me")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
@@ -59,17 +42,6 @@ namespace API.Controllers
             });
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPut("me")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -90,18 +62,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("me/avatar")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -140,18 +100,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPut("me/password")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -176,22 +124,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("import")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -219,16 +151,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("managed")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(List<UserResponse>), 200)]
@@ -242,15 +164,6 @@ namespace API.Controllers
             return Ok(users);
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("all")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(List<UserResponse>), 200)]
@@ -261,17 +174,6 @@ namespace API.Controllers
             return Ok(users);
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet]
         [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(PagedResponse<UserResponse>), 200)]
@@ -282,18 +184,6 @@ namespace API.Controllers
             return Ok(result);
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -327,18 +217,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPut("{id}/change-password")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -368,23 +246,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -413,21 +274,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPatch("{id}/status")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -451,18 +297,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -484,16 +318,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("management-board")]
         [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(List<UserResponse>), 200)]

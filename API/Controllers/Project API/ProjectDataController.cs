@@ -7,9 +7,6 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    
-    
-    
     [Route("api/projects")]
     [ApiController]
     [Authorize]
@@ -25,18 +22,6 @@ namespace API.Controllers
             _env = env;
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("{projectId}/imports")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -55,18 +40,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("{projectId}/uploads/direct")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -82,9 +55,8 @@ namespace API.Controllers
 
             try
             {
-                
                 var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp" };
-                const long maxFileSizeBytes = 10 * 1024 * 1024; 
+                const long maxFileSizeBytes = 10 * 1024 * 1024;
 
                 for (int i = 0; i < files.Count; i++)
                 {
@@ -118,19 +90,9 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("{projectId}/buckets")]
         [Authorize(Roles = "Annotator,Manager,Admin")]
-        [ProducesResponseType(typeof(object), 200)] 
+        [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> GetBuckets(int projectId)
         {
@@ -139,17 +101,6 @@ namespace API.Controllers
             return Ok(buckets);
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("{projectId}/exports")]
         [Authorize(Roles = "Manager,Admin")]
         [ProducesResponseType(typeof(FileContentResult), 200)]
@@ -171,9 +122,7 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
-        
-        
-        
+
         [HttpGet("{projectId}/export-csv")]
         [Authorize(Roles = "Manager,Admin")]
         public async Task<IActionResult> ExportCsv(int projectId)

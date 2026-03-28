@@ -18,7 +18,7 @@ namespace BLL.Interfaces
         Task AssignReviewersAsync(AssignReviewersRequest request);
         Task CompleteProjectAsync(int projectId, string managerId);
         Task ArchiveProjectAsync(int projectId, string managerId);
-        
+
         Task ActivateProjectAsync(int projectId, string managerId);
         Task<byte[]> ExportProjectCsvAsync(int projectId, string userId);
         Task<List<Core.DTOs.Responses.BucketResponse>> GetBucketsAsync(int projectId, string userId);
@@ -27,8 +27,7 @@ namespace BLL.Interfaces
         Task<ProjectStatisticsResponse> GetProjectStatisticsAsync(int projectId);
         Task<object> GetUserProjectsByUserIdAsync(string userId);
         Task RemoveUserFromProjectAsync(int projectId, string userId);
-        
-        Task ToggleUserLockAsync(int projectId, string userId, bool lockStatus, string managerId);
 
+        Task ToggleUserLockAsync(int projectId, string userId, bool lockStatus, string managerId);
     }
 }

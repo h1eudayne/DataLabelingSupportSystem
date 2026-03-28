@@ -7,10 +7,6 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    
-    
-    
-    
     [Route("api/tasks")]
     [ApiController]
     [Authorize]
@@ -24,21 +20,6 @@ namespace API.Controllers
             _taskService = taskService;
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("assign-team")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -65,21 +46,9 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("projects/{projectId}/buckets/{bucketId}")]
         [Authorize(Roles = "Admin,Manager,Annotator")]
-        [ProducesResponseType(typeof(object), 200)] 
+        [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> GetTasksByBucket(int projectId, int bucketId)
@@ -98,20 +67,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("projects")]
         [ProducesResponseType(typeof(List<AssignedProjectResponse>), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
@@ -124,24 +79,9 @@ namespace API.Controllers
             return Ok(projects);
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("submissions/batch")]
         [Authorize(Roles = "Annotator")]
-        [ProducesResponseType(typeof(object), 200)] 
+        [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> SubmitMultipleTasks([FromBody] SubmitMultipleTasksRequest request)
@@ -163,18 +103,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("projects/{projectId}/images")]
         [ProducesResponseType(typeof(List<AssignmentResponse>), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -195,18 +123,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("projects/{projectId}/items/{dataItemId}")]
         [ProducesResponseType(typeof(AssignmentResponse), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -227,18 +143,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("assignments/{id}")]
         [ProducesResponseType(typeof(AssignmentResponse), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -260,22 +164,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPut("drafts")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
@@ -296,17 +184,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("submissions")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]

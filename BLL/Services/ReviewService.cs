@@ -42,7 +42,6 @@ namespace BLL.Services
             _statsRepo = statsRepo;
         }
 
-        
         private async Task<bool> HasReviewerAlreadyReviewedAsync(int assignmentId, string reviewerId)
         {
             var existingReviews = await _reviewLogRepo.FindAsync(
@@ -87,7 +86,7 @@ namespace BLL.Services
         {
             var assignment = await _assignmentRepo.GetByIdAsync(request.AssignmentId);
             if (assignment == null) throw new Exception("Assignment not found");
-            
+
             if (reviewerId == assignment.AnnotatorId)
                 throw new Exception("BR-REV-10: A reviewer must not review their own annotated tasks");
 
@@ -116,7 +115,6 @@ namespace BLL.Services
                 throw new Exception("Rejection requires a clear comment explaining the error.");
             }
 
-            
             var alreadyReviewed = await HasReviewerAlreadyReviewedAsync(assignment.Id, reviewerId);
             if (alreadyReviewed)
             {
@@ -145,8 +143,6 @@ namespace BLL.Services
                     }
                 }
 
-                
-                
                 if (assignment.ReviewLogs != null && assignment.ReviewLogs.Any())
                 {
                     foreach (var reviewLog in assignment.ReviewLogs)
@@ -277,13 +273,12 @@ namespace BLL.Services
         {
             var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(request.AssignmentId);
             if (assignment == null) throw new Exception("Assignment not found");
-            
+
             if (reviewerId == assignment.AnnotatorId)
                 throw new Exception("BR-REV-10: A reviewer must not review their own annotated tasks");
             if (assignment.ReviewerId != reviewerId) throw new UnauthorizedAccessException("You are not assigned to review this task");
             if (assignment.Status != TaskStatusConstants.Submitted) throw new Exception("Task is not in a reviewable state");
 
-            
             var alreadyReviewed = await HasReviewerAlreadyReviewedAsync(assignment.Id, reviewerId);
             if (alreadyReviewed)
             {
@@ -304,8 +299,6 @@ namespace BLL.Services
             {
                 assignment.Status = TaskStatusConstants.Approved;
 
-                
-                
                 if (assignment.ReviewLogs != null && assignment.ReviewLogs.Any())
                 {
                     foreach (var existingLog in assignment.ReviewLogs)
@@ -319,13 +312,11 @@ namespace BLL.Services
             {
                 assignment.RejectCount += 1;
 
-                
                 if (assignment.RejectCount >= 3)
                 {
                     assignment.IsEscalated = true;
                     assignment.Status = "Escalated";
 
-                    
                     var project = await _projectRepo.GetByIdAsync(assignment.ProjectId);
                     if (project != null && !string.IsNullOrEmpty(project.ManagerId))
                     {
@@ -368,10 +359,8 @@ namespace BLL.Services
         {
             var assignments = await _assignmentRepo.GetAssignmentsForReviewerAsync(projectId, reviewerId);
 
-            
-            
             var project = await _projectRepo.GetByIdAsync(projectId);
-            int samplingRate = 100; 
+            int samplingRate = 100;
             if (project != null && project.SamplingRate > 0 && project.SamplingRate < 100)
             {
                 samplingRate = project.SamplingRate;
@@ -419,7 +408,6 @@ namespace BLL.Services
             }).ToList();
         }
 
-        
         public async Task<ReviewQueueResponse> GetReviewQueueGroupedByAnnotatorAsync(int projectId, string reviewerId)
         {
             var project = await _projectRepo.GetProjectWithDetailsAsync(projectId);
@@ -511,7 +499,6 @@ namespace BLL.Services
             };
         }
 
-        
         public async Task<BatchCompletionStatusResponse> GetBatchCompletionStatusAsync(int projectId, string reviewerId)
         {
             var project = await _projectRepo.GetProjectWithDetailsAsync(projectId);
@@ -592,7 +579,6 @@ namespace BLL.Services
             };
         }
 
-        
         public async Task HandleEscalatedTaskAsync(string managerId, EscalationActionRequest request)
         {
             var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(request.AssignmentId);
@@ -600,7 +586,6 @@ namespace BLL.Services
             if (!assignment.IsEscalated) throw new Exception("This task is not escalated");
             if (assignment.Project?.ManagerId != managerId) throw new UnauthorizedAccessException("Only the project manager can handle escalated tasks");
 
-            
             var originalAnnotatorId = assignment.AnnotatorId;
 
             switch (request.Action.ToLower())
@@ -610,7 +595,6 @@ namespace BLL.Services
                     assignment.IsEscalated = false;
                     assignment.SubmittedAt = DateTime.UtcNow;
 
-                    
                     var dataItem = await _dataItemRepo.GetByIdAsync(assignment.DataItemId);
                     if (dataItem != null)
                     {
@@ -627,7 +611,7 @@ namespace BLL.Services
                 case "reject":
                     assignment.Status = TaskStatusConstants.Rejected;
                     assignment.IsEscalated = false;
-                    assignment.RejectCount = 0; 
+                    assignment.RejectCount = 0;
 
                     await _notification.SendNotificationAsync(
                         assignment.AnnotatorId,
@@ -638,7 +622,7 @@ namespace BLL.Services
                 case "reassign":
                     if (string.IsNullOrEmpty(request.NewAnnotatorId))
                         throw new Exception("New Annotator ID is required for reassignment action");
-                    
+
                     var newAnnotator = await _userRepo.GetByIdAsync(request.NewAnnotatorId);
                     if (newAnnotator == null) throw new Exception("New annotator not found");
                     if (newAnnotator.Role != UserRoles.Annotator) throw new Exception("Selected user is not an Annotator");
@@ -649,13 +633,11 @@ namespace BLL.Services
                     assignment.IsEscalated = false;
                     assignment.RejectCount = 0;
 
-                    
                     await _notification.SendNotificationAsync(
                         originalAnnotatorId,
                         $"Task #{assignment.Id} has been reassigned to another annotator due to escalation.",
                         "Warning");
 
-                    
                     await _notification.SendNotificationAsync(
                         request.NewAnnotatorId,
                         $"Task #{assignment.Id} has been assigned to you after escalation review.",
@@ -664,7 +646,7 @@ namespace BLL.Services
 
                 case "lock":
                     assignment.IsEscalated = false;
-                    assignment.AnnotatorId = ""; 
+                    assignment.AnnotatorId = "";
 
                     var annotatorStat = await _statsRepo.FindAsync(s => s.UserId == originalAnnotatorId && s.ProjectId == assignment.ProjectId);
                     foreach (var stat in annotatorStat)

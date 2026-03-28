@@ -1,9 +1,5 @@
 namespace Core.DTOs.Responses
 {
-    
-    
-    
-    
     public class DisputeResolutionDetailsResponse
     {
         public int DisputeId { get; set; }
@@ -22,7 +18,7 @@ namespace Core.DTOs.Responses
         public string? ProjectName { get; set; }
         public string? DataItemUrl { get; set; }
         public string? AssignmentStatus { get; set; }
-        public bool WasOverturned { get; set; } 
+        public bool WasOverturned { get; set; }
         public string ResolutionSummary { get; set; } = string.Empty;
     }
 }

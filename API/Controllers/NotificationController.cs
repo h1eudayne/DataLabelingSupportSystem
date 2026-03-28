@@ -19,15 +19,6 @@ namespace API.Controllers
             _context = context;
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet]
         [ProducesResponseType(200)]
         [ProducesResponseType(401)]
@@ -53,13 +44,6 @@ namespace API.Controllers
             return Ok(notifications);
         }
 
-        
-        
-        
-        
-        
-        
-        
         [HttpPut("{id}/read")]
         [ProducesResponseType(200)]
         [ProducesResponseType(404)]
@@ -78,11 +62,6 @@ namespace API.Controllers
             return Ok(new { message = "Marked as read successfully." });
         }
 
-        
-        
-        
-        
-        
         [HttpPut("read-all")]
         [ProducesResponseType(200)]
         public async Task<IActionResult> MarkAllAsRead()

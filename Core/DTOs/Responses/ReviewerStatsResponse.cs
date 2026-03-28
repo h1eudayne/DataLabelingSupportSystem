@@ -1,10 +1,5 @@
 namespace Core.DTOs.Responses
 {
-    
-    
-    
-    
-    
     public class ReviewerStatsResponse
     {
         public string ReviewerId { get; set; } = string.Empty;
@@ -13,14 +8,14 @@ namespace Core.DTOs.Responses
         public int TotalApproved { get; set; }
         public int TotalRejected { get; set; }
         public int TotalOverridden { get; set; }
-        
+
         public int TotalDisputes { get; set; }
         public double ApprovalRate { get; set; }
         public double RejectionRate { get; set; }
         public double OverrideRate { get; set; }
-        
+
         public double DisputeRate { get; set; }
-        public double KQSScore { get; set; } 
+        public double KQSScore { get; set; }
         public int TotalAuditedReviews { get; set; }
         public int CorrectDecisions { get; set; }
         public double AuditAccuracy { get; set; }

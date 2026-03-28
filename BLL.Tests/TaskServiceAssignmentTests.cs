@@ -48,14 +48,12 @@ namespace BLL.Tests
         [Fact]
         public async Task AssignTeamAsync_With10AnnotatorsAnd10Reviewers_Creates1000AssignmentsPerReviewer()
         {
-            
             string managerId = "manager-1";
             int projectId = 1;
             int totalItems = 100;
             int numAnnotators = 10;
             int numReviewers = 10;
 
-            
             var project = new Project
             {
                 Id = projectId,
@@ -64,7 +62,6 @@ namespace BLL.Tests
                 Status = "InProgress"
             };
 
-            
             var annotators = Enumerable.Range(1, numAnnotators)
                 .Select(i => new User
                 {
@@ -75,7 +72,6 @@ namespace BLL.Tests
                 })
                 .ToList();
 
-            
             var reviewers = Enumerable.Range(1, numReviewers)
                 .Select(i => new User
                 {
@@ -86,7 +82,6 @@ namespace BLL.Tests
                 })
                 .ToList();
 
-            
             var dataItems = Enumerable.Range(1, totalItems)
                 .Select(i => new DataItem
                 {
@@ -99,7 +94,6 @@ namespace BLL.Tests
 
             var allUsers = annotators.Concat(reviewers).ToList();
 
-            
             _projectRepoMock.Setup(r => r.GetByIdAsync(projectId))
                 .ReturnsAsync(project);
 
@@ -114,7 +108,6 @@ namespace BLL.Tests
                 .Callback<Assignment>(a => capturedAssignments.Add(a))
                 .Returns(Task.CompletedTask);
 
-            
             var request = new AssignTeamRequest
             {
                 ProjectId = projectId,
@@ -125,15 +118,11 @@ namespace BLL.Tests
 
             await _taskService.AssignTeamAsync(managerId, request);
 
-            
-            
-            
-            int expectedTotal = totalItems * numAnnotators * numReviewers; 
-            int expectedPerReviewer = totalItems * numAnnotators; 
+            int expectedTotal = totalItems * numAnnotators * numReviewers;
+            int expectedPerReviewer = totalItems * numAnnotators;
 
             Assert.Equal(expectedTotal, capturedAssignments.Count);
 
-            
             foreach (var reviewer in reviewers)
             {
                 var reviewerAssignments = capturedAssignments
@@ -143,21 +132,19 @@ namespace BLL.Tests
                 Assert.Equal(expectedPerReviewer, reviewerAssignments.Count);
             }
 
-            
             foreach (var annotator in annotators)
             {
                 var annotatorAssignments = capturedAssignments
                     .Where(a => a.AnnotatorId == annotator.Id)
                     .ToList();
 
-                Assert.Equal(totalItems * numReviewers, annotatorAssignments.Count); 
+                Assert.Equal(totalItems * numReviewers, annotatorAssignments.Count);
             }
         }
 
         [Fact]
         public async Task AssignTeamAsync_WithNoReviewers_CreatesOnlyAnnotatorAssignments()
         {
-            
             string managerId = "manager-1";
             int projectId = 1;
             int totalItems = 100;
@@ -205,25 +192,20 @@ namespace BLL.Tests
                 .Callback<Assignment>(a => capturedAssignments.Add(a))
                 .Returns(Task.CompletedTask);
 
-            
             var request = new AssignTeamRequest
             {
                 ProjectId = projectId,
                 TotalQuantity = totalItems,
                 AnnotatorIds = annotators.Select(a => a.Id).ToList(),
-                ReviewerIds = null 
+                ReviewerIds = null
             };
 
             await _taskService.AssignTeamAsync(managerId, request);
 
-            
-            
-            
-            int expectedTotal = totalItems * numAnnotators; 
+            int expectedTotal = totalItems * numAnnotators;
 
             Assert.Equal(expectedTotal, capturedAssignments.Count);
 
-            
             foreach (var assignment in capturedAssignments)
             {
                 Assert.Null(assignment.ReviewerId);
@@ -233,7 +215,6 @@ namespace BLL.Tests
         [Fact]
         public async Task AssignTeamAsync_WithCompletedProject_ThrowsException()
         {
-            
             string managerId = "manager-1";
             int projectId = 1;
 
@@ -242,13 +223,12 @@ namespace BLL.Tests
                 Id = projectId,
                 Name = "Test Project",
                 ManagerId = managerId,
-                Status = "Completed" 
+                Status = "Completed"
             };
 
             _projectRepoMock.Setup(r => r.GetByIdAsync(projectId))
                 .ReturnsAsync(project);
 
-            
             var request = new AssignTeamRequest
             {
                 ProjectId = projectId,
@@ -267,7 +247,6 @@ namespace BLL.Tests
         [Fact]
         public async Task AssignTeamAsync_ManagerAssignsToSelf_ThrowsException()
         {
-            
             string managerId = "manager-1";
             int projectId = 1;
 
@@ -282,12 +261,11 @@ namespace BLL.Tests
             _projectRepoMock.Setup(r => r.GetByIdAsync(projectId))
                 .ReturnsAsync(project);
 
-            
             var request = new AssignTeamRequest
             {
                 ProjectId = projectId,
                 TotalQuantity = 10,
-                AnnotatorIds = new List<string> { managerId }, 
+                AnnotatorIds = new List<string> { managerId },
                 ReviewerIds = new List<string> { "reviewer-1" }
             };
 
@@ -301,7 +279,6 @@ namespace BLL.Tests
         [Fact]
         public async Task AssignTeamAsync_EachAnnotatorReceivesAllItems()
         {
-            
             string managerId = "manager-1";
             int projectId = 1;
             int totalItems = 50;
@@ -356,7 +333,6 @@ namespace BLL.Tests
                 .Callback<Assignment>(a => capturedAssignments.Add(a))
                 .Returns(Task.CompletedTask);
 
-            
             var request = new AssignTeamRequest
             {
                 ProjectId = projectId,
@@ -367,19 +343,14 @@ namespace BLL.Tests
 
             await _taskService.AssignTeamAsync(managerId, request);
 
-            
-            
-            
             foreach (var annotator in annotators)
             {
                 var annotatorAssignments = capturedAssignments
                     .Where(a => a.AnnotatorId == annotator.Id)
                     .ToList();
 
-                
                 Assert.Equal(totalItems, annotatorAssignments.Count);
 
-                
                 var assignedItemIds = annotatorAssignments.Select(a => a.DataItemId).OrderBy(id => id).ToList();
                 var expectedItemIds = dataItems.Select(d => d.Id).OrderBy(id => id).ToList();
 

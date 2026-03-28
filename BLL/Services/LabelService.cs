@@ -46,7 +46,6 @@ namespace BLL.Services
             }).ToList();
         }
 
-        
         public async Task<LabelUsageResponse> CheckLabelUsageAsync(int labelId)
         {
             var annotations = await _annotationRepo.FindAsync(a => a.ClassId == labelId);
@@ -86,7 +85,7 @@ namespace BLL.Services
                 DefaultChecklist = (request.Checklist != null && request.Checklist.Any())
                                     ? JsonSerializer.Serialize(request.Checklist)
                                     : "[]",
-                
+
                 Version = guidelineVersion,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -115,7 +114,6 @@ namespace BLL.Services
             };
         }
 
-        
         private static string IncrementVersion(string version)
         {
             var parts = version.Split('.');
@@ -147,7 +145,6 @@ namespace BLL.Services
                                          : "[]";
             }
 
-            
             if (isCriticalChange)
             {
                 label.Version = IncrementVersion(label.Version);

@@ -9,7 +9,7 @@ namespace BLL.Interfaces
         Task<LabelResponse> UpdateLabelAsync(string userId, int labelId, UpdateLabelRequest request);
         Task<List<LabelResponse>> GetLabelsByProjectIdAsync(int projectId);
         Task DeleteLabelAsync(string userId, int labelId);
-        
+
         Task<LabelUsageResponse> CheckLabelUsageAsync(int labelId);
     }
 }

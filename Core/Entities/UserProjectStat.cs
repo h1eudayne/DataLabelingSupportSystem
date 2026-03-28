@@ -25,9 +25,9 @@ namespace Core.Entities
         public double AverageQualityScore { get; set; } = 100;
         public int TotalCriticalErrors { get; set; } = 0;
         public int TotalReviewedTasks { get; set; } = 0;
-        public double ReviewerQualityScore { get; set; } = 100; 
-        public int TotalReviewsDone { get; set; } = 0;        
-        public int TotalCorrectDecisions { get; set; } = 0;    
+        public double ReviewerQualityScore { get; set; } = 100;
+        public int TotalReviewsDone { get; set; } = 0;
+        public int TotalCorrectDecisions { get; set; } = 0;
         public int TotalAuditedReviews { get; set; } = 0;
         public bool IsLocked { get; set; } = false;
         public int TotalFirstPassCorrect { get; set; } = 0;
@@ -36,7 +36,6 @@ namespace Core.Entities
         public int TotalReviewerCorrectByManager { get; set; } = 0;
         public int TotalReviewerManagerDecisions { get; set; } = 0;
 
-        
         public int OverrideCount { get; set; } = 0;
         public int DisputeCount { get; set; } = 0;
     }

@@ -5,9 +5,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace API.Controllers
 {
-    
-    
-    
     [Route("api/logs")]
     [ApiController]
     [Authorize]
@@ -21,19 +18,9 @@ namespace API.Controllers
             _logService = logService;
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("system")]
         [Authorize(Roles = "Admin")]
-        [ProducesResponseType(typeof(object), 200)] 
+        [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> GetSystemLogs()
@@ -49,20 +36,9 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("projects/{projectId}")]
         [Authorize(Roles = "Admin,Manager")]
-        [ProducesResponseType(typeof(object), 200)] 
+        [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> GetProjectLogs(int projectId)

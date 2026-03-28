@@ -85,7 +85,7 @@ namespace API.Controllers
                     refreshToken = refreshToken,
                     tokenType = "Bearer",
                     expiresIn = 1800,
-                    unreadNotifications = unreadCount 
+                    unreadNotifications = unreadCount
                 });
             }
             catch (ArgumentException)
@@ -137,7 +137,6 @@ namespace API.Controllers
 
                 if (!string.IsNullOrEmpty(userId))
                 {
-
                     await _userService.RevokeRefreshTokenAsync(userId);
 
                     await _logService.LogActionAsync(
@@ -162,7 +161,6 @@ namespace API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         public IActionResult ForgotPassword([FromBody] ForgotPasswordRequest request)
         {
-
             return Ok(new
             {
                 Message = "Please contact your Administrator to reset your password. Self-service password reset is not allowed for security reasons."

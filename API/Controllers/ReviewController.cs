@@ -7,10 +7,6 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    
-    
-    
-    
     [Route("api/reviews")]
     [ApiController]
     [Authorize]
@@ -26,20 +22,6 @@ namespace API.Controllers
             _statisticService = statisticService;
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("projects")]
         [Authorize(Roles = "Admin,Manager,Reviewer")]
         [ProducesResponseType(typeof(IEnumerable<AssignedProjectResponse>), 200)]
@@ -61,17 +43,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("projects/{projectId}/tasks")]
         [Authorize(Roles = "Admin,Manager,Reviewer,Annotator")]
         [ProducesResponseType(typeof(IEnumerable<TaskResponse>), 200)]
@@ -93,24 +64,9 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost]
         [Authorize(Roles = "Admin,Manager,Reviewer")]
-        [ProducesResponseType(typeof(object), 200)] 
+        [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> ReviewTask([FromBody] ReviewRequest request)
@@ -132,22 +88,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("audits")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]
@@ -169,17 +109,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("stats")]
         [Authorize(Roles = "Admin,Manager,Reviewer")]
         [ProducesResponseType(typeof(ReviewerStatsResponse), 200)]
@@ -201,19 +130,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("projects/{projectId}/queue")]
         [Authorize(Roles = "Admin,Manager,Reviewer")]
         [ProducesResponseType(typeof(ReviewQueueResponse), 200)]
@@ -235,18 +151,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("deduct-overdue-reliability")]
         [Authorize(Roles = "Manager,Admin")]
         [ProducesResponseType(typeof(object), 200)]
@@ -265,19 +169,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet("projects/{projectId}/batch-status")]
         [Authorize(Roles = "Admin,Manager,Reviewer")]
         [ProducesResponseType(typeof(BatchCompletionStatusResponse), 200)]

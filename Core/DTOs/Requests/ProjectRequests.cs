@@ -8,34 +8,34 @@ namespace Core.DTOs.Requests
         [Required]
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
-        
+
         [JsonPropertyName("description")]
         public string? Description { get; set; }
-        
+
         [JsonPropertyName("deadline")]
         public DateTime? Deadline { get; set; }
-        
+
         [JsonPropertyName("penaltyUnit")]
         public int PenaltyUnit { get; set; } = 10;
-        
+
         [JsonPropertyName("allowGeometryTypes")]
         public string AllowGeometryTypes { get; set; } = "Rectangle";
-        
+
         [JsonPropertyName("annotationGuide")]
         public string? AnnotationGuide { get; set; }
-        
+
         [JsonPropertyName("maxTaskDurationHours")]
         public int MaxTaskDurationHours { get; set; } = 24;
-        
+
         [JsonPropertyName("startDate")]
         public DateTime? StartDate { get; set; }
-        
+
         [JsonPropertyName("endDate")]
         public DateTime? EndDate { get; set; }
-        
+
         [JsonPropertyName("reviewChecklist")]
         public List<ChecklistItemRequest>? ReviewChecklist { get; set; }
-        
+
         [JsonPropertyName("labelClasses")]
         public List<LabelClassRequest> LabelClasses { get; set; } = new List<LabelClassRequest>();
     }
@@ -44,31 +44,31 @@ namespace Core.DTOs.Requests
     {
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
-        
+
         [JsonPropertyName("description")]
         public string? Description { get; set; }
-        
+
         [JsonPropertyName("penaltyUnit")]
         public int PenaltyUnit { get; set; }
-        
+
         [JsonPropertyName("annotationGuide")]
         public string? AnnotationGuide { get; set; }
-        
+
         [JsonPropertyName("allowGeometryTypes")]
         public string? AllowGeometryTypes { get; set; }
-        
+
         [JsonPropertyName("maxTaskDurationHours")]
         public int? MaxTaskDurationHours { get; set; }
-        
+
         [JsonPropertyName("deadline")]
         public DateTime? Deadline { get; set; }
-        
+
         [JsonPropertyName("startDate")]
         public DateTime? StartDate { get; set; }
-        
+
         [JsonPropertyName("endDate")]
         public DateTime? EndDate { get; set; }
-        
+
         [JsonPropertyName("reviewChecklist")]
         public List<ChecklistItemRequest>? ReviewChecklist { get; set; }
     }
@@ -77,19 +77,19 @@ namespace Core.DTOs.Requests
     {
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
-        
+
         [JsonPropertyName("color")]
         public string Color { get; set; } = "#000000";
-        
+
         [JsonPropertyName("guideLine")]
         public string GuideLine { get; set; } = string.Empty;
-        
+
         [JsonPropertyName("checklist")]
         public List<string>? Checklist { get; set; }
-        
+
         [JsonPropertyName("exampleImageUrl")]
         public string? ExampleImageUrl { get; set; }
-        
+
         [JsonPropertyName("isDefault")]
         public bool IsDefault { get; set; } = false;
     }
@@ -104,10 +104,10 @@ namespace Core.DTOs.Requests
     {
         [JsonPropertyName("code")]
         public string Code { get; set; } = string.Empty;
-        
+
         [JsonPropertyName("description")]
         public string Description { get; set; } = string.Empty;
-        
+
         [JsonPropertyName("weight")]
         public int Weight { get; set; } = 1;
     }

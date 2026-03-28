@@ -4,6 +4,5 @@ namespace BLL.Interfaces
     {
         Task SendNotificationAsync(string userId, string message, string type = "Info");
         Task<int> GetUnreadCountAsync(string userId);
-
     }
 }

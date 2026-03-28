@@ -1,8 +1,5 @@
 namespace Core.DTOs.Responses
 {
-    
-    
-    
     public class DisputeResponse
     {
         public int Id { get; set; }

@@ -16,7 +16,7 @@ namespace BLL.Services
         private readonly IProjectRepository _projectRepo;
         private readonly IRepository<DataItem> _dataItemRepo;
         private readonly IAppNotificationService _notification;
-        private readonly IActivityLogService _logService; 
+        private readonly IActivityLogService _logService;
 
         public DisputeService(
             IDisputeRepository disputeRepo,
@@ -26,7 +26,7 @@ namespace BLL.Services
             IProjectRepository projectRepo,
             IAppNotificationService notification,
             IRepository<DataItem> dataItemRepo,
-            IActivityLogService logService) 
+            IActivityLogService logService)
         {
             _disputeRepo = disputeRepo;
             _assignmentRepo = assignmentRepo;
@@ -71,7 +71,6 @@ namespace BLL.Services
                 $"Annotator filed a dispute for Task {assignment.Id}. Reason: {request.Reason}"
             );
 
-            
             try
             {
                 if (!string.IsNullOrEmpty(assignment.ReviewerId))
@@ -79,8 +78,6 @@ namespace BLL.Services
                     await _notification.SendNotificationAsync(assignment.ReviewerId, $"A dispute has been filed for Assignment {assignment.Id}", "Warning");
                 }
 
-                
-                
                 string? managerId = null;
                 if (assignment.Project != null)
                 {
@@ -88,11 +85,10 @@ namespace BLL.Services
                 }
                 else
                 {
-                    
                     var project = await _projectRepo.GetByIdAsync(assignment.ProjectId);
                     managerId = project?.ManagerId;
                 }
-                
+
                 if (!string.IsNullOrEmpty(managerId))
                 {
                     await _notification.SendNotificationAsync(
@@ -103,7 +99,6 @@ namespace BLL.Services
             }
             catch (Exception notificationEx)
             {
-                
                 await _logService.LogActionAsync(
                     annotatorId,
                     "NotificationError",
@@ -136,12 +131,9 @@ namespace BLL.Services
             var project = await _projectRepo.GetByIdAsync(assignment.ProjectId);
             if (project == null) throw new Exception("Project not found");
 
-            
-            
             if (string.IsNullOrWhiteSpace(request.ManagerComment))
                 throw new Exception("BR-MNG-13: Manager decisions must include reference to official guidelines. Decision note is required.");
 
-            
             var guidelineVersion = project.GuidelineVersion ?? "1.0";
             bool referencesGuideline = request.ManagerComment.Contains(guidelineVersion, StringComparison.OrdinalIgnoreCase) ||
                                       request.ManagerComment.Contains("guideline", StringComparison.OrdinalIgnoreCase) ||
@@ -150,7 +142,6 @@ namespace BLL.Services
 
             if (!referencesGuideline)
             {
-                
                 request.ManagerComment = $"[Guideline v{guidelineVersion}] {request.ManagerComment}";
             }
 
@@ -158,17 +149,13 @@ namespace BLL.Services
             dispute.ManagerId = managerId;
             dispute.ResolvedAt = DateTime.UtcNow;
 
-            
-            
             var reviewLogs = assignment.ReviewLogs?.ToList() ?? new List<ReviewLog>();
 
-            
             var relatedAssignments = await _assignmentRepo.GetRelatedAssignmentsForDisputeAsync(
                 assignment.Id,
                 assignment.AnnotatorId,
                 assignment.DataItemId);
 
-            
             var allReviewLogs = new List<ReviewLog>(reviewLogs);
             foreach (var relatedAssignment in relatedAssignments)
             {
@@ -180,15 +167,9 @@ namespace BLL.Services
 
             if (request.IsAccepted)
             {
-                
                 dispute.Status = "Resolved";
                 assignment.Status = TaskStatusConstants.Approved;
 
-                
-                
-                
-                
-                
                 if (assignment.DataItemId > 0)
                 {
                     var dataItem = await _dataItemRepo.GetByIdAsync(assignment.DataItemId);
@@ -199,7 +180,6 @@ namespace BLL.Services
                     }
                 }
 
-                
                 foreach (var relatedAssignment in relatedAssignments)
                 {
                     if (relatedAssignment.Status != TaskStatusConstants.Approved)
@@ -209,8 +189,6 @@ namespace BLL.Services
                     }
                 }
 
-                
-                
                 var reviewerResults = allReviewLogs
                     .Select(r => (
                         reviewerId: r.ReviewerId,
@@ -224,7 +202,6 @@ namespace BLL.Services
                     assignment.ProjectId,
                     annotatorWasCorrect: true);
 
-                
                 foreach (var reviewerId in reviewerResults.Select(r => r.reviewerId).Distinct())
                 {
                     var reviewerReview = allReviewLogs.FirstOrDefault(r => r.ReviewerId == reviewerId);
@@ -243,9 +220,6 @@ namespace BLL.Services
             {
                 dispute.Status = "Rejected";
 
-                
-                
-                
                 var reviewerResults = allReviewLogs
                     .Select(r => (
                         reviewerId: r.ReviewerId,
@@ -259,7 +233,6 @@ namespace BLL.Services
                     assignment.ProjectId,
                     annotatorWasCorrect: false);
 
-                
                 foreach (var reviewerId in reviewerResults.Select(r => r.reviewerId).Distinct())
                 {
                     var reviewerReview = allReviewLogs.FirstOrDefault(r => r.ReviewerId == reviewerId);
@@ -289,7 +262,6 @@ namespace BLL.Services
 
             if (request.IsAccepted)
             {
-                
                 await _notification.SendNotificationAsync(
                     assignment.AnnotatorId,
                     $"Your dispute for task #{assignment.Id} has been Accepted. Quality credit has been restored to your score.",
@@ -341,7 +313,6 @@ namespace BLL.Services
             };
         }
 
-        
         public async Task<List<DisputeResolutionDetailsResponse>> GetDisputeResolutionDetailsForReviewerAsync(string reviewerId)
         {
             var allDisputes = await _disputeRepo.GetAllAsync();

@@ -3,38 +3,23 @@ using System.Text.Json.Serialization;
 
 namespace Core.DTOs.Requests
 {
-    
-    
-    
     public class AssignTaskRequest
     {
-        
-        
-        
-        
         [Required]
         [JsonPropertyName("projectId")]
         public int ProjectId { get; set; }
 
-        
-        
-        
-        
         [Required]
         [JsonPropertyName("annotatorId")]
         public string AnnotatorId { get; set; } = string.Empty;
-        
+
         [JsonPropertyName("reviewerIds")]
         public List<string> ReviewerIds { get; set; } = new List<string>();
 
-        
-        
-        
-        
         [Required]
         [JsonPropertyName("quantity")]
         public int Quantity { get; set; }
-        
+
         [JsonPropertyName("reviewerId")]
         public string? ReviewerId { get; set; }
     }
@@ -44,10 +29,10 @@ namespace Core.DTOs.Requests
         [Required]
         [JsonPropertyName("assignmentId")]
         public int AssignmentId { get; set; }
-        
+
         [JsonPropertyName("dataJSON")]
         public string DataJSON { get; set; } = string.Empty;
-        
+
         [JsonPropertyName("classId")]
         public int? ClassId { get; set; }
     }
@@ -63,27 +48,16 @@ namespace Core.DTOs.Requests
     {
         [JsonPropertyName("labelClassId")]
         public int LabelClassId { get; set; }
-        
+
         [JsonPropertyName("valueJson")]
         public string ValueJson { get; set; } = string.Empty;
     }
 
-    
-    
-    
     public class AnnotationDetail
     {
-        
-        
-        
-        
         [JsonPropertyName("labelClassId")]
         public int LabelClassId { get; set; }
 
-        
-        
-        
-        
         [JsonPropertyName("valueJson")]
         public string ValueJson { get; set; } = string.Empty;
     }

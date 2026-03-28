@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 
 namespace Core.DTOs.Requests
 {
-
     public class CreateDisputeRequest
     {
         [Required]

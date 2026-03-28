@@ -1,9 +1,5 @@
 namespace Core.DTOs.Responses
 {
-    
-    
-    
-    
     public class AnnotatorTaskGroupResponse
     {
         public string AnnotatorId { get; set; } = string.Empty;

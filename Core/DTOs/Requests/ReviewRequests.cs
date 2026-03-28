@@ -52,7 +52,6 @@ namespace Core.DTOs.Requests
         public string? AuditComment { get; set; }
     }
 
-    
     public class EscalationActionRequest
     {
         [Required]
@@ -61,12 +60,12 @@ namespace Core.DTOs.Requests
 
         [Required]
         [JsonPropertyName("action")]
-        public string Action { get; set; } 
+        public string Action { get; set; }
 
         [JsonPropertyName("comment")]
         public string? Comment { get; set; }
 
         [JsonPropertyName("newAnnotatorId")]
-        public string? NewAnnotatorId { get; set; } 
+        public string? NewAnnotatorId { get; set; }
     }
 }

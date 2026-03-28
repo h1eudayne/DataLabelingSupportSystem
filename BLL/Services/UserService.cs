@@ -40,7 +40,6 @@ namespace BLL.Services
             _logService = logService;
             _projectRepo = projectRepo;
             _notification = notification;
-
         }
 
         public async Task<User> RegisterAsync(string fullName, string email, string password, string role, string? managerId = null)
@@ -67,7 +66,7 @@ namespace BLL.Services
                 Role = role,
                 ManagerId = managerId,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-                IsEmailVerified = true 
+                IsEmailVerified = true
             };
 
             await _userRepository.AddAsync(user);
@@ -94,7 +93,6 @@ namespace BLL.Services
             await _logService.LogActionAsync(userId, "UpdateAvatar", "User", userId, "User updated their avatar.");
         }
 
-        
         public async Task<(string? accessToken, string? refreshToken)> LoginAsync(string email, string password)
         {
             var user = await _userRepository.GetUserByEmailAsync(email);
@@ -117,17 +115,14 @@ namespace BLL.Services
 
             if (!isValidPassword) return (null, null);
 
-            
             await _refreshTokenRepository.RevokeAllUserTokensAsync(user.Id);
 
-            
-            var accessToken = GenerateJwtToken(user, expiresInMinutes: 30); 
+            var accessToken = GenerateJwtToken(user, expiresInMinutes: 30);
             var refreshTokenValue = await GenerateRefreshToken(user.Id);
 
             return (accessToken, refreshTokenValue);
         }
 
-        
         public async Task<(string? accessToken, string? refreshToken)> RefreshTokenAsync(string refreshTokenString)
         {
             var refreshToken = await _refreshTokenRepository.GetByTokenAsync(refreshTokenString);
@@ -143,24 +138,20 @@ namespace BLL.Services
                 return (null, null);
             }
 
-            
             refreshToken.RevokedAt = DateTime.UtcNow;
             await _refreshTokenRepository.SaveChangesAsync();
 
-            
             var newAccessToken = GenerateJwtToken(user, expiresInMinutes: 30);
             var newRefreshTokenValue = await GenerateRefreshToken(user.Id);
 
             return (newAccessToken, newRefreshTokenValue);
         }
 
-        
         public async Task RevokeRefreshTokenAsync(string userId)
         {
             await _refreshTokenRepository.RevokeAllUserTokensAsync(userId);
         }
 
-        
         private async Task<string> GenerateRefreshToken(string userId)
         {
             var randomBytes = new byte[64];
@@ -171,7 +162,7 @@ namespace BLL.Services
             {
                 UserId = userId,
                 Token = Convert.ToBase64String(randomBytes),
-                ExpiresAt = DateTime.UtcNow.AddDays(7), 
+                ExpiresAt = DateTime.UtcNow.AddDays(7),
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -294,11 +285,9 @@ namespace BLL.Services
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new Exception("User not found");
 
-            
             var actor = await _userRepository.GetByIdAsync(actorId);
             bool isActorAdmin = actor != null && actor.Role == UserRoles.Admin;
 
-            
             if (isActorAdmin)
             {
                 if (!string.IsNullOrEmpty(request.FullName))
@@ -307,7 +296,6 @@ namespace BLL.Services
                     throw new Exception("BR-ADM-28: Admin cannot modify user's Email. Contact Manager for such changes.");
             }
 
-            
             if (!string.IsNullOrEmpty(request.Email) && user.IsEmailVerified)
             {
                 throw new Exception("BR-ADM-24: Cannot modify email after account activation.");
@@ -332,7 +320,6 @@ namespace BLL.Services
                 string oldRole = user.Role;
                 user.Role = request.Role;
 
-                
                 await _notification.SendNotificationAsync(
                     userId,
                     $"Your account role has been changed from {oldRole} to {request.Role} by an Administrator.",
@@ -343,7 +330,7 @@ namespace BLL.Services
             {
                 user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             }
-            
+
             if (request.ManagerId != null)
             {
                 user.ManagerId = string.IsNullOrEmpty(request.ManagerId) ? null : request.ManagerId;
@@ -399,7 +386,6 @@ namespace BLL.Services
 
         public async Task ToggleUserStatusAsync(string userId, bool isActive, string? adminId = null)
         {
-            
             if (!string.IsNullOrEmpty(adminId) && userId == adminId && !isActive)
             {
                 throw new Exception("BR-ADM-19: Admin cannot block themselves.");
@@ -457,8 +443,7 @@ namespace BLL.Services
             var response = new ImportUserResponse();
             var defaultPassword = BCrypt.Net.BCrypt.HashPassword("Password@123");
 
-            
-            const long maxFileSize = 5 * 1024 * 1024; 
+            const long maxFileSize = 5 * 1024 * 1024;
             const int maxRowCount = 1000;
 
             if (file.Length > maxFileSize)
@@ -473,7 +458,6 @@ namespace BLL.Services
             var worksheet = workbook.Worksheet(1);
             var rows = worksheet.RangeUsed()?.RowsUsed()?.Skip(1).ToList() ?? new List<IXLRangeRow>();
 
-            
             if (rows.Count > maxRowCount)
             {
                 throw new Exception($"BR-ADM-25: Excel file contains {rows.Count} rows, which exceeds the limit of {maxRowCount} rows. Please split the data into multiple files.");
@@ -615,7 +599,6 @@ namespace BLL.Services
         {
             var user = await _userRepository.GetUserByEmailAsync(email);
             if (user == null) throw new Exception("Email not found in the system.");
-
 
             string newPassword = Guid.NewGuid().ToString().Substring(0, 8);
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);

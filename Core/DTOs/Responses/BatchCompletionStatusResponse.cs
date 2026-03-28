@@ -1,9 +1,5 @@
 namespace Core.DTOs.Responses
 {
-    
-    
-    
-    
     public class BatchCompletionStatusResponse
     {
         public int ProjectId { get; set; }

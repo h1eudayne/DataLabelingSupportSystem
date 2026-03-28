@@ -26,7 +26,6 @@ namespace Core.Entities
         [ForeignKey("ProjectId")]
         public virtual Project? Project { get; set; }
 
-        
         [MaxLength(20)]
         public string Version { get; set; } = "1.0";
 

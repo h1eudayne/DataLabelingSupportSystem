@@ -26,7 +26,6 @@ namespace API.Hubs
 
             if (!string.IsNullOrEmpty(userId))
             {
-                
                 await SendPendingNotificationsAsync(userId);
             }
 
@@ -40,26 +39,20 @@ namespace API.Hubs
             await base.OnDisconnectedAsync(exception);
         }
 
-        
-        
-        
-        
         private async Task SendPendingNotificationsAsync(string userId)
         {
             try
             {
-                
                 var unreadNotifications = _context.AppNotifications
                     .Where(n => n.UserId == userId && !n.IsRead)
                     .OrderByDescending(n => n.CreatedAt)
-                    .Take(50) 
+                    .Take(50)
                     .ToList();
 
                 if (unreadNotifications.Any())
                 {
                     Console.WriteLine($"[SignalR] Sending {unreadNotifications.Count} pending notifications to user {userId}");
 
-                    
                     foreach (var notification in unreadNotifications)
                     {
                         await Clients.User(userId).SendAsync("ReceiveNotification", new
@@ -80,10 +73,6 @@ namespace API.Hubs
             }
         }
 
-        
-        
-        
-        
         public async Task AcknowledgeNotifications(List<int> notificationIds)
         {
             var userId = Context.UserIdentifier;

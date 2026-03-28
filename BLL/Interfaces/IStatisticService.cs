@@ -18,11 +18,11 @@ namespace BLL.Interfaces
             int projectId,
             bool annotatorWasCorrect);
         Task TrackFirstPassCorrectAsync(string annotatorId, string reviewerId, int projectId);
-        
+
         Task<ReviewerStatsResponse> GetReviewerStatsAsync(string reviewerId);
-        
+
         Task DeductReliabilityScoreForOverdueTasksAsync();
-        
+
         Task TrackOverrideCountAsync(string reviewerId, int projectId);
         Task TrackDisputeCountAsync(string reviewerId, int projectId);
     }

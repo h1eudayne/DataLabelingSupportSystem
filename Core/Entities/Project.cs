@@ -19,14 +19,13 @@ namespace Core.Entities
         public string Status { get; set; } = "Draft";
         public int PenaltyUnit { get; set; } = 10;
 
-        
-        public int SamplingRate { get; set; } = 100; 
+        public int SamplingRate { get; set; } = 100;
 
         public virtual ICollection<ReviewChecklistItem> ChecklistItems { get; set; } = new List<ReviewChecklistItem>();
 
         public virtual ICollection<LabelClass> LabelClasses { get; set; } = new List<LabelClass>();
         public virtual ICollection<DataItem> DataItems { get; set; } = new List<DataItem>();
-        
+
         public virtual ICollection<ProjectFlag> ProjectFlags { get; set; } = new List<ProjectFlag>();
     }
 }

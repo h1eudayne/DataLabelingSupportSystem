@@ -8,7 +8,7 @@
 
         public string ThumbnailUrl { get; set; } = string.Empty;
         public DateTime? AssignedDate { get; set; }
-        public DateTime? Deadline { get; set; } 
+        public DateTime? Deadline { get; set; }
 
         public int TotalImages { get; set; }
         public int CompletedImages { get; set; }

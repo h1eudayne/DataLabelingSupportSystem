@@ -1,8 +1,5 @@
 namespace Core.Constants
 {
-    
-    
-    
     public static class ProjectStatusConstants
     {
         public const string Draft = "Draft";

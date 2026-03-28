@@ -51,7 +51,6 @@ namespace DAL.Repositories
             return await _dbSet.Where(predicate).ToListAsync();
         }
 
-        
         public async Task<IDbContextTransaction> BeginTransactionAsync()
         {
             return await _context.Database.BeginTransactionAsync();

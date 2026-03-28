@@ -3,9 +3,6 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Core.Entities
 {
-    
-    
-    
     public class ProjectFlag
     {
         [Key]

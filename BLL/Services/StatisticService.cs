@@ -111,7 +111,6 @@ namespace BLL.Services
             await _statsRepo.SaveChangesAsync();
         }
 
-
         public async Task TrackAuditResultAsync(string reviewerId, int projectId, bool isCorrectDecision)
         {
             var reviewerStat = await GetOrCreateStatAsync(reviewerId, projectId, isReviewer: true);
@@ -179,7 +178,6 @@ namespace BLL.Services
             await _statsRepo.SaveChangesAsync();
         }
 
-        
         public async Task TrackOverrideCountAsync(string reviewerId, int projectId)
         {
             var reviewerStat = await GetOrCreateStatAsync(reviewerId, projectId, isReviewer: true);
@@ -196,7 +194,6 @@ namespace BLL.Services
             await _statsRepo.SaveChangesAsync();
         }
 
-        
         public async Task<ReviewerStatsResponse> GetReviewerStatsAsync(string reviewerId)
         {
             var allStats = await _statsRepo.GetAllAsync();
@@ -224,7 +221,6 @@ namespace BLL.Services
             int totalRejected = reviewerLogs.Count(l => l.Verdict == "Rejected" || l.Verdict == "Reject");
             int totalOverridden = reviewerDisputes.Count;
 
-            
             int totalDisputes = reviewerStats.Sum(s => s.DisputeCount);
             double disputeRate = totalReviews > 0 ? Math.Round((double)totalDisputes / totalReviews * 100, 2) : 0;
 
@@ -287,7 +283,6 @@ namespace BLL.Services
             };
         }
 
-        
         public async Task DeductReliabilityScoreForOverdueTasksAsync()
         {
             var allAssignments = await _assignmentRepo.GetAllAsync();
@@ -315,6 +310,5 @@ namespace BLL.Services
 
             await _statsRepo.SaveChangesAsync();
         }
-
     }
 }

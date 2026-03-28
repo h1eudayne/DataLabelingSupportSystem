@@ -7,9 +7,6 @@ using System.Security.Claims;
 
 namespace API.Controllers
 {
-    
-    
-    
     [Route("api/disputes")]
     [ApiController]
     [Authorize]
@@ -23,16 +20,6 @@ namespace API.Controllers
             _disputeService = disputeService;
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost]
         [Authorize(Roles = "Annotator")]
         [ProducesResponseType(200)]
@@ -58,16 +45,6 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpPost("resolve")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(200)]
@@ -89,18 +66,8 @@ namespace API.Controllers
             }
         }
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         [HttpGet]
-        [ProducesResponseType(200)] 
+        [ProducesResponseType(200)]
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> GetDisputes([FromQuery] int projectId)
