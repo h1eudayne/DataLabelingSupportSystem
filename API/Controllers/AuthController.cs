@@ -2,7 +2,6 @@ using BLL.Interfaces;
 using Core.Constants;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
-using DAL;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.IdentityModel.Tokens.Jwt;
@@ -17,13 +16,33 @@ namespace API.Controllers
     {
         private readonly IUserService _userService;
         private readonly IActivityLogService _logService;
-        private readonly ApplicationDbContext _context;
+        private readonly IAppNotificationService _notificationService;
 
-        public AuthController(IUserService userService, IActivityLogService logService, ApplicationDbContext context)
+        public AuthController(IUserService userService, IActivityLogService logService, IAppNotificationService notificationService)
         {
             _userService = userService;
             _logService = logService;
-            _context = context;
+            _notificationService = notificationService;
+        }
+
+        [HttpPost("register")]
+        [AllowAnonymous]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        [ProducesResponseType(typeof(ErrorResponse), 409)]
+        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
+        {
+            try
+            {
+                await _userService.RegisterAsync(request.FullName, request.Email, request.Password, UserRoles.Annotator);
+                return Ok(new { Message = "Registration successful." });
+            }
+            catch (Exception ex)
+            {
+                if (ex.Message.Contains("Email already exists"))
+                    return Conflict(new ErrorResponse { Message = "Email is already in use. Please use a different email." });
+                return BadRequest(new ErrorResponse { Message = "Registration failed. Please check your information and try again." });
+            }
         }
 
         [HttpPost("login")]
@@ -44,6 +63,8 @@ namespace API.Controllers
                 var jwtToken = handler.ReadJwtToken(accessToken);
                 var userId = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
+                int unreadCount = 0;
+
                 if (!string.IsNullOrEmpty(userId))
                 {
                     await _logService.LogActionAsync(
@@ -53,13 +74,8 @@ namespace API.Controllers
                         userId,
                         "User logged into the system."
                     );
-                }
 
-                int unreadCount = 0;
-                if (!string.IsNullOrEmpty(userId))
-                {
-                    unreadCount = _context.AppNotifications
-                        .Count(n => n.UserId == userId && !n.IsRead);
+                    unreadCount = await _notificationService.GetUnreadCountAsync(userId);
                 }
 
                 return Ok(new
@@ -69,20 +85,15 @@ namespace API.Controllers
                     refreshToken = refreshToken,
                     tokenType = "Bearer",
                     expiresIn = 1800,
-                    unreadNotifications = unreadCount
+                    unreadNotifications = unreadCount 
                 });
             }
             catch (ArgumentException)
             {
                 return StatusCode(403, new ErrorResponse { Message = "Account is deactivated or banned." });
             }
-            catch (InvalidOperationException ex)
+            catch (Exception)
             {
-                return StatusCode(400, new ErrorResponse { Message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Login Error] {ex}");
                 return StatusCode(500, new ErrorResponse { Message = "An error occurred during login. Please try again later." });
             }
         }
@@ -108,9 +119,8 @@ namespace API.Controllers
                     expiresIn = 1800
                 });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Console.WriteLine($"[RefreshToken Error] {ex}");
                 return StatusCode(500, new ErrorResponse { Message = "An error occurred during token refresh. Please try again later." });
             }
         }
@@ -127,6 +137,7 @@ namespace API.Controllers
 
                 if (!string.IsNullOrEmpty(userId))
                 {
+
                     await _userService.RevokeRefreshTokenAsync(userId);
 
                     await _logService.LogActionAsync(
@@ -140,9 +151,8 @@ namespace API.Controllers
 
                 return Ok(new { Message = "Logout successful. All tokens have been invalidated." });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Console.WriteLine($"[Logout Error] {ex}");
                 return StatusCode(500, new ErrorResponse { Message = "An error occurred during logout." });
             }
         }
@@ -150,22 +160,13 @@ namespace API.Controllers
         [HttpPost("forgot-password")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(object), 200)]
-        [ProducesResponseType(typeof(ErrorResponse), 400)]
-        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+        public IActionResult ForgotPassword([FromBody] ForgotPasswordRequest request)
         {
-            try
+
+            return Ok(new
             {
-                var newPassword = await _userService.ForgotPasswordAsync(request.Email);
-                return Ok(new
-                {
-                    Message = "A new password has been generated and sent to your email. Please check your inbox and use it to login.",
-                    NewPassword = newPassword
-                });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new ErrorResponse { Message = ex.Message });
-            }
+                Message = "Please contact your Administrator to reset your password. Self-service password reset is not allowed for security reasons."
+            });
         }
     }
 }

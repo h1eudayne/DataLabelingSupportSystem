@@ -25,6 +25,7 @@ namespace API.Services
         {
             return await _context.AppNotifications.CountAsync(n => n.UserId == userId && !n.IsRead);
         }
+
         public async Task SendNotificationAsync(string userId, string message, string type = "Info")
         {
 
