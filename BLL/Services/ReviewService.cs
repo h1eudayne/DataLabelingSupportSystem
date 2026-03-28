@@ -16,7 +16,7 @@ namespace BLL.Services
         private readonly IStatisticService _statisticService;
         private readonly IProjectRepository _projectRepo;
         private readonly IUserRepository _userRepo;
-        private readonly IActivityLogService _logService;
+        private readonly IActivityLogService _logService; 
         private readonly IAppNotificationService _notification;
 
         public ReviewService(
@@ -27,7 +27,7 @@ namespace BLL.Services
             IProjectRepository projectRepo,
             IUserRepository userRepo,
             IAppNotificationService notification,
-            IActivityLogService logService)
+            IActivityLogService logService) 
         {
             _assignmentRepo = assignmentRepo;
             _reviewLogRepo = reviewLogRepo;
@@ -41,9 +41,12 @@ namespace BLL.Services
 
         public async Task<List<AssignedProjectResponse>> GetReviewerProjectsAsync(string reviewerId)
         {
-            var reviewerAssignments = await _assignmentRepo.FindAsync(a =>
-                a.ReviewerId == reviewerId ||
-                (a.ReviewLogs.Any(r => r.ReviewerId == reviewerId)));
+            var allAssignments = await _assignmentRepo.GetAllAsync();
+
+            var reviewerAssignments = allAssignments
+                .Where(a => a.ReviewerId == reviewerId ||
+                            (a.ReviewLogs != null && a.ReviewLogs.Any(r => r.ReviewerId == reviewerId)))
+                .ToList();
 
             var response = new List<AssignedProjectResponse>();
             var grouped = reviewerAssignments.GroupBy(a => a.ProjectId);
@@ -156,8 +159,9 @@ namespace BLL.Services
 
             if (request.IsApproved)
             {
-                var existingReviewLogs = await _reviewLogRepo.FindAsync(rl => rl.AssignmentId == assignment.Id);
-                var hasBeenReviewedBefore = existingReviewLogs.Any();
+                var existingReviewLogs = await _reviewLogRepo.GetAllAsync();
+                var hasBeenReviewedBefore = existingReviewLogs
+                    .Any(rl => rl.AssignmentId == assignment.Id);
 
                 if (!hasBeenReviewedBefore)
                 {

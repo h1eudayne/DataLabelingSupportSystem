@@ -15,8 +15,8 @@ namespace BLL.Services
 
         private async Task<UserProjectStat> GetOrCreateStatAsync(string userId, int projectId, bool isReviewer = false)
         {
-            var stats = await _statsRepo.FindAsync(s => s.UserId == userId && s.ProjectId == projectId);
-            var stat = stats.FirstOrDefault();
+            var allStats = await _statsRepo.GetAllAsync();
+            var stat = allStats.FirstOrDefault(s => s.UserId == userId && s.ProjectId == projectId);
 
             if (stat == null)
             {
@@ -58,12 +58,12 @@ namespace BLL.Services
         }
 
         public async Task TrackReviewResultAsync(
-           string annotatorId,
-           string reviewerId,
-           int projectId,
-           bool isApproved,
-           double taskScore,
-           bool isCriticalError)
+              string annotatorId,
+              string reviewerId,
+              int projectId,
+              bool isApproved,
+              double taskScore,
+              bool isCriticalError)
         {
             var annotatorStat = await GetOrCreateStatAsync(annotatorId, projectId);
 
@@ -118,10 +118,10 @@ namespace BLL.Services
         }
 
         public async Task TrackDisputeResolutionAsync(
-          string annotatorId,
-          List<(string reviewerId, bool wasCorrect)> reviewerResults,
-          int projectId,
-          bool annotatorWasCorrect)
+            string annotatorId,
+            List<(string reviewerId, bool wasCorrect)> reviewerResults,
+            int projectId,
+            bool annotatorWasCorrect)
         {
             var annotatorStat = await GetOrCreateStatAsync(annotatorId, projectId);
             annotatorStat.TotalManagerDecisions++;

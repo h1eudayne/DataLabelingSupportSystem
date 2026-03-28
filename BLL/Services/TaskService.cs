@@ -16,7 +16,7 @@ namespace BLL.Services
         private readonly IStatisticService _statisticService;
         private readonly IUserRepository _userRepo;
         private readonly IProjectRepository _projectRepo;
-        private readonly IActivityLogService _logService;
+        private readonly IActivityLogService _logService; 
         private readonly IAppNotificationService _notification;
 
         public TaskService(
@@ -27,7 +27,7 @@ namespace BLL.Services
             IUserRepository userRepo,
             IProjectRepository projectRepo,
             IAppNotificationService notification,
-            IActivityLogService logService)
+            IActivityLogService logService) 
         {
             _assignmentRepo = assignmentRepo;
             _dataItemRepo = dataItemRepo;
@@ -48,9 +48,12 @@ namespace BLL.Services
             if (project.ManagerId != managerId)
                 throw new UnauthorizedAccessException("You are not the manager of this project.");
 
-            var validAnnotators = (await _userRepo.FindAsync(u =>
-                request.AnnotatorIds.Contains(u.Id) &&
-                (u.Role == UserRoles.Annotator || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin))).ToList();
+            var allUsers = await _userRepo.GetAllAsync();
+
+            var validAnnotators = allUsers
+                .Where(u => request.AnnotatorIds.Contains(u.Id) &&
+                            (u.Role == UserRoles.Annotator || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin))
+                .ToList();
 
             if (validAnnotators.Count != request.AnnotatorIds.Count)
                 throw new Exception("One or more Annotator IDs are invalid or lack the required role.");
@@ -58,9 +61,10 @@ namespace BLL.Services
             var validReviewers = new List<User>();
             if (request.ReviewerIds != null && request.ReviewerIds.Any())
             {
-                validReviewers = (await _userRepo.FindAsync(u =>
-                    request.ReviewerIds.Contains(u.Id) &&
-                    (u.Role == UserRoles.Reviewer || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin))).ToList();
+                validReviewers = allUsers
+                    .Where(u => request.ReviewerIds.Contains(u.Id) &&
+                                (u.Role == UserRoles.Reviewer || u.Role == UserRoles.Manager || u.Role == UserRoles.Admin))
+                    .ToList();
 
                 if (validReviewers.Count != request.ReviewerIds.Count)
                     throw new Exception("One or more Reviewer IDs are invalid or lack the required role.");
@@ -409,12 +413,12 @@ namespace BLL.Services
 
         public async Task<AssignmentResponse> JumpToDataItemAsync(int projectId, int dataItemId, string userId)
         {
-            var assignments = await _assignmentRepo.FindAsync(a =>
+            var assignments = await _assignmentRepo.GetAllAsync();
+
+            var target = assignments.FirstOrDefault(a =>
                 a.ProjectId == projectId &&
                 a.DataItemId == dataItemId &&
                 a.AnnotatorId == userId);
-
-            var target = assignments.FirstOrDefault();
 
             if (target == null)
                 throw new Exception("You are not assigned to this image in this project.");
