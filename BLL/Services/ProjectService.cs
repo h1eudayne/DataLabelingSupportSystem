@@ -617,7 +617,6 @@ namespace BLL.Services
             var project = await _projectRepository.GetProjectWithStatsDataAsync(projectId);
             if (project == null) throw new Exception("Project not found");
 
-            // ĐÃ FIX HIỆU NĂNG: Sử dụng FindAsync thay vì GetAllAsync
             var projectUserStats = (await _statsRepo.FindAsync(s => s.ProjectId == projectId)).ToList();
 
             var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
@@ -745,8 +744,6 @@ namespace BLL.Services
         public async Task<ManagerStatsResponse> GetManagerStatsAsync(string managerId)
         {
             var projects = await _projectRepository.GetProjectsByManagerIdAsync(managerId);
-
-            // ĐÃ FIX HIỆU NĂNG: Dùng FindAsync đếm trực tiếp thay vì lôi cả bảng Users lên RAM
             var managedUsers = await _userRepository.FindAsync(u => u.ManagerId == managerId);
             var totalMembers = managedUsers.Count();
 
@@ -891,8 +888,6 @@ namespace BLL.Services
 
             if (!allAssignments.Any())
                 throw new Exception("No tasks found in this project. Please assign tasks to annotators first.");
-
-            // ĐÃ FIX HIỆU NĂNG: Chỉ lấy những Reviewer cần thiết bằng FindAsync
             var validReviewers = (await _userRepository.FindAsync(u =>
                 request.ReviewerIds.Contains(u.Id) &&
                 u.Role == UserRoles.Reviewer)).ToList();
@@ -1118,8 +1113,6 @@ namespace BLL.Services
 
             var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
             var userAssignments = allAssignments.Where(a => a.AnnotatorId == userId).ToList();
-
-            // ĐÃ FIX HIỆU NĂNG: Dùng FindAsync thay vì lôi nguyên cục Stats lên
             var userStats = await _statsRepo.FindAsync(s => s.UserId == userId && s.ProjectId == projectId);
 
             if (lockStatus)

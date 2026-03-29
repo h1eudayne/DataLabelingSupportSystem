@@ -126,23 +126,29 @@ namespace API.Controllers
 
         [HttpPost("import")]
         [Authorize(Roles = "Admin")]
-        [ProducesResponseType(typeof(object), 200)]
-        [ProducesResponseType(typeof(ErrorResponse), 400)]
-        [ProducesResponseType(typeof(ErrorResponse), 401)]
         public async Task<IActionResult> ImportUsers(IFormFile file)
         {
-            if (file == null || file.Length == 0)
-                return BadRequest(new ErrorResponse { Message = "Please attach an Excel file." });
-
-            if (!file.FileName.EndsWith(".xlsx"))
-                return BadRequest(new ErrorResponse { Message = "The system only supports Excel files (.xlsx)." });
-
             var adminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(adminId)) return Unauthorized();
 
+            if (file == null || file.Length == 0)
+                return BadRequest(new ErrorResponse { Message = "No file uploaded." });
+
+            const long maxFileSize = 5 * 1024 * 1024;
+            if (file.Length > maxFileSize)
+            {
+                return BadRequest(new ErrorResponse { Message = "BR-ADM-25: Excel file size exceeds the limit of 5MB. Please upload a smaller file." });
+            }
+
+            var extension = Path.GetExtension(file.FileName).ToLower();
+            if (extension != ".xlsx" && extension != ".xls")
+                return BadRequest(new ErrorResponse { Message = "Invalid file format. Only Excel files (.xlsx, .xls) are allowed." });
+
             try
             {
-                var result = await _userService.ImportUsersFromExcelAsync(file, adminId);
+                using var stream = file.OpenReadStream();
+                var result = await _userService.ImportUsersFromExcelAsync(stream, adminId);
+
                 return Ok(result);
             }
             catch (Exception ex)

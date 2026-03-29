@@ -1,25 +1,20 @@
 ﻿using BLL.Interfaces;
 using Core.Entities;
 using DAL.Interfaces;
-using Microsoft.AspNetCore.Http;
 
 namespace BLL.Services
 {
     public class ActivityLogService : IActivityLogService
     {
         private readonly IActivityLogRepository _logRepo;
-        private readonly IHttpContextAccessor _httpContextAccessor;
 
-        public ActivityLogService(IActivityLogRepository logRepo, IHttpContextAccessor httpContextAccessor)
+        public ActivityLogService(IActivityLogRepository logRepo)
         {
             _logRepo = logRepo;
-            _httpContextAccessor = httpContextAccessor;
         }
 
-        public async Task LogActionAsync(string userId, string actionType, string entityName, string entityId, string description)
+        public async Task LogActionAsync(string userId, string actionType, string entityName, string entityId, string description, string? ipAddress = null)
         {
-            var ipAddress = _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString();
-
             var log = new ActivityLog
             {
                 UserId = userId,

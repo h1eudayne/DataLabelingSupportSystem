@@ -438,23 +438,14 @@ namespace BLL.Services
             await _logService.LogActionAsync(userId, "ToggleUserStatus", "User", userId, $"Admin {statusStr} the user account.");
         }
 
-        public async Task<ImportUserResponse> ImportUsersFromExcelAsync(IFormFile file, string adminId)
+        public async Task<ImportUserResponse> ImportUsersFromExcelAsync(Stream fileStream, string adminId)
         {
             var response = new ImportUserResponse();
             var defaultPassword = BCrypt.Net.BCrypt.HashPassword("Password@123");
 
-            const long maxFileSize = 5 * 1024 * 1024;
             const int maxRowCount = 1000;
 
-            if (file.Length > maxFileSize)
-            {
-                throw new Exception($"BR-ADM-25: Excel file size exceeds the limit of 5MB. Please upload a smaller file.");
-            }
-
-            using var stream = new MemoryStream();
-            await file.CopyToAsync(stream);
-
-            using var workbook = new XLWorkbook(stream);
+            using var workbook = new XLWorkbook(fileStream);
             var worksheet = workbook.Worksheet(1);
             var rows = worksheet.RangeUsed()?.RowsUsed()?.Skip(1).ToList() ?? new List<IXLRangeRow>();
 

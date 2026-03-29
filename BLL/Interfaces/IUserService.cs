@@ -24,7 +24,7 @@ namespace BLL.Interfaces
         Task<List<UserResponse>> GetManagementBoardAsync();
         Task ToggleUserStatusAsync(string userId, bool isActive, string? adminId = null);
         Task UpdateAvatarAsync(string userId, string avatarUrl);
-        Task<ImportUserResponse> ImportUsersFromExcelAsync(IFormFile file, string adminId);
+        Task<ImportUserResponse> ImportUsersFromExcelAsync(Stream fileStream, string adminId);
         Task<List<UserResponse>> GetManagedUsersAsync(string managerId);
         Task<List<UserResponse>> GetAllUsersNoPagingAsync();
     }
