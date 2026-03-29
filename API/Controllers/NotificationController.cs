@@ -1,7 +1,6 @@
+using BLL.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using DAL;
 using System.Security.Claims;
 
 namespace API.Controllers
@@ -12,13 +11,11 @@ namespace API.Controllers
     [Tags("5. Notifications")]
     public class NotificationController : ControllerBase
     {
-        private readonly ApplicationDbContext _context;
-
-        public NotificationController(ApplicationDbContext context)
+        private readonly IAppNotificationService _notificationService;
+        public NotificationController(IAppNotificationService notificationService)
         {
-            _context = context;
+            _notificationService = notificationService;
         }
-
         [HttpGet]
         [ProducesResponseType(200)]
         [ProducesResponseType(401)]
@@ -26,61 +23,49 @@ namespace API.Controllers
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
-
-            var notifications = await _context.AppNotifications
-                .Where(n => n.UserId == userId)
-                .OrderByDescending(n => n.CreatedAt)
-                .Take(50)
-                .Select(n => new
-                {
-                    n.Id,
-                    n.Message,
-                    n.Type,
-                    n.IsRead,
-                    n.CreatedAt
-                })
-                .ToListAsync();
-
-            return Ok(notifications);
+            try
+            {
+                var notifications = await _notificationService.GetMyNotificationsAsync(userId);
+                return Ok(notifications);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
-
         [HttpPut("{id}/read")]
         [ProducesResponseType(200)]
         [ProducesResponseType(404)]
         public async Task<IActionResult> MarkAsRead(int id)
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-            var notif = await _context.AppNotifications
-                .FirstOrDefaultAsync(n => n.Id == id && n.UserId == userId);
-
-            if (notif == null) return NotFound(new { message = "Notification not found." });
-
-            notif.IsRead = true;
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Marked as read successfully." });
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+            try
+            {
+                await _notificationService.MarkAsReadAsync(id, userId);
+                return Ok(new { message = "Marked as read successfully." });
+            }
+            catch (Exception ex)
+            {
+                if (ex.Message.Contains("not found")) return NotFound(new { message = ex.Message });
+                return BadRequest(new { message = ex.Message });
+            }
         }
-
         [HttpPut("read-all")]
         [ProducesResponseType(200)]
         public async Task<IActionResult> MarkAllAsRead()
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
-
-            var unreadNotifs = await _context.AppNotifications
-                .Where(n => n.UserId == userId && !n.IsRead)
-                .ToListAsync();
-
-            foreach (var notif in unreadNotifs)
+            try
             {
-                notif.IsRead = true;
+                await _notificationService.MarkAllAsReadAsync(userId);
+                return Ok(new { message = "All notifications marked as read." });
             }
-
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "All notifications marked as read." });
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
     }
 }

@@ -47,7 +47,7 @@ builder.Services.AddScoped<ILabelService, LabelService>();
 builder.Services.AddScoped<IStatisticService, StatisticService>();
 builder.Services.AddScoped<IDisputeService, DisputeService>();
 builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
-builder.Services.AddScoped<IAppNotificationService, API.Services.AppNotificationService>();
+builder.Services.AddScoped<IAppNotificationService, AppNotificationService>();
 
 builder.Services.AddCors(options =>
 {
