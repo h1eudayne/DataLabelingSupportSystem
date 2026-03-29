@@ -24,7 +24,7 @@ namespace BLL.Services
         private readonly IAssignmentRepository _assignmentRepo;
         private readonly IProjectRepository _projectRepo;
         private readonly IAppNotificationService _notification;
-        private readonly IEmailService _emailService;
+        private readonly IWorkflowEmailService _workflowEmailService;
         public UserService(
             IUserRepository userRepository,
             IRefreshTokenRepository refreshTokenRepository,
@@ -33,7 +33,7 @@ namespace BLL.Services
             IActivityLogService logService,
             IProjectRepository projectRepo,
             IAppNotificationService notification,
-            IEmailService emailService)
+            IWorkflowEmailService workflowEmailService)
         {
             _userRepository = userRepository;
             _refreshTokenRepository = refreshTokenRepository;
@@ -42,7 +42,7 @@ namespace BLL.Services
             _logService = logService;
             _projectRepo = projectRepo;
             _notification = notification;
-            _emailService = emailService;
+            _workflowEmailService = workflowEmailService;
         }
 
         public async Task<User> RegisterAsync(string fullName, string email, string password, string role, string? managerId = null)
@@ -82,6 +82,12 @@ namespace BLL.Services
                 user.Id,
                 $"Account created with role {role}."
             );
+
+            var manager = string.IsNullOrWhiteSpace(user.ManagerId)
+                ? null
+                : await _userRepository.GetByIdAsync(user.ManagerId);
+
+            await _workflowEmailService.SendWelcomeEmailAsync(user, manager);
 
             return user;
         }
@@ -458,6 +464,7 @@ namespace BLL.Services
             }
 
             int rowNumber = 1;
+            var createdUsers = new List<(User User, User? Manager)>();
 
             foreach (var row in rows)
             {
@@ -512,12 +519,18 @@ namespace BLL.Services
                 };
 
                 await _userRepository.AddAsync(user);
+                createdUsers.Add((user, string.IsNullOrEmpty(managerIdToAssign) ? null : await _userRepository.GetByIdAsync(managerIdToAssign)));
                 response.SuccessCount++;
             }
 
             if (response.SuccessCount > 0)
             {
                 await _userRepository.SaveChangesAsync();
+
+                foreach (var (user, manager) in createdUsers)
+                {
+                    await _workflowEmailService.SendWelcomeEmailAsync(user, manager);
+                }
             }
 
             await _logService.LogActionAsync(
@@ -591,52 +604,37 @@ namespace BLL.Services
 
         public async Task<string> ForgotPasswordAsync(string email)
         {
+            const string responseMessage = "If your email is registered in our system, administrators have been notified and will review your password reset request.";
             var user = await _userRepository.GetUserByEmailAsync(email);
 
             if (user == null)
             {
-                return "If your email is registered in our system, a new password will be sent to you.";
+                return responseMessage;
             }
 
-            string newPassword = Guid.NewGuid().ToString().Substring(0, 8);
-
-            string oldPasswordHash = user.PasswordHash;
-
-            try
+            var admins = (await _userRepository.FindAsync(u => u.Role == UserRoles.Admin && u.IsActive)).ToList();
+            if (admins.Any())
             {
-                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
-                _userRepository.Update(user);
-                await _userRepository.SaveChangesAsync();
+                await _workflowEmailService.SendForgotPasswordRequestEmailsAsync(user, admins);
 
-                string subject = "Your New Password for Data Labeling Support System";
-                string body = $@"
-            <h3>Hello {user.FullName},</h3>
-            <p>You requested a password reset. Your new password is: <strong>{newPassword}</strong></p>
-            <p>Please login and change this password immediately!</p>
-            <br/>
-            <p>Best regards,<br/>Data Labeling Admin Team</p>";
-
-                await _emailService.SendEmailAsync(user.Email, subject, body);
-
-                await _logService.LogActionAsync(
-                    user.Id, "ForgotPassword", "User", user.Id, "User requested and received a new password."
-                );
-
-                await NotifyAdminsAboutPasswordResetAsync(user);
-
-                return "If your email is registered in our system, a new password will be sent to you.";
+                foreach (var admin in admins)
+                {
+                    await _notification.SendNotificationAsync(
+                        admin.Id,
+                        $"User \"{user.FullName}\" ({user.Email}) has requested a manual password reset. Please review it in User Management.",
+                        "PasswordResetRequest");
+                }
             }
-            catch (Exception ex)
-            {
-                user.PasswordHash = oldPasswordHash;
-                _userRepository.Update(user);
-                await _userRepository.SaveChangesAsync();
 
-                await _logService.LogActionAsync(
-                    user.Id, "ForgotPassword_Failed", "User", user.Id, $"Failed to send email. Password reset aborted. Error: {ex.Message}"
-                );
-                throw new Exception($"Failed to send password reset email: {ex.Message}");
-            }
+            await _logService.LogActionAsync(
+                user.Id,
+                "ForgotPasswordRequested",
+                "User",
+                user.Id,
+                "User requested a password reset. Admin approval is required before the password is changed."
+            );
+
+            return responseMessage;
         }
         public async Task AdminChangeUserPasswordAsync(string adminId, string targetUserId, string newPassword)
         {
@@ -656,70 +654,7 @@ namespace BLL.Services
                 $"Admin explicitly changed the password for user {user.Email}."
             );
 
-            await NotifyUserAboutAdminPasswordResetAsync(user, newPassword);
-        }
-
-        /// <summary>
-        /// Sends notification emails to all admins when a user successfully resets their password via Forgot Password.
-        /// </summary>
-        private async Task NotifyAdminsAboutPasswordResetAsync(User user)
-        {
-            try
-            {
-                var admins = await _userRepository.FindAsync(u => u.Role == UserRoles.Admin && u.IsActive);
-
-                string subject = "[System Alert] Password Reset Request Completed";
-                string body = $@"
-                    <h3>Password Reset Notification</h3>
-                    <p>A user has successfully reset their password through the Forgot Password feature.</p>
-                    <table style='border-collapse: collapse; margin: 10px 0;'>
-                        <tr><td style='padding: 5px 15px 5px 0; font-weight: bold;'>User:</td><td>{user.FullName}</td></tr>
-                        <tr><td style='padding: 5px 15px 5px 0; font-weight: bold;'>Email:</td><td>{user.Email}</td></tr>
-                        <tr><td style='padding: 5px 15px 5px 0; font-weight: bold;'>Role:</td><td>{user.Role}</td></tr>
-                        <tr><td style='padding: 5px 15px 5px 0; font-weight: bold;'>Time:</td><td>{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</td></tr>
-                    </table>
-                    <p style='color: #666;'>This is an automated notification. No action is required unless the request seems suspicious.</p>
-                    <br/>
-                    <p>Best regards,<br/>Data Labeling Support System</p>";
-
-                foreach (var admin in admins)
-                {
-                    await _emailService.SendEmailAsync(admin.Email, subject, body);
-                }
-            }
-            catch
-            {
-            }
-        }
-
-        /// <summary>
-        /// Sends an email to the user when an admin resets their password, including the new password.
-        /// </summary>
-        private async Task NotifyUserAboutAdminPasswordResetAsync(User user, string newPassword)
-        {
-            try
-            {
-                string subject = "Your Password Has Been Reset by Admin";
-                string body = $@"
-                    <h3>Hello {user.FullName},</h3>
-                    <p>Your account password has been reset by an administrator.</p>
-                    <p>Your new password is: <strong style='font-size: 16px; color: #d63384;'>{newPassword}</strong></p>
-                    <hr style='margin: 15px 0;'/>
-                    <p><strong>⚠️ Important:</strong></p>
-                    <ul>
-                        <li>Please login with this new password immediately.</li>
-                        <li>Change your password after logging in for security purposes.</li>
-                        <li>Do not share this password with anyone.</li>
-                    </ul>
-                    <p style='color: #666;'>If you did not expect this change, please contact your administrator immediately.</p>
-                    <br/>
-                    <p>Best regards,<br/>Data Labeling Admin Team</p>";
-
-                await _emailService.SendEmailAsync(user.Email, subject, body);
-            }
-            catch
-            {
-            }
+            await _workflowEmailService.SendAdminPasswordResetEmailAsync(user, newPassword);
         }
     }
 }

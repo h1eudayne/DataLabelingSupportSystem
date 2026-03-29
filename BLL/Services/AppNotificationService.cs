@@ -22,6 +22,7 @@ namespace BLL.Services
             var notification = new AppNotification
             {
                 UserId = userId,
+                Title = BuildTitle(type),
                 Message = message,
                 Type = type,
                 IsRead = false,
@@ -48,6 +49,7 @@ namespace BLL.Services
                 .Select(n => new
                 {
                     n.Id,
+                    n.Title,
                     n.Message,
                     n.Type,
                     n.IsRead,
@@ -94,12 +96,23 @@ namespace BLL.Services
                 .Select(notification => new
                 {
                     Id = notification.Id,
+                    Title = notification.Title,
                     Message = notification.Message,
                     Type = notification.Type,
                     IsRead = notification.IsRead,
                     Timestamp = notification.CreatedAt
                 })
                 .ToList();
+        }
+
+        private static string BuildTitle(string type)
+        {
+            if (string.IsNullOrWhiteSpace(type))
+            {
+                return "Notification";
+            }
+
+            return $"{type.Trim()} Notification";
         }
 
         public async Task MarkListAsReadAsync(List<int> notificationIds, string userId)

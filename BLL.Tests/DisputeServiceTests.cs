@@ -20,6 +20,8 @@ namespace BLL.Tests
         private readonly Mock<IRepository<DataItem>> _dataItemRepoMock;
         private readonly Mock<IAppNotificationService> _notificationMock;
         private readonly Mock<IActivityLogService> _logServiceMock;
+        private readonly Mock<IUserRepository> _userRepoMock;
+        private readonly Mock<IWorkflowEmailService> _workflowEmailServiceMock;
 
         private readonly DisputeService _disputeService;
 
@@ -33,6 +35,8 @@ namespace BLL.Tests
             _dataItemRepoMock = new Mock<IRepository<DataItem>>();
             _notificationMock = new Mock<IAppNotificationService>();
             _logServiceMock = new Mock<IActivityLogService>();
+            _userRepoMock = new Mock<IUserRepository>();
+            _workflowEmailServiceMock = new Mock<IWorkflowEmailService>();
 
             _disputeService = new DisputeService(
                 _disputeRepoMock.Object,
@@ -42,7 +46,9 @@ namespace BLL.Tests
                 _projectRepoMock.Object,
                 _notificationMock.Object,
                 _dataItemRepoMock.Object,
-                _logServiceMock.Object
+                _logServiceMock.Object,
+                _userRepoMock.Object,
+                _workflowEmailServiceMock.Object
             );
         }
 
@@ -208,6 +214,13 @@ namespace BLL.Tests
             int dataItemId = 1;
 
             var reviewers = Enumerable.Range(1, 10).Select(i => $"reviewer-{i}").ToList();
+            var reviewerUsers = reviewers.Select(id => new User
+            {
+                Id = id,
+                FullName = id,
+                Email = $"{id}@test.com",
+                Role = UserRoles.Reviewer
+            }).ToList();
 
             var disputedAssignment = new Assignment
             {
@@ -246,6 +259,9 @@ namespace BLL.Tests
             _projectRepoMock.Setup(r => r.GetByIdAsync(projectId)).ReturnsAsync(new Project { Id = projectId, GuidelineVersion = "1.0" });
             _dataItemRepoMock.Setup(r => r.GetByIdAsync(dataItemId)).ReturnsAsync(new DataItem { Id = dataItemId, Status = TaskStatusConstants.Rejected });
             _assignmentRepoMock.Setup(r => r.GetRelatedAssignmentsForDisputeAsync(disputedAssignment.Id, annotatorId, dataItemId)).ReturnsAsync(relatedAssignments);
+            _userRepoMock.Setup(r => r.GetByIdAsync(managerId)).ReturnsAsync(new User { Id = managerId, FullName = "Manager", Email = "manager@test.com", Role = UserRoles.Manager });
+            _userRepoMock.Setup(r => r.GetByIdAsync(annotatorId)).ReturnsAsync(new User { Id = annotatorId, FullName = "Annotator", Email = "annotator@test.com", Role = UserRoles.Annotator });
+            _userRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(reviewerUsers);
 
             var request = new ResolveDisputeRequest
             {
@@ -261,6 +277,16 @@ namespace BLL.Tests
                 It.Is<List<(string reviewerId, bool wasCorrect)>>(results => results.Count == 10),
                 projectId,
                 annotatorWasCorrect: true), Times.Once);
+            _workflowEmailServiceMock.Verify(w => w.SendDisputeResolutionEmailsAsync(
+                It.Is<Project>(p => p.Id == projectId),
+                It.Is<User>(u => u.Id == managerId),
+                It.Is<User>(u => u.Id == annotatorId),
+                It.Is<Assignment>(a => a.Id == disputedAssignment.Id),
+                It.Is<IReadOnlyCollection<User>>(users => users.Count == 10),
+                It.Is<IReadOnlyCollection<ReviewLog>>(logs => logs.Count == 10),
+                true,
+                It.Is<string>(comment => comment.Contains("guideline", StringComparison.OrdinalIgnoreCase))),
+                Times.Once);
         }
 
         [Fact]

@@ -49,6 +49,7 @@ builder.Services.AddScoped<IDisputeService, DisputeService>();
 builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
 builder.Services.AddScoped<IAppNotificationService, AppNotificationService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IWorkflowEmailService, WorkflowEmailService>();
 
 builder.Services.AddCors(options =>
 {
@@ -198,6 +199,8 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        await AssignmentSchemaUpdater.EnsureAssignmentIndexesAsync(context, logger);
         await DAL.DataSeeder.SeedData(services, env.IsDevelopment());
     }
     catch (Exception ex)

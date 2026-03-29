@@ -19,6 +19,7 @@ namespace BLL.Tests
         private readonly Mock<IActivityLogRepository> _activityLogRepoMock;
         private readonly Mock<IRepository<ProjectFlag>> _flagRepoMock;
         private readonly Mock<IAppNotificationService> _notificationMock;
+        private readonly Mock<IWorkflowEmailService> _workflowEmailServiceMock;
 
         private readonly ProjectService _projectService;
 
@@ -31,6 +32,7 @@ namespace BLL.Tests
             _activityLogRepoMock = new Mock<IActivityLogRepository>();
             _flagRepoMock = new Mock<IRepository<ProjectFlag>>();
             _notificationMock = new Mock<IAppNotificationService>();
+            _workflowEmailServiceMock = new Mock<IWorkflowEmailService>();
 
             _projectService = new ProjectService(
                 _projectRepoMock.Object,
@@ -39,7 +41,8 @@ namespace BLL.Tests
                 _assignmentRepoMock.Object,
                 _activityLogRepoMock.Object,
                 _flagRepoMock.Object,
-                _notificationMock.Object
+                _notificationMock.Object,
+                _workflowEmailServiceMock.Object
             );
         }
 
@@ -287,6 +290,21 @@ namespace BLL.Tests
         [Fact]
         public async Task CompleteProjectAsync_AllTasksApproved_CompletesProject()
         {
+            var manager = new User
+            {
+                Id = "manager-1",
+                FullName = "Manager One",
+                Email = "manager@test.com",
+                Role = UserRoles.Manager
+            };
+            var annotator = new User
+            {
+                Id = "annotator-1",
+                FullName = "Annotator One",
+                Email = "annotator@test.com",
+                Role = UserRoles.Annotator
+            };
+
             var project = new Project
             {
                 Id = 1,
@@ -300,7 +318,7 @@ namespace BLL.Tests
                         Id = 1,
                         Assignments = new List<Assignment>
                         {
-                            new Assignment { Id = 1, Status = TaskStatusConstants.Approved }
+                            new Assignment { Id = 1, Status = TaskStatusConstants.Approved, AnnotatorId = annotator.Id }
                         }
                     }
                 }
@@ -310,10 +328,21 @@ namespace BLL.Tests
             _projectRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
             _activityLogRepoMock.Setup(r => r.AddAsync(It.IsAny<ActivityLog>())).Returns(Task.CompletedTask);
             _activityLogRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _userRepoMock.Setup(r => r.GetByIdAsync("manager-1")).ReturnsAsync(manager);
+            _userRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<User> { manager, annotator });
+            _statsRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<UserProjectStat>());
 
             await _projectService.CompleteProjectAsync(1, "manager-1");
 
             Assert.Equal(ProjectStatusConstants.Completed, project.Status);
+            _workflowEmailServiceMock.Verify(
+                w => w.SendProjectCompletedEmailsAsync(
+                    project,
+                    manager,
+                    It.Is<IReadOnlyCollection<User>>(users => users.Count == 1 && users.First().Id == annotator.Id),
+                    It.Is<IReadOnlyCollection<Assignment>>(assignments => assignments.Count == 1),
+                    It.Is<IReadOnlyCollection<UserProjectStat>>(stats => stats.Count == 0)),
+                Times.Once);
         }
 
         [Fact]
@@ -701,6 +730,209 @@ namespace BLL.Tests
             Assert.Equal(1, result.TotalProjects);
             Assert.Equal(2, result.TotalMembers);
             Assert.Equal(2, result.TotalDataItems);
+        }
+
+        [Fact]
+        public async Task RemoveUserFromProjectAsync_RemovingReviewer_NotifiesUserAndClearsReviewerAssignment()
+        {
+            var reviewer = new User
+            {
+                Id = "reviewer-1",
+                FullName = "Reviewer One",
+                Email = "reviewer@test.com",
+                Role = UserRoles.Reviewer
+            };
+            var assignment = new Assignment
+            {
+                Id = 1,
+                ReviewerId = reviewer.Id,
+                Status = TaskStatusConstants.Submitted,
+                DataItemId = 10
+            };
+            var project = new Project
+            {
+                Id = 1,
+                Name = "Project Alpha",
+                ManagerId = "manager-1",
+                DataItems = new List<DataItem>
+                {
+                    new DataItem
+                    {
+                        Id = 10,
+                        Assignments = new List<Assignment> { assignment }
+                    }
+                }
+            };
+
+            _projectRepoMock.Setup(r => r.GetProjectWithDetailsAsync(1)).ReturnsAsync(project);
+            _userRepoMock.Setup(r => r.GetByIdAsync(reviewer.Id)).ReturnsAsync(reviewer);
+            _assignmentRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _projectRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _activityLogRepoMock.Setup(r => r.AddAsync(It.IsAny<ActivityLog>())).Returns(Task.CompletedTask);
+            _activityLogRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+
+            await _projectService.RemoveUserFromProjectAsync(1, reviewer.Id);
+
+            Assert.Null(assignment.ReviewerId);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                reviewer.Id,
+                It.Is<string>(message => message.Contains("Project Alpha") && message.Contains("removed")),
+                "Warning"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ToggleUserLockAsync_LockReviewer_NotifiesUserAndRevokesProjectAccess()
+        {
+            var reviewer = new User
+            {
+                Id = "reviewer-1",
+                FullName = "Reviewer One",
+                Email = "reviewer@test.com",
+                Role = UserRoles.Reviewer
+            };
+            var assignment = new Assignment
+            {
+                Id = 1,
+                ReviewerId = reviewer.Id,
+                Status = TaskStatusConstants.Submitted,
+                DataItemId = 10
+            };
+            var stats = new List<UserProjectStat>
+            {
+                new UserProjectStat { UserId = reviewer.Id, ProjectId = 1, IsLocked = false }
+            };
+            var project = new Project
+            {
+                Id = 1,
+                Name = "Project Alpha",
+                ManagerId = "manager-1",
+                DataItems = new List<DataItem>
+                {
+                    new DataItem
+                    {
+                        Id = 10,
+                        Assignments = new List<Assignment> { assignment }
+                    }
+                }
+            };
+
+            _projectRepoMock.Setup(r => r.GetProjectWithDetailsAsync(1)).ReturnsAsync(project);
+            _userRepoMock.Setup(r => r.GetByIdAsync(reviewer.Id)).ReturnsAsync(reviewer);
+            _statsRepoMock.Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<UserProjectStat, bool>>>())).ReturnsAsync(stats);
+            _assignmentRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _statsRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _activityLogRepoMock.Setup(r => r.AddAsync(It.IsAny<ActivityLog>())).Returns(Task.CompletedTask);
+            _activityLogRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+
+            await _projectService.ToggleUserLockAsync(1, reviewer.Id, true, "manager-1");
+
+            Assert.Null(assignment.ReviewerId);
+            Assert.True(stats[0].IsLocked);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                reviewer.Id,
+                It.Is<string>(message => message.Contains("Project Alpha") && message.Contains("locked")),
+                "Warning"), Times.Once);
+        }
+
+        [Fact]
+        public async Task AssignReviewersAsync_EnsuresEveryReviewerForEachAnnotatorAndDataItemGroup()
+        {
+            var reviewerOne = new User { Id = "reviewer-1", Role = UserRoles.Reviewer };
+            var reviewerTwo = new User { Id = "reviewer-2", Role = UserRoles.Reviewer };
+
+            var project = new Project
+            {
+                Id = 99,
+                Name = "Reviewer Matrix",
+                ManagerId = "manager-1",
+                DataItems = new List<DataItem>
+                {
+                    new DataItem
+                    {
+                        Id = 10,
+                        Assignments = new List<Assignment>
+                        {
+                            new Assignment
+                            {
+                                Id = 1,
+                                ProjectId = 99,
+                                DataItemId = 10,
+                                AnnotatorId = "annotator-1",
+                                ReviewerId = null,
+                                Status = TaskStatusConstants.Submitted,
+                                SubmittedAt = DateTime.UtcNow,
+                                Annotations = new List<Annotation>
+                                {
+                                    new Annotation { AssignmentId = 1, DataJSON = "[{\"x\":10}]", CreatedAt = DateTime.UtcNow, ClassId = 1 }
+                                }
+                            }
+                        }
+                    },
+                    new DataItem
+                    {
+                        Id = 20,
+                        Assignments = new List<Assignment>
+                        {
+                            new Assignment
+                            {
+                                Id = 2,
+                                ProjectId = 99,
+                                DataItemId = 20,
+                                AnnotatorId = "annotator-2",
+                                ReviewerId = null,
+                                Status = TaskStatusConstants.Submitted,
+                                SubmittedAt = DateTime.UtcNow,
+                                Annotations = new List<Annotation>
+                                {
+                                    new Annotation { AssignmentId = 2, DataJSON = "[{\"x\":20}]", CreatedAt = DateTime.UtcNow, ClassId = 2 }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            var addedAssignments = new List<Assignment>();
+            var updatedAssignments = new List<Assignment>();
+
+            _projectRepoMock
+                .Setup(r => r.GetProjectForExportAsync(99))
+                .ReturnsAsync(project);
+            _userRepoMock
+                .Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<User, bool>>>()))
+                .ReturnsAsync(new List<User> { reviewerOne, reviewerTwo });
+            _assignmentRepoMock
+                .Setup(r => r.AddAsync(It.IsAny<Assignment>()))
+                .Callback<Assignment>(assignment => addedAssignments.Add(assignment))
+                .Returns(Task.CompletedTask);
+            _assignmentRepoMock
+                .Setup(r => r.Update(It.IsAny<Assignment>()))
+                .Callback<Assignment>(assignment => updatedAssignments.Add(assignment));
+            _assignmentRepoMock
+                .Setup(r => r.SaveChangesAsync())
+                .Returns(Task.CompletedTask);
+            _activityLogRepoMock
+                .Setup(r => r.AddAsync(It.IsAny<ActivityLog>()))
+                .Returns(Task.CompletedTask);
+            _activityLogRepoMock
+                .Setup(r => r.SaveChangesAsync())
+                .Returns(Task.CompletedTask);
+
+            await _projectService.AssignReviewersAsync(new AssignReviewersRequest
+            {
+                ProjectId = 99,
+                ReviewerIds = new List<string> { reviewerOne.Id, reviewerTwo.Id }
+            });
+
+            Assert.Equal(2, updatedAssignments.Count);
+            Assert.Equal(2, addedAssignments.Count);
+            Assert.All(updatedAssignments, a => Assert.Equal(reviewerOne.Id, a.ReviewerId));
+            Assert.All(addedAssignments, a =>
+            {
+                Assert.Equal(reviewerTwo.Id, a.ReviewerId);
+                Assert.Equal(TaskStatusConstants.Submitted, a.Status);
+                Assert.Single(a.Annotations);
+            });
         }
 
         #endregion

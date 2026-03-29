@@ -18,6 +18,7 @@ namespace BLL.Services
         private readonly IActivityLogRepository _activityLogRepo;
         private readonly IRepository<ProjectFlag> _flagRepo;
         private readonly IAppNotificationService _notification;
+        private readonly IWorkflowEmailService _workflowEmailService;
 
         private const string GUIDELINE_DECISION_NOTE = "Decision based on official project guidelines";
 
@@ -44,7 +45,8 @@ namespace BLL.Services
             IAssignmentRepository assignmentRepo,
             IActivityLogRepository activityLogRepo,
             IRepository<ProjectFlag> flagRepo,
-            IAppNotificationService notification)
+            IAppNotificationService notification,
+            IWorkflowEmailService workflowEmailService)
         {
             _projectRepository = projectRepository;
             _userRepository = userRepository;
@@ -53,6 +55,7 @@ namespace BLL.Services
             _activityLogRepo = activityLogRepo;
             _flagRepo = flagRepo;
             _notification = notification;
+            _workflowEmailService = workflowEmailService;
         }
 
         public async Task<object> GetUserProjectsByUserIdAsync(string userId)
@@ -83,6 +86,69 @@ namespace BLL.Services
                 FlagTypeConstants.MissingParts => "Image appears to be truncated or missing parts",
                 _ => "Flag reason not specified"
             };
+        }
+
+        private static int GetAnnotatorStatusPriority(string? status)
+        {
+            return status switch
+            {
+                TaskStatusConstants.Rejected => 0,
+                "Escalated" => 1,
+                TaskStatusConstants.InProgress => 2,
+                TaskStatusConstants.Assigned => 3,
+                TaskStatusConstants.Submitted => 4,
+                TaskStatusConstants.Approved => 5,
+                _ => 6
+            };
+        }
+
+        private static string GetAggregatedAnnotatorStatus(IEnumerable<Assignment> assignments)
+        {
+            var groupedAssignments = assignments.ToList();
+
+            if (!groupedAssignments.Any())
+                return TaskStatusConstants.Assigned;
+
+            if (groupedAssignments.Any(a => string.Equals(a.Status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase)))
+                return TaskStatusConstants.Rejected;
+
+            if (groupedAssignments.Any(a => string.Equals(a.Status, "Escalated", StringComparison.OrdinalIgnoreCase)))
+                return "Escalated";
+
+            if (groupedAssignments.Any(a => string.Equals(a.Status, TaskStatusConstants.InProgress, StringComparison.OrdinalIgnoreCase)))
+                return TaskStatusConstants.InProgress;
+
+            if (groupedAssignments.All(a => string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase)))
+                return TaskStatusConstants.Approved;
+
+            if (groupedAssignments.Any(a =>
+                    string.Equals(a.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase)))
+            {
+                return TaskStatusConstants.Submitted;
+            }
+
+            return TaskStatusConstants.Assigned;
+        }
+
+        private static Assignment SelectRepresentativeAnnotatorAssignment(IEnumerable<Assignment> assignments)
+        {
+            return assignments
+                .OrderBy(a => GetAnnotatorStatusPriority(a.Status))
+                .ThenBy(a => a.Id)
+                .First();
+        }
+
+        private static string NormalizeReviewerAssignmentStatus(Assignment template)
+        {
+            if (string.Equals(template.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(template.Status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(template.Status, "Escalated", StringComparison.OrdinalIgnoreCase))
+            {
+                return TaskStatusConstants.Submitted;
+            }
+
+            return template.Status;
         }
 
         public async Task<int> UploadDirectDataItemsAsync(int projectId, List<(Stream Content, string Extension)> files, string webRootPath)
@@ -314,13 +380,26 @@ namespace BLL.Services
                     .SelectMany(d => d.Assignments)
                     .Where(a => a.AnnotatorId == annotatorId)
                     .ToList();
-                var total = myAssignments.Count;
-                var completed = myAssignments.Count(a => a.Status == TaskStatusConstants.Submitted || a.Status == TaskStatusConstants.Approved);
-                var nextTask = myAssignments
-                    .OrderByDescending(a => a.Status == TaskStatusConstants.InProgress)
-                    .ThenByDescending(a => a.Status == TaskStatusConstants.Rejected)
-                    .ThenByDescending(a => a.Status == TaskStatusConstants.Assigned)
-                    .FirstOrDefault(a => a.Status == TaskStatusConstants.InProgress || a.Status == TaskStatusConstants.Rejected || a.Status == TaskStatusConstants.Assigned);
+                var groupedAssignments = myAssignments
+                    .GroupBy(a => a.DataItemId)
+                    .Select(group => new
+                    {
+                        Status = GetAggregatedAnnotatorStatus(group),
+                        Representative = SelectRepresentativeAnnotatorAssignment(group)
+                    })
+                    .ToList();
+                var total = groupedAssignments.Count;
+                var completed = groupedAssignments.Count(g =>
+                    string.Equals(g.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase));
+                var nextTask = groupedAssignments
+                    .Where(g =>
+                        string.Equals(g.Status, TaskStatusConstants.InProgress, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(g.Status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(g.Status, TaskStatusConstants.Assigned, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(g => GetAnnotatorStatusPriority(g.Status))
+                    .ThenBy(g => g.Representative.Id)
+                    .Select(g => g.Representative)
+                    .FirstOrDefault();
 
                 string status = "Active";
                 if (DateTime.UtcNow > p.Deadline) status = "Expired";
@@ -879,7 +958,7 @@ namespace BLL.Services
 
         public async Task AssignReviewersAsync(AssignReviewersRequest request)
         {
-            var project = await _projectRepository.GetProjectWithDetailsAsync(request.ProjectId);
+            var project = await _projectRepository.GetProjectForExportAsync(request.ProjectId);
             if (project == null)
                 throw new Exception("Project not found.");
 
@@ -894,14 +973,69 @@ namespace BLL.Services
             if (validReviewers.Count != request.ReviewerIds.Count)
                 throw new Exception("One or more provided reviewer IDs are invalid or lack the required role.");
 
-            int totalReviewers = validReviewers.Count;
-            int index = 0;
+            var groupedAssignments = allAssignments
+                .GroupBy(a => new { a.DataItemId, a.AnnotatorId })
+                .ToList();
 
-            foreach (var assignment in allAssignments)
+            int createdAssignments = 0;
+            int updatedAssignments = 0;
+
+            foreach (var group in groupedAssignments)
             {
-                assignment.ReviewerId = validReviewers[index % totalReviewers].Id;
-                _assignmentRepo.Update(assignment);
-                index++;
+                var assignmentsForItem = group.ToList();
+                var existingReviewerIds = assignmentsForItem
+                    .Select(a => a.ReviewerId)
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var reusableUnassigned = assignmentsForItem
+                    .FirstOrDefault(a => string.IsNullOrWhiteSpace(a.ReviewerId));
+                var template = SelectRepresentativeAnnotatorAssignment(assignmentsForItem);
+
+                foreach (var reviewer in validReviewers)
+                {
+                    if (existingReviewerIds.Contains(reviewer.Id))
+                    {
+                        continue;
+                    }
+
+                    if (reusableUnassigned != null)
+                    {
+                        reusableUnassigned.ReviewerId = reviewer.Id;
+                        _assignmentRepo.Update(reusableUnassigned);
+                        existingReviewerIds.Add(reviewer.Id);
+                        updatedAssignments++;
+                        reusableUnassigned = null;
+                        continue;
+                    }
+
+                    var clonedAssignment = new Assignment
+                    {
+                        ProjectId = template.ProjectId,
+                        DataItemId = template.DataItemId,
+                        AnnotatorId = template.AnnotatorId,
+                        ReviewerId = reviewer.Id,
+                        AssignedDate = template.AssignedDate,
+                        SubmittedAt = template.SubmittedAt,
+                        DurationSeconds = template.DurationSeconds,
+                        RejectCount = 0,
+                        IsEscalated = false,
+                        Status = NormalizeReviewerAssignmentStatus(template),
+                        Annotations = template.Annotations?
+                            .OrderByDescending(a => a.CreatedAt)
+                            .Take(1)
+                            .Select(a => new Annotation
+                            {
+                                DataJSON = a.DataJSON,
+                                CreatedAt = a.CreatedAt,
+                                ClassId = a.ClassId
+                            })
+                            .ToList() ?? new List<Annotation>()
+                    };
+
+                    await _assignmentRepo.AddAsync(clonedAssignment);
+                    existingReviewerIds.Add(reviewer.Id);
+                    createdAssignments++;
+                }
             }
 
             await _assignmentRepo.SaveChangesAsync();
@@ -912,7 +1046,7 @@ namespace BLL.Services
                 ActionType = "AssignReviewers",
                 EntityName = "Project",
                 EntityId = project.Id.ToString(),
-                Description = $"Assigned {totalReviewers} reviewers to project {project.Name} across {allAssignments.Count} tasks.",
+                Description = $"Ensured {validReviewers.Count} reviewers are assigned to every annotator/data-item pair in project {project.Name}. Added {createdAssignments} reviewer assignments and updated {updatedAssignments} existing assignments.",
                 Timestamp = DateTime.UtcNow
             });
 
@@ -952,6 +1086,35 @@ namespace BLL.Services
 
             await _projectRepository.SaveChangesAsync();
             await _activityLogRepo.SaveChangesAsync();
+
+            var manager = await _userRepository.GetByIdAsync(managerId) ?? new User
+            {
+                Id = managerId,
+                FullName = "Project Manager",
+                Email = string.Empty,
+                Role = UserRoles.Manager
+            };
+
+            var participantIds = allAssignments
+                .SelectMany(a => new[] { a.AnnotatorId, a.ReviewerId })
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var participants = (await _userRepository.GetAllAsync())
+                .Where(user => participantIds.Contains(user.Id, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            var projectStats = (await _statsRepo.GetAllAsync())
+                .Where(stat => stat.ProjectId == projectId)
+                .ToList();
+
+            await _workflowEmailService.SendProjectCompletedEmailsAsync(
+                project,
+                manager,
+                participants,
+                allAssignments,
+                projectStats);
         }
 
         public async Task ActivateProjectAsync(int projectId, string managerId)
@@ -1060,21 +1223,46 @@ namespace BLL.Services
             var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
             if (project == null) throw new Exception("Project not found.");
 
-            var pendingAssignments = project.DataItems
-                .SelectMany(d => d.Assignments)
-                .Where(a => a.AnnotatorId == userId && a.Status == TaskStatusConstants.Assigned)
-                .ToList();
+            var removedUser = await _userRepository.GetByIdAsync(userId);
+            var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
+            var affectedAssignments = new List<Assignment>();
 
-            if (pendingAssignments.Any())
+            if (removedUser?.Role == UserRoles.Reviewer)
             {
-                foreach (var assignment in pendingAssignments)
-                {
-                    _assignmentRepo.Delete(assignment);
+                affectedAssignments = allAssignments
+                    .Where(a => a.ReviewerId == userId &&
+                                (a.Status == TaskStatusConstants.Assigned ||
+                                 a.Status == TaskStatusConstants.InProgress ||
+                                 a.Status == TaskStatusConstants.Submitted))
+                    .ToList();
+            }
+            else
+            {
+                affectedAssignments = allAssignments
+                    .Where(a => a.AnnotatorId == userId &&
+                                (a.Status == TaskStatusConstants.Assigned ||
+                                 a.Status == TaskStatusConstants.InProgress))
+                    .ToList();
+            }
 
-                    var dataItem = project.DataItems.FirstOrDefault(d => d.Id == assignment.DataItemId);
-                    if (dataItem != null && dataItem.Assignments.Count <= 1)
+            if (affectedAssignments.Any())
+            {
+                foreach (var assignment in affectedAssignments)
+                {
+                    if (removedUser?.Role == UserRoles.Reviewer)
                     {
-                        dataItem.Status = TaskStatusConstants.New;
+                        assignment.ReviewerId = null;
+                        _assignmentRepo.Update(assignment);
+                    }
+                    else
+                    {
+                        _assignmentRepo.Delete(assignment);
+
+                        var dataItem = project.DataItems.FirstOrDefault(d => d.Id == assignment.DataItemId);
+                        if (dataItem != null && dataItem.Assignments.Count <= 1)
+                        {
+                            dataItem.Status = TaskStatusConstants.New;
+                        }
                     }
                 }
 
@@ -1088,17 +1276,16 @@ namespace BLL.Services
                 ActionType = "RemoveUser",
                 EntityName = "Project",
                 EntityId = projectId.ToString(),
-                Description = $"Removed user {userId} from project and revoked {pendingAssignments.Count} pending tasks.",
+                Description = $"Removed user {userId} from project and updated {affectedAssignments.Count} pending assignments.",
                 Timestamp = DateTime.UtcNow
             });
             await _activityLogRepo.SaveChangesAsync();
 
-            var removedUser = await _userRepository.GetByIdAsync(userId);
-            if (removedUser != null && removedUser.Role == UserRoles.Annotator)
+            if (removedUser != null)
             {
                 await _notification.SendNotificationAsync(
                     userId,
-                    $"You have been removed from project \"{project.Name}\". {pendingAssignments.Count} pending task(s) have been revoked.",
+                    $"You have been removed from project \"{project.Name}\" by the manager. {affectedAssignments.Count} pending assignment(s) were revoked.",
                     "Warning"
                 );
             }
@@ -1110,16 +1297,32 @@ namespace BLL.Services
             if (project == null) throw new Exception("Project not found");
             if (project.ManagerId != managerId) throw new UnauthorizedAccessException("Only the project manager can toggle user lock status.");
 
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null) throw new Exception("User not found");
+
             var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
-            var userAssignments = allAssignments.Where(a => a.AnnotatorId == userId).ToList();
+            bool isReviewer = user.Role == UserRoles.Reviewer;
+            var userAssignments = isReviewer
+                ? allAssignments.Where(a => a.ReviewerId == userId).ToList()
+                : allAssignments.Where(a => a.AnnotatorId == userId).ToList();
             var userStats = await _statsRepo.FindAsync(s => s.UserId == userId && s.ProjectId == projectId);
 
             if (lockStatus)
             {
                 foreach (var assignment in userAssignments)
                 {
-                    if (assignment.Status == TaskStatusConstants.Assigned ||
-                        assignment.Status == TaskStatusConstants.InProgress)
+                    if (isReviewer)
+                    {
+                        if (assignment.Status == TaskStatusConstants.Assigned ||
+                            assignment.Status == TaskStatusConstants.InProgress ||
+                            assignment.Status == TaskStatusConstants.Submitted)
+                        {
+                            assignment.ReviewerId = null;
+                            _assignmentRepo.Update(assignment);
+                        }
+                    }
+                    else if (assignment.Status == TaskStatusConstants.Assigned ||
+                             assignment.Status == TaskStatusConstants.InProgress)
                     {
                         _assignmentRepo.Delete(assignment);
                     }
@@ -1137,9 +1340,14 @@ namespace BLL.Services
                     ActionType = "LockUser",
                     EntityName = "Project",
                     EntityId = projectId.ToString(),
-                    Description = $"Locked reviewer {userId} in project {project.Name}. Revoked {userAssignments.Count} pending assignments.",
+                    Description = $"Locked {user.Role} {userId} in project {project.Name}. Updated {userAssignments.Count} assignments.",
                     Timestamp = DateTime.UtcNow
                 });
+
+                await _notification.SendNotificationAsync(
+                    userId,
+                    $"Your access to project \"{project.Name}\" has been locked by the manager. You are no longer allowed to work on this project.",
+                    "Warning");
             }
             else
             {
@@ -1155,9 +1363,14 @@ namespace BLL.Services
                     ActionType = "UnlockUser",
                     EntityName = "Project",
                     EntityId = projectId.ToString(),
-                    Description = $"Unlocked reviewer {userId} in project {project.Name}. Reviewer access restored.",
+                    Description = $"Unlocked {user.Role} {userId} in project {project.Name}. Access restored.",
                     Timestamp = DateTime.UtcNow
                 });
+
+                await _notification.SendNotificationAsync(
+                    userId,
+                    $"Your access to project \"{project.Name}\" has been restored by the manager.",
+                    "Info");
             }
 
             await _statsRepo.SaveChangesAsync();

@@ -18,14 +18,14 @@ namespace BLL.Tests
         private readonly Mock<IActivityLogService> _logServiceMock;
         private readonly Mock<IAppNotificationService> _notificationMock;
         private readonly Mock<Microsoft.Extensions.Configuration.IConfiguration> _configMock;
-        private readonly Mock<IEmailService> _emailServiceMock;
+        private readonly Mock<IWorkflowEmailService> _workflowEmailServiceMock;
 
         private readonly UserService _userService;
 
         public UserServiceTests()
         {
             _userRepoMock = new Mock<IUserRepository>();
-            _emailServiceMock = new Mock<IEmailService>();
+            _workflowEmailServiceMock = new Mock<IWorkflowEmailService>();
             _refreshTokenRepoMock = new Mock<IRefreshTokenRepository>();
             _assignmentRepoMock = new Mock<IAssignmentRepository>();
             _projectRepoMock = new Mock<IProjectRepository>();
@@ -47,7 +47,7 @@ namespace BLL.Tests
                 _logServiceMock.Object,
                 _projectRepoMock.Object,
                 _notificationMock.Object,
-                _emailServiceMock.Object
+                _workflowEmailServiceMock.Object
             );
         }
 
@@ -68,6 +68,7 @@ namespace BLL.Tests
             Assert.Equal(UserRoles.Annotator, result.Role);
             _userRepoMock.Verify(r => r.AddAsync(It.IsAny<User>()), Times.Once);
             _logServiceMock.Verify(l => l.LogActionAsync(It.IsAny<string>(), "CreateUser", "User", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            _workflowEmailServiceMock.Verify(w => w.SendWelcomeEmailAsync(It.IsAny<User>(), It.IsAny<User?>()), Times.Once);
         }
 
         [Fact]
@@ -101,14 +102,72 @@ namespace BLL.Tests
         [Fact]
         public async Task RegisterAsync_AsAnnotatorWithManager_SetsManagerId()
         {
+            var manager = new User { Id = "manager-1", FullName = "Manager", Email = "manager@test.com", Role = UserRoles.Manager };
             _userRepoMock.Setup(r => r.IsEmailExistsAsync(It.IsAny<string>())).ReturnsAsync(false);
             _userRepoMock.Setup(r => r.AddAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
             _userRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _userRepoMock.Setup(r => r.GetByIdAsync("manager-1")).ReturnsAsync(manager);
 
             var result = await _userService.RegisterAsync("Jane Doe", "jane@test.com", "Password@123", UserRoles.Annotator, "manager-1");
 
             Assert.NotNull(result);
             Assert.Equal("manager-1", result.ManagerId);
+            _workflowEmailServiceMock.Verify(w => w.SendWelcomeEmailAsync(It.Is<User>(u => u.Email == "jane@test.com"), manager), Times.Once);
+        }
+
+        #endregion
+
+        #region ForgotPasswordAsync Tests
+
+        [Fact]
+        public async Task ForgotPasswordAsync_WithExistingUser_NotifiesAdminsWithoutChangingPassword()
+        {
+            var existingPasswordHash = BCrypt.Net.BCrypt.HashPassword("Password@123");
+            var user = new User
+            {
+                Id = "user-1",
+                Email = "john@test.com",
+                FullName = "John Doe",
+                Role = UserRoles.Annotator,
+                PasswordHash = existingPasswordHash
+            };
+            var admins = new List<User>
+            {
+                new User { Id = "admin-1", Email = "admin@test.com", FullName = "Admin", Role = UserRoles.Admin, IsActive = true }
+            };
+
+            _userRepoMock.Setup(r => r.GetUserByEmailAsync(user.Email)).ReturnsAsync(user);
+            _userRepoMock.Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<User, bool>>>())).ReturnsAsync(admins);
+
+            var message = await _userService.ForgotPasswordAsync(user.Email);
+
+            Assert.Equal("If your email is registered in our system, administrators have been notified and will review your password reset request.", message);
+            Assert.Equal(existingPasswordHash, user.PasswordHash);
+            _userRepoMock.Verify(r => r.Update(It.IsAny<User>()), Times.Never);
+            _workflowEmailServiceMock.Verify(w => w.SendForgotPasswordRequestEmailsAsync(user, It.Is<IReadOnlyCollection<User>>(a => a.Count == 1)), Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "admin-1",
+                It.Is<string>(message => message.Contains(user.Email)),
+                "PasswordResetRequest"), Times.Once);
+        }
+
+        [Fact]
+        public async Task AdminChangeUserPasswordAsync_SendsResetEmailToUser()
+        {
+            var user = new User
+            {
+                Id = "user-1",
+                Email = "john@test.com",
+                FullName = "John Doe",
+                Role = UserRoles.Annotator
+            };
+
+            _userRepoMock.Setup(r => r.GetByIdAsync(user.Id)).ReturnsAsync(user);
+            _userRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+
+            await _userService.AdminChangeUserPasswordAsync("admin-1", user.Id, "Temp1234");
+
+            _workflowEmailServiceMock.Verify(w => w.SendAdminPasswordResetEmailAsync(user, "Temp1234"), Times.Once);
         }
 
         #endregion

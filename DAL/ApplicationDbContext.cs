@@ -59,9 +59,9 @@ namespace DAL
                 .OnDelete(DeleteBehavior.NoAction);
 
             modelBuilder.Entity<Assignment>()
-                .HasIndex(a => new { a.DataItemId, a.AnnotatorId })
+                .HasIndex(a => new { a.DataItemId, a.AnnotatorId, a.ReviewerId })
                 .IsUnique()
-                .HasDatabaseName("IX_Assignment_DataItem_Annotator");
+                .HasDatabaseName("IX_Assignment_DataItem_Annotator_Reviewer");
 
             modelBuilder.Entity<Assignment>()
                 .HasIndex(a => a.Status)

@@ -49,6 +49,112 @@ namespace BLL.Services
             return existingReviews.Any();
         }
 
+        private static bool IsApprovedVerdict(string? verdict)
+        {
+            return string.Equals(verdict, "Approved", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(verdict, "Approve", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsRejectedVerdict(string? verdict)
+        {
+            return string.Equals(verdict, "Rejected", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(verdict, "Reject", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async Task NotifyManagerIfProjectReadyForCompletionAsync(int projectId)
+        {
+            var project = await _projectRepo.GetProjectWithDetailsAsync(projectId);
+            if (project == null || string.IsNullOrWhiteSpace(project.ManagerId))
+            {
+                return;
+            }
+
+            if (project.Status != ProjectStatusConstants.Active)
+            {
+                return;
+            }
+
+            var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
+            if (!allAssignments.Any())
+            {
+                return;
+            }
+
+            if (allAssignments.All(a => a.Status == TaskStatusConstants.Approved))
+            {
+                await _notification.SendNotificationAsync(
+                    project.ManagerId,
+                    $"Project \"{project.Name}\" has all tasks approved and is ready for you to confirm completion.",
+                    "ProjectReadyToComplete");
+            }
+        }
+
+        private async Task NotifyPenaltyTieIfNeededAsync(Assignment assignment, Project project)
+        {
+            if (assignment.DataItemId <= 0 || string.IsNullOrWhiteSpace(project.ManagerId))
+            {
+                return;
+            }
+
+            var currentAssignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(assignment.Id);
+            if (currentAssignment == null)
+            {
+                return;
+            }
+
+            var relatedAssignments = await _assignmentRepo.GetRelatedAssignmentsForDisputeAsync(
+                currentAssignment.Id,
+                currentAssignment.AnnotatorId,
+                currentAssignment.DataItemId);
+
+            var allAssignments = relatedAssignments.Append(currentAssignment).ToList();
+            if (allAssignments.Count < 2)
+            {
+                return;
+            }
+
+            var latestLogs = allAssignments
+                .Select(a => a.ReviewLogs?
+                    .OrderByDescending(log => log.CreatedAt)
+                    .FirstOrDefault())
+                .ToList();
+
+            if (latestLogs.Any(log => log == null))
+            {
+                return;
+            }
+
+            int approvedCount = latestLogs.Count(log => IsApprovedVerdict(log!.Verdict));
+            int rejectedCount = latestLogs.Count(log => IsRejectedVerdict(log!.Verdict));
+
+            if (approvedCount == 0 || approvedCount != rejectedCount)
+            {
+                return;
+            }
+
+            var annotator = await _userRepo.GetByIdAsync(currentAssignment.AnnotatorId);
+            string annotatorName = annotator?.FullName ?? annotator?.Email ?? currentAssignment.AnnotatorId;
+
+            await _notification.SendNotificationAsync(
+                project.ManagerId,
+                $"Penalty review required in project \"{project.Name}\": task #{currentAssignment.Id} for annotator \"{annotatorName}\" has a tied reviewer result ({approvedCount} approve / {rejectedCount} reject).",
+                "PenaltyReview");
+
+            var reviewerIds = latestLogs
+                .Select(log => log!.ReviewerId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var reviewerId in reviewerIds)
+            {
+                await _notification.SendNotificationAsync(
+                    reviewerId,
+                    $"Penalty review has been triggered in project \"{project.Name}\" for task #{currentAssignment.Id}. Reviewer decisions are tied ({approvedCount} approve / {rejectedCount} reject) and waiting for manager action.",
+                    "PenaltyReview");
+            }
+        }
+
         public async Task<List<AssignedProjectResponse>> GetReviewerProjectsAsync(string reviewerId)
         {
             var allAssignments = await _assignmentRepo.GetAllAsync();
@@ -231,16 +337,19 @@ namespace BLL.Services
             {
                 await _notification.SendNotificationAsync(
                     assignment.AnnotatorId,
-                    $"Great job! Your task #{assignment.Id} has been Approved.",
+                    $"Great job! Your task #{assignment.Id} in project \"{project.Name}\" has been approved by reviewer.",
                     "Success");
             }
             else
             {
                 await _notification.SendNotificationAsync(
                     assignment.AnnotatorId,
-                    $"Your task #{assignment.Id} has been Rejected. Reason: {request.Comment}",
+                    $"Your task #{assignment.Id} in project \"{project.Name}\" has been rejected by reviewer. Reason: {request.Comment}. Penalty: {penaltyScore} point(s).",
                     "Error");
             }
+
+            await NotifyPenaltyTieIfNeededAsync(assignment, project);
+            await NotifyManagerIfProjectReadyForCompletionAsync(assignment.ProjectId);
         }
 
         public async Task AuditReviewAsync(string managerId, AuditReviewRequest request)
@@ -258,6 +367,16 @@ namespace BLL.Services
             log.AuditResult = request.IsCorrectDecision ? "Agree" : "Disagree";
 
             await _reviewLogRepo.SaveChangesAsync();
+
+            var project = await _projectRepo.GetByIdAsync(assignment.ProjectId);
+            string projectName = project?.Name ?? $"Project #{assignment.ProjectId}";
+
+            await _notification.SendNotificationAsync(
+                log.ReviewerId,
+                request.IsCorrectDecision
+                    ? $"Manager audited your review in project \"{projectName}\" and confirmed your evaluation for task #{assignment.Id}."
+                    : $"Manager audited your review in project \"{projectName}\" and marked your evaluation for task #{assignment.Id} as failed. Please review the guideline and penalty criteria.",
+                request.IsCorrectDecision ? "Info" : "Warning");
 
             var decisionStr = request.IsCorrectDecision ? "Agreed" : "Disagreed";
             await _logService.LogActionAsync(
