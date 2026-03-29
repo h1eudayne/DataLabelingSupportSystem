@@ -18,12 +18,14 @@ namespace BLL.Tests
         private readonly Mock<IActivityLogService> _logServiceMock;
         private readonly Mock<IAppNotificationService> _notificationMock;
         private readonly Mock<Microsoft.Extensions.Configuration.IConfiguration> _configMock;
+        private readonly Mock<IEmailService> _emailServiceMock;
 
         private readonly UserService _userService;
 
         public UserServiceTests()
         {
             _userRepoMock = new Mock<IUserRepository>();
+            _emailServiceMock = new Mock<IEmailService>();
             _refreshTokenRepoMock = new Mock<IRefreshTokenRepository>();
             _assignmentRepoMock = new Mock<IAssignmentRepository>();
             _projectRepoMock = new Mock<IProjectRepository>();
@@ -44,7 +46,8 @@ namespace BLL.Tests
                 _assignmentRepoMock.Object,
                 _logServiceMock.Object,
                 _projectRepoMock.Object,
-                _notificationMock.Object
+                _notificationMock.Object,
+                _emailServiceMock.Object
             );
         }
 

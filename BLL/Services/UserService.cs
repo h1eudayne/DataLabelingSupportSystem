@@ -24,6 +24,7 @@ namespace BLL.Services
         private readonly IAssignmentRepository _assignmentRepo;
         private readonly IProjectRepository _projectRepo;
         private readonly IAppNotificationService _notification;
+        private readonly IEmailService _emailService;
         public UserService(
             IUserRepository userRepository,
             IRefreshTokenRepository refreshTokenRepository,
@@ -31,7 +32,8 @@ namespace BLL.Services
             IAssignmentRepository assignmentRepo,
             IActivityLogService logService,
             IProjectRepository projectRepo,
-            IAppNotificationService notification)
+            IAppNotificationService notification,
+            IEmailService emailService)
         {
             _userRepository = userRepository;
             _refreshTokenRepository = refreshTokenRepository;
@@ -40,6 +42,7 @@ namespace BLL.Services
             _logService = logService;
             _projectRepo = projectRepo;
             _notification = notification;
+            _emailService = emailService;
         }
 
         public async Task<User> RegisterAsync(string fullName, string email, string password, string role, string? managerId = null)
@@ -598,14 +601,20 @@ namespace BLL.Services
             await _userRepository.SaveChangesAsync();
 
             await _logService.LogActionAsync(
-                user.Id,
-                "ForgotPassword",
-                "User",
-                user.Id,
-                "User requested a password reset from the login screen."
+                user.Id, "ForgotPassword", "User", user.Id, "User requested a password reset."
             );
 
-            return newPassword;
+            string subject = "Your New Password for Data Labeling Support System";
+            string body = $@"
+                <h3>Hello {user.FullName},</h3>
+                <p>You requested a password reset. Your new password is: <strong>{newPassword}</strong></p>
+                <p>Please login and change this password immediately!</p>
+                <br/>
+                <p>Best regards,<br/>Data Labeling Admin Team</p>";
+
+            await _emailService.SendEmailAsync(user.Email, subject, body);
+
+            return "A new password has been sent to your email.";
         }
         public async Task AdminChangeUserPasswordAsync(string adminId, string targetUserId, string newPassword)
         {

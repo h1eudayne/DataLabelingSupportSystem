@@ -48,6 +48,7 @@ builder.Services.AddScoped<IStatisticService, StatisticService>();
 builder.Services.AddScoped<IDisputeService, DisputeService>();
 builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
 builder.Services.AddScoped<IAppNotificationService, AppNotificationService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 builder.Services.AddCors(options =>
 {
@@ -61,7 +62,6 @@ builder.Services.AddCors(options =>
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwtSettings["Key"];
 
-// Validate JWT Key at startup - fail fast with clear error message
 if (string.IsNullOrEmpty(jwtKey))
 {
     throw new InvalidOperationException(
