@@ -83,5 +83,42 @@ namespace BLL.Services
                 await _notificationRepo.SaveChangesAsync();
             }
         }
+
+        public async Task<IEnumerable<object>> GetUnreadNotificationsForHubAsync(string userId)
+        {
+            var unreadNotifications = await _notificationRepo.FindAsync(n => n.UserId == userId && !n.IsRead);
+
+            return unreadNotifications
+                .OrderByDescending(n => n.CreatedAt)
+                .Take(50)
+                .Select(notification => new
+                {
+                    Id = notification.Id,
+                    Message = notification.Message,
+                    Type = notification.Type,
+                    IsRead = notification.IsRead,
+                    Timestamp = notification.CreatedAt
+                })
+                .ToList();
+        }
+
+        public async Task MarkListAsReadAsync(List<int> notificationIds, string userId)
+        {
+            var notifications = await _notificationRepo.FindAsync(n =>
+                n.UserId == userId &&
+                notificationIds.Contains(n.Id) &&
+                !n.IsRead);
+
+            foreach (var notification in notifications)
+            {
+                notification.IsRead = true;
+                _notificationRepo.Update(notification);
+            }
+
+            if (notifications.Any())
+            {
+                await _notificationRepo.SaveChangesAsync();
+            }
+        }
     }
 }

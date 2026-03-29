@@ -1,5 +1,4 @@
 using BLL.Interfaces;
-using DAL;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 
@@ -8,15 +7,11 @@ namespace API.Hubs
     [Authorize]
     public class AppNotificationHub : Hub
     {
-        private readonly ApplicationDbContext _context;
-        private readonly IHubContext<AppNotificationHub> _hubContext;
+        private readonly IAppNotificationService _notificationService;
 
-        public AppNotificationHub(
-            ApplicationDbContext context,
-            IHubContext<AppNotificationHub> hubContext)
+        public AppNotificationHub(IAppNotificationService notificationService)
         {
-            _context = context;
-            _hubContext = hubContext;
+            _notificationService = notificationService;
         }
 
         public override async Task OnConnectedAsync()
@@ -43,27 +38,15 @@ namespace API.Hubs
         {
             try
             {
-                var unreadNotifications = _context.AppNotifications
-                    .Where(n => n.UserId == userId && !n.IsRead)
-                    .OrderByDescending(n => n.CreatedAt)
-                    .Take(50)
-                    .ToList();
+                var unreadNotifications = await _notificationService.GetUnreadNotificationsForHubAsync(userId);
 
                 if (unreadNotifications.Any())
                 {
-                    Console.WriteLine($"[SignalR] Sending {unreadNotifications.Count} pending notifications to user {userId}");
+                    Console.WriteLine($"[SignalR] Sending {unreadNotifications.Count()} pending notifications to user {userId}");
 
                     foreach (var notification in unreadNotifications)
                     {
-                        await Clients.User(userId).SendAsync("ReceiveNotification", new
-                        {
-                            Id = notification.Id,
-                            Title = notification.Title,
-                            Message = notification.Message,
-                            Type = notification.Type,
-                            IsRead = notification.IsRead,
-                            Timestamp = notification.CreatedAt
-                        });
+                        await Clients.User(userId).SendAsync("ReceiveNotification", notification);
                     }
                 }
             }
@@ -76,20 +59,11 @@ namespace API.Hubs
         public async Task AcknowledgeNotifications(List<int> notificationIds)
         {
             var userId = Context.UserIdentifier;
-            if (string.IsNullOrEmpty(userId)) return;
+            if (string.IsNullOrEmpty(userId) || notificationIds == null || !notificationIds.Any()) return;
 
             try
             {
-                var notifications = _context.AppNotifications
-                    .Where(n => n.UserId == userId && notificationIds.Contains(n.Id) && !n.IsRead)
-                    .ToList();
-
-                foreach (var notification in notifications)
-                {
-                    notification.IsRead = true;
-                }
-
-                await _context.SaveChangesAsync();
+                await _notificationService.MarkListAsReadAsync(notificationIds, userId);
             }
             catch (Exception ex)
             {

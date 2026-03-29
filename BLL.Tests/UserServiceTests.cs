@@ -64,7 +64,7 @@ namespace BLL.Tests
             Assert.Equal("john@test.com", result.Email);
             Assert.Equal(UserRoles.Annotator, result.Role);
             _userRepoMock.Verify(r => r.AddAsync(It.IsAny<User>()), Times.Once);
-            _logServiceMock.Verify(l => l.LogActionAsync(It.IsAny<string>(), "CreateUser", "User", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            _logServiceMock.Verify(l => l.LogActionAsync(It.IsAny<string>(), "CreateUser", "User", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
 
         [Fact]
@@ -278,7 +278,7 @@ namespace BLL.Tests
             await _userService.DeleteUserAsync("user-1");
 
             Assert.False(user.IsActive);
-            _logServiceMock.Verify(l => l.LogActionAsync("user-1", "DeleteUser", "User", "user-1", It.IsAny<string>()), Times.Once);
+            _logServiceMock.Verify(l => l.LogActionAsync("user-1", "DeleteUser", "User", "user-1", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
 
         [Fact]
@@ -394,7 +394,7 @@ namespace BLL.Tests
             await _userService.ChangePasswordAsync("user-1", "OldPassword@123", "NewPassword@456");
 
             Assert.NotNull(user.PasswordHash);
-            _logServiceMock.Verify(l => l.LogActionAsync("user-1", "ChangePassword", "User", "user-1", It.IsAny<string>()), Times.Once);
+            _logServiceMock.Verify(l => l.LogActionAsync("user-1", "ChangePassword", "User", "user-1", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
 
         [Fact]
@@ -464,7 +464,7 @@ namespace BLL.Tests
 
             Assert.Equal("New Name", user.FullName);
             Assert.Equal("new-url", user.AvatarUrl);
-            _logServiceMock.Verify(l => l.LogActionAsync("user-1", "UpdateProfile", "User", "user-1", It.IsAny<string>()), Times.Once);
+            _logServiceMock.Verify(l => l.LogActionAsync("user-1", "UpdateProfile", "User", "user-1", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
 
         #endregion
@@ -612,7 +612,7 @@ namespace BLL.Tests
             await _userService.UpdateAvatarAsync("user-1", "new-avatar-url");
 
             Assert.Equal("new-avatar-url", user.AvatarUrl);
-            _logServiceMock.Verify(l => l.LogActionAsync("user-1", "UpdateAvatar", "User", "user-1", It.IsAny<string>()), Times.Once);
+            _logServiceMock.Verify(l => l.LogActionAsync("user-1", "UpdateAvatar", "User", "user-1", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
 
         #endregion
