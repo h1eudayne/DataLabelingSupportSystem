@@ -92,17 +92,12 @@ namespace API.Controllers
                     }
                 }
 
-                Console.WriteLine($"[DEBUG] CreateProject - ManagerId: {managerId}");
-                Console.WriteLine($"[DEBUG] CreateProject - Request: {System.Text.Json.JsonSerializer.Serialize(request)}");
 
                 var result = await _projectService.CreateProjectAsync(managerId, request);
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] CreateProject failed: {ex}");
-                Console.WriteLine($"[ERROR] Inner Exception: {ex.InnerException?.Message}");
-                Console.WriteLine($"[ERROR] Stack Trace: {ex.StackTrace}");
 
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }

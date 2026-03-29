@@ -72,7 +72,6 @@ namespace BLL.Tests
             await _statisticService.TrackNewAssignmentAsync("user-1", 1, 5);
 
             Assert.Equal(10, existingStat.TotalAssigned);
-            // EfficiencyScore = TotalApproved / TotalAssigned * 100 = 3 / 10 * 100 = 30
             Assert.Equal(30f, existingStat.EfficiencyScore, 0.01f);
         }
 
@@ -109,7 +108,6 @@ namespace BLL.Tests
                 taskScore: 100,
                 isCriticalError: false);
 
-            // After approval: TotalApproved = 5 + 1 = 6, TotalManagerDecisions = 0 + 1 = 1
             Assert.Equal(6, annotatorStat.TotalApproved);
             Assert.Equal(1, annotatorStat.TotalManagerDecisions);
             Assert.Equal(2, annotatorStat.TotalReviewedTasks);
@@ -386,7 +384,6 @@ namespace BLL.Tests
         [Fact]
         public async Task DeductReliabilityScoreForOverdueTasksAsync_OverdueAssignments_DeductsScore()
         {
-            // Setup assignment with overdue deadline
             var overdueAssignment = new Assignment
             {
                 Id = 1,
@@ -410,7 +407,6 @@ namespace BLL.Tests
 
             await _statisticService.DeductReliabilityScoreForOverdueTasksAsync();
 
-            // With 5 days overdue, deduction = min(5*2, 20) = 10
             Assert.Equal(90, userStat.EfficiencyScore);
         }
 

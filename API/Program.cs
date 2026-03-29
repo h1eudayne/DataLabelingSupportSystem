@@ -198,7 +198,7 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
-        await DataSeeder.SeedData(services, env.IsDevelopment());
+        await DAL.DataSeeder.SeedData(services, env.IsDevelopment());
     }
     catch (Exception ex)
     {

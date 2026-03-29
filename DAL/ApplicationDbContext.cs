@@ -88,7 +88,7 @@ namespace DAL
 
             modelBuilder.Entity<ProjectFlag>()
                 .HasOne(pf => pf.Project)
-                .WithMany()
+                .WithMany(p => p.ProjectFlags)
                 .HasForeignKey(pf => pf.ProjectId)
                 .OnDelete(DeleteBehavior.Cascade);
         }

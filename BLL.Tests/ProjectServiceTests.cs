@@ -587,7 +587,7 @@ namespace BLL.Tests
 
             await _projectService.ImportDataItemsAsync(1, urls);
 
-            // BUG-FIX: Items are now added via AddDataItemsAsync to DbContext directly
+
             _projectRepoMock.Verify(r => r.AddDataItemsAsync(It.Is<List<DataItem>>(items =>
                 items.Count == 3 &&
                 items.All(d => d.Status == TaskStatusConstants.New) &&
@@ -596,10 +596,8 @@ namespace BLL.Tests
         }
 
         [Fact]
-        public async Task ImportDataItemsAsync_BUGFIX_AddingOneItem_ShouldReturnCountOfOne()
+        public async Task ImportDataItemsAsync_AddingOneItem_ShouldReturnCountOfOne()
         {
-            // This test verifies the bug fix: previously, adding 1 item would return 0
-            // because items were added to navigation property instead of DbContext directly
             var project = new Project
             {
                 Id = 1,
@@ -618,23 +616,20 @@ namespace BLL.Tests
             _activityLogRepoMock.Setup(r => r.AddAsync(It.IsAny<ActivityLog>())).Returns(Task.CompletedTask);
             _activityLogRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
 
-            // Add exactly 1 item
             var urls = new List<string> { "single_image.jpg" };
 
             await _projectService.ImportDataItemsAsync(1, urls);
 
-            // Verify exactly 1 item was passed to AddDataItemsAsync
             Assert.NotNull(capturedItems);
             Assert.Single(capturedItems);
             Assert.Equal("single_image.jpg", capturedItems[0].StorageUrl);
             Assert.Equal(TaskStatusConstants.New, capturedItems[0].Status);
-            Assert.Equal(1, capturedItems[0].BucketId); // First item should be in bucket 1
+            Assert.Equal(1, capturedItems[0].BucketId);
         }
 
         [Fact]
-        public async Task ImportDataItemsAsync_BUGFIX_BucketIdCalculation_ShouldBeCorrect()
+        public async Task ImportDataItemsAsync_BucketIdCalculation_ShouldBeCorrect()
         {
-            // Test bucket ID calculation for multiple items
             var project = new Project
             {
                 Id = 1,
@@ -645,7 +640,7 @@ namespace BLL.Tests
 
             List<DataItem>? capturedItems = null;
             _projectRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(project);
-            _projectRepoMock.Setup(r => r.GetProjectDataItemsCountAsync(1)).ReturnsAsync(0); // Starting count is 0
+            _projectRepoMock.Setup(r => r.GetProjectDataItemsCountAsync(1)).ReturnsAsync(0); 
             _projectRepoMock.Setup(r => r.AddDataItemsAsync(It.IsAny<List<DataItem>>()))
                 .Callback<List<DataItem>>(items => capturedItems = items)
                 .Returns(Task.CompletedTask);
@@ -653,7 +648,6 @@ namespace BLL.Tests
             _activityLogRepoMock.Setup(r => r.AddAsync(It.IsAny<ActivityLog>())).Returns(Task.CompletedTask);
             _activityLogRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
 
-            // Add 55 items (spans across 2 buckets with 50 items each)
             var urls = Enumerable.Range(1, 55).Select(i => $"image_{i}.jpg").ToList();
 
             await _projectService.ImportDataItemsAsync(1, urls);
@@ -661,13 +655,11 @@ namespace BLL.Tests
             Assert.NotNull(capturedItems);
             Assert.Equal(55, capturedItems.Count);
 
-            // First 50 items should be in bucket 1
             for (int i = 0; i < 50; i++)
             {
                 Assert.Equal(1, capturedItems[i].BucketId);
             }
 
-            // Items 51-55 should be in bucket 2
             for (int i = 50; i < 55; i++)
             {
                 Assert.Equal(2, capturedItems[i].BucketId);
@@ -694,15 +686,15 @@ namespace BLL.Tests
             {
                 new Project { Id = 1, DataItems = new List<DataItem> { new DataItem(), new DataItem() } }
             };
-            var users = new List<User>
+            var managedUsers = new List<User>
             {
                 new User { Id = "u1", ManagerId = "manager-1" },
-                new User { Id = "u2", ManagerId = "manager-1" },
-                new User { Id = "u3", ManagerId = "other" }
+                new User { Id = "u2", ManagerId = "manager-1" }
             };
 
             _projectRepoMock.Setup(r => r.GetProjectsByManagerIdAsync("manager-1")).ReturnsAsync(projects);
-            _userRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(users);
+            _userRepoMock.Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<User, bool>>>()))
+                .ReturnsAsync(managedUsers);
 
             var result = await _projectService.GetManagerStatsAsync("manager-1");
 

@@ -85,7 +85,6 @@ namespace BLL.Services
             };
         }
 
-        // ĐÃ FIX 3-LAYER: Nhận Stream thay vì IFormFile
         public async Task<int> UploadDirectDataItemsAsync(int projectId, List<(Stream Content, string Extension)> files, string webRootPath)
         {
             var project = await _projectRepository.GetByIdAsync(projectId);

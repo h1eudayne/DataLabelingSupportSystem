@@ -17,7 +17,6 @@ namespace API.Hubs
         public override async Task OnConnectedAsync()
         {
             var userId = Context.UserIdentifier;
-            Console.WriteLine($"[SignalR] User {userId} connected. ConnectionId: {Context.ConnectionId}");
 
             if (!string.IsNullOrEmpty(userId))
             {
@@ -29,8 +28,6 @@ namespace API.Hubs
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
-            var userId = Context.UserIdentifier;
-            Console.WriteLine($"[SignalR] User {userId} disconnected.");
             await base.OnDisconnectedAsync(exception);
         }
 
@@ -42,17 +39,14 @@ namespace API.Hubs
 
                 if (unreadNotifications.Any())
                 {
-                    Console.WriteLine($"[SignalR] Sending {unreadNotifications.Count()} pending notifications to user {userId}");
-
                     foreach (var notification in unreadNotifications)
                     {
                         await Clients.User(userId).SendAsync("ReceiveNotification", notification);
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"[SignalR] Error sending pending notifications to user {userId}: {ex.Message}");
             }
         }
 
@@ -65,9 +59,8 @@ namespace API.Hubs
             {
                 await _notificationService.MarkListAsReadAsync(notificationIds, userId);
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"[SignalR] Error acknowledging notifications: {ex.Message}");
             }
         }
     }
