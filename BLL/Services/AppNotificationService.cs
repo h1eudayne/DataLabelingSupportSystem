@@ -1,6 +1,7 @@
 using BLL.Interfaces;
+using Core.DTOs.Responses;
 using Core.Entities;
-using DAL.Interfaces;
+using Core.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,10 +12,14 @@ namespace BLL.Services
     public class AppNotificationService : IAppNotificationService
     {
         private readonly IRepository<AppNotification> _notificationRepo;
+        private readonly IAppNotificationRealtimeDispatcher? _realtimeDispatcher;
 
-        public AppNotificationService(IRepository<AppNotification> notificationRepo)
+        public AppNotificationService(
+            IRepository<AppNotification> notificationRepo,
+            IAppNotificationRealtimeDispatcher? realtimeDispatcher = null)
         {
             _notificationRepo = notificationRepo;
+            _realtimeDispatcher = realtimeDispatcher;
         }
 
         public async Task SendNotificationAsync(string userId, string message, string type)
@@ -31,6 +36,11 @@ namespace BLL.Services
 
             await _notificationRepo.AddAsync(notification);
             await _notificationRepo.SaveChangesAsync();
+
+            if (_realtimeDispatcher != null)
+            {
+                await _realtimeDispatcher.DispatchAsync(userId, MapToPayload(notification));
+            }
         }
 
         public async Task<int> GetUnreadCountAsync(string userId)
@@ -93,15 +103,7 @@ namespace BLL.Services
             return unreadNotifications
                 .OrderByDescending(n => n.CreatedAt)
                 .Take(50)
-                .Select(notification => new
-                {
-                    Id = notification.Id,
-                    Title = notification.Title,
-                    Message = notification.Message,
-                    Type = notification.Type,
-                    IsRead = notification.IsRead,
-                    Timestamp = notification.CreatedAt
-                })
+                .Select(MapToPayload)
                 .ToList();
         }
 
@@ -133,5 +135,19 @@ namespace BLL.Services
                 await _notificationRepo.SaveChangesAsync();
             }
         }
+
+        private static NotificationPayload MapToPayload(AppNotification notification)
+        {
+            return new NotificationPayload
+            {
+                Id = notification.Id,
+                Title = notification.Title,
+                Message = notification.Message,
+                Type = notification.Type,
+                IsRead = notification.IsRead,
+                Timestamp = notification.CreatedAt
+            };
+        }
     }
 }
+

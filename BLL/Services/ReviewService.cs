@@ -1,7 +1,7 @@
 using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Core.Constants;
 using Core.Entities;
 using System.Text.Json;
@@ -42,11 +42,29 @@ namespace BLL.Services
             _statsRepo = statsRepo;
         }
 
-        private async Task<bool> HasReviewerAlreadyReviewedAsync(int assignmentId, string reviewerId)
+        private static IEnumerable<ReviewLog> GetCurrentSubmissionReviewLogs(
+            IEnumerable<ReviewLog>? reviewLogs,
+            DateTime? submittedAt)
+        {
+            if (reviewLogs == null)
+            {
+                return Enumerable.Empty<ReviewLog>();
+            }
+
+            if (!submittedAt.HasValue)
+            {
+                return reviewLogs;
+            }
+
+            return reviewLogs.Where(log => log.CreatedAt >= submittedAt.Value);
+        }
+
+        private async Task<bool> HasReviewerAlreadyReviewedAsync(Assignment assignment, string reviewerId)
         {
             var existingReviews = await _reviewLogRepo.FindAsync(
-                rl => rl.AssignmentId == assignmentId && rl.ReviewerId == reviewerId);
-            return existingReviews.Any();
+                rl => rl.AssignmentId == assignment.Id && rl.ReviewerId == reviewerId);
+
+            return GetCurrentSubmissionReviewLogs(existingReviews, assignment.SubmittedAt).Any();
         }
 
         private static bool IsApprovedVerdict(string? verdict)
@@ -215,13 +233,13 @@ namespace BLL.Services
             }
 
             if (assignment.Status != TaskStatusConstants.Submitted)
-                throw new Exception("This task is not ready for review.");
+                throw new Exception($"This task is not ready for review. Current status: \"{assignment.Status}\". The annotator must resubmit before you can review again.");
             if (!request.IsApproved && string.IsNullOrWhiteSpace(request.Comment))
             {
                 throw new Exception("Rejection requires a clear comment explaining the error.");
             }
 
-            var alreadyReviewed = await HasReviewerAlreadyReviewedAsync(assignment.Id, reviewerId);
+            var alreadyReviewed = await HasReviewerAlreadyReviewedAsync(assignment, reviewerId);
             if (alreadyReviewed)
             {
                 throw new InvalidOperationException("You have already reviewed this task. Duplicate reviews are not allowed.");
@@ -398,7 +416,7 @@ namespace BLL.Services
             if (assignment.ReviewerId != reviewerId) throw new UnauthorizedAccessException("You are not assigned to review this task");
             if (assignment.Status != TaskStatusConstants.Submitted) throw new Exception("Task is not in a reviewable state");
 
-            var alreadyReviewed = await HasReviewerAlreadyReviewedAsync(assignment.Id, reviewerId);
+            var alreadyReviewed = await HasReviewerAlreadyReviewedAsync(assignment, reviewerId);
             if (alreadyReviewed)
             {
                 throw new InvalidOperationException("You have already reviewed this task. Duplicate reviews are not allowed.");
@@ -539,7 +557,6 @@ namespace BLL.Services
                 .GroupBy(a => a.AnnotatorId);
 
             var annotatorGroups = new List<AnnotatorTaskGroupResponse>();
-            var allReviewLogs = await _reviewLogRepo.GetAllAsync();
 
             foreach (var group in grouped)
             {
@@ -583,9 +600,9 @@ namespace BLL.Services
                 }).ToList();
 
                 int totalSubmitted = tasksForGroup.Count;
-                int reviewedCount = allReviewLogs.Count(rl =>
-                    tasksForGroup.Any(t => t.AssignmentId == rl.AssignmentId) &&
-                    rl.ReviewerId == reviewerId);
+                int reviewedCount = group.Count(a =>
+                    GetCurrentSubmissionReviewLogs(a.ReviewLogs, a.SubmittedAt)
+                        .Any(rl => rl.ReviewerId == reviewerId));
                 int pendingReviewCount = totalSubmitted - reviewedCount;
                 double progressPercentage = totalSubmitted > 0 ? Math.Round((double)reviewedCount / totalSubmitted * 100, 2) : 0;
 
@@ -629,9 +646,6 @@ namespace BLL.Services
             var submittedAssignments = assignments.Where(a => a.Status == TaskStatusConstants.Submitted).ToList();
             var grouped = submittedAssignments.GroupBy(a => a.AnnotatorId);
 
-            var allReviewLogs = await _reviewLogRepo.GetAllAsync();
-            var reviewerLogs = allReviewLogs.Where(rl => rl.ReviewerId == reviewerId).ToList();
-
             var allStats = await _statsRepo.GetAllAsync();
             var annotatorBatches = new List<AnnotatorBatchStatus>();
 
@@ -644,9 +658,12 @@ namespace BLL.Services
                 var tasksForAnnotator = group.ToList();
                 int totalSubmitted = tasksForAnnotator.Count;
 
-                var assignmentIds = tasksForAnnotator.Select(a => a.Id).ToHashSet();
-                int approved = reviewerLogs.Count(rl => assignmentIds.Contains(rl.AssignmentId) && (rl.Verdict == "Approved" || rl.Verdict == "Approve"));
-                int rejected = reviewerLogs.Count(rl => assignmentIds.Contains(rl.AssignmentId) && (rl.Verdict == "Rejected" || rl.Verdict == "Reject"));
+                int approved = tasksForAnnotator.Count(a =>
+                    GetCurrentSubmissionReviewLogs(a.ReviewLogs, a.SubmittedAt)
+                        .Any(rl => rl.ReviewerId == reviewerId && IsApprovedVerdict(rl.Verdict)));
+                int rejected = tasksForAnnotator.Count(a =>
+                    GetCurrentSubmissionReviewLogs(a.ReviewLogs, a.SubmittedAt)
+                        .Any(rl => rl.ReviewerId == reviewerId && IsRejectedVerdict(rl.Verdict)));
                 int pendingReview = totalSubmitted - approved - rejected;
 
                 bool isComplete = pendingReview == 0;
@@ -797,3 +814,4 @@ namespace BLL.Services
         }
     }
 }
+

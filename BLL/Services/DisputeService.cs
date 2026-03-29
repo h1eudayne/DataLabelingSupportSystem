@@ -3,7 +3,7 @@ using Core.Constants;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Core.Entities;
-using DAL.Interfaces;
+using Core.Interfaces;
 
 namespace BLL.Services
 {
@@ -68,6 +68,11 @@ namespace BLL.Services
 
             await _disputeRepo.AddAsync(dispute);
             await _disputeRepo.SaveChangesAsync();
+
+            if (!string.IsNullOrWhiteSpace(assignment.ReviewerId))
+            {
+                await _statisticService.TrackDisputeCountAsync(assignment.ReviewerId, assignment.ProjectId);
+            }
 
             await _logService.LogActionAsync(
                 annotatorId,
@@ -333,6 +338,10 @@ namespace BLL.Services
             {
                 disputes = await _disputeRepo.GetDisputesByProjectAsync(projectId);
             }
+            else if (role == UserRoles.Reviewer)
+            {
+                disputes = await _disputeRepo.GetDisputesByReviewerAsync(userId, projectId);
+            }
             else
             {
                 disputes = await _disputeRepo.GetDisputesByAnnotatorAsync(userId);
@@ -409,3 +418,4 @@ namespace BLL.Services
         }
     }
 }
+

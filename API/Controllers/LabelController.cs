@@ -29,11 +29,7 @@ namespace API.Controllers
             try
             {
                 var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                var userRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
                 if (string.IsNullOrEmpty(userId)) return Unauthorized();
-
-                if (userRole == UserRoles.Manager)
-                    return StatusCode(403, new ErrorResponse { Message = "BR-MNG-17: Manager must not create or edit annotations directly" });
 
                 var result = await _labelService.CreateLabelAsync(userId, request);
                 return Ok(result);
@@ -53,11 +49,7 @@ namespace API.Controllers
             try
             {
                 var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                var userRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
                 if (string.IsNullOrEmpty(userId)) return Unauthorized();
-
-                if (userRole == UserRoles.Manager)
-                    return StatusCode(403, new ErrorResponse { Message = "BR-MNG-17: Manager must not create or edit annotations directly" });
 
                 var result = await _labelService.UpdateLabelAsync(userId, id, request);
                 return Ok(result);
@@ -77,11 +69,7 @@ namespace API.Controllers
             try
             {
                 var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                var userRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
                 if (string.IsNullOrEmpty(userId)) return Unauthorized();
-
-                if (userRole == UserRoles.Manager)
-                    return StatusCode(403, new ErrorResponse { Message = "BR-MNG-17: Manager must not create or edit annotations directly" });
 
                 await _labelService.DeleteLabelAsync(userId, id);
                 return Ok(new { Message = "Label deleted successfully." });

@@ -1,7 +1,7 @@
 using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Core.Constants;
 using Core.Entities;
 using Microsoft.Extensions.Configuration;
@@ -658,3 +658,4 @@ namespace BLL.Services
         }
     }
 }
+

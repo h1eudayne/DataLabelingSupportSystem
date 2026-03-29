@@ -4,7 +4,7 @@ using Core.Constants;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Core.Entities;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Moq;
 using Xunit;
 
@@ -180,6 +180,8 @@ namespace BLL.Tests
             {
                 Id = 1,
                 AnnotatorId = "annotator-1",
+                ReviewerId = "reviewer-1",
+                ProjectId = 1,
                 Status = TaskStatusConstants.Rejected,
                 Project = new Project { Id = 1, ManagerId = "manager-1", Name = "Test Project" },
                 ReviewLogs = new List<ReviewLog>
@@ -198,7 +200,10 @@ namespace BLL.Tests
             await _disputeService.CreateDisputeAsync("annotator-1", request);
 
             _notificationMock.Verify(n => n.SendNotificationAsync(
-                "manager-1", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+                "reviewer-1", It.Is<string>(m => m.Contains("filed a dispute")), "Warning"), Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "manager-1", It.Is<string>(m => m.Contains("Reason: Test dispute")), "Warning"), Times.Once);
+            _statisticServiceMock.Verify(s => s.TrackDisputeCountAsync("reviewer-1", 1), Times.Once);
         }
 
         #endregion
@@ -287,6 +292,84 @@ namespace BLL.Tests
                 true,
                 It.Is<string>(comment => comment.Contains("guideline", StringComparison.OrdinalIgnoreCase))),
                 Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                annotatorId,
+                It.Is<string>(m => m.Contains("has been accepted", StringComparison.OrdinalIgnoreCase)),
+                "Success"), Times.Once);
+            foreach (var reviewerId in reviewers)
+            {
+                _notificationMock.Verify(n => n.SendNotificationAsync(
+                    reviewerId,
+                    It.Is<string>(m => m.Contains("resolved a dispute", StringComparison.OrdinalIgnoreCase)),
+                    It.IsAny<string>()), Times.Once);
+            }
+        }
+
+        [Fact]
+        public async Task ResolveDisputeAsync_WhenRejected_NotifiesAnnotatorAndReviewer()
+        {
+            const string managerId = "manager-1";
+            const string annotatorId = "annotator-1";
+            const string reviewerId = "reviewer-1";
+            const int projectId = 2;
+            const int dataItemId = 9;
+
+            var assignment = new Assignment
+            {
+                Id = 15,
+                ProjectId = projectId,
+                DataItemId = dataItemId,
+                AnnotatorId = annotatorId,
+                ReviewerId = reviewerId,
+                Status = TaskStatusConstants.Rejected,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog { ReviewerId = reviewerId, Verdict = "Rejected", CreatedAt = DateTime.UtcNow }
+                }
+            };
+
+            var dispute = new Dispute
+            {
+                Id = 200,
+                AssignmentId = assignment.Id,
+                Assignment = assignment,
+                Status = "Pending",
+                Reason = "Need review",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _disputeRepoMock.Setup(r => r.GetDisputeWithDetailsAsync(dispute.Id)).ReturnsAsync(dispute);
+            _projectRepoMock.Setup(r => r.GetByIdAsync(projectId)).ReturnsAsync(new Project
+            {
+                Id = projectId,
+                Name = "Rejected Dispute Project",
+                GuidelineVersion = "2.0"
+            });
+            _assignmentRepoMock.Setup(r => r.GetRelatedAssignmentsForDisputeAsync(assignment.Id, annotatorId, dataItemId))
+                .ReturnsAsync(new List<Assignment>());
+            _userRepoMock.Setup(r => r.GetByIdAsync(managerId)).ReturnsAsync(new User { Id = managerId, Role = UserRoles.Manager });
+            _userRepoMock.Setup(r => r.GetByIdAsync(annotatorId)).ReturnsAsync(new User { Id = annotatorId, Role = UserRoles.Annotator });
+            _userRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<User>
+            {
+                new User { Id = reviewerId, Role = UserRoles.Reviewer }
+            });
+
+            await _disputeService.ResolveDisputeAsync(managerId, new ResolveDisputeRequest
+            {
+                DisputeId = dispute.Id,
+                IsAccepted = false,
+                ManagerComment = "Still incorrect per guideline v2.0"
+            });
+
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                annotatorId,
+                It.Is<string>(m => m.Contains("has been rejected", StringComparison.OrdinalIgnoreCase)),
+                "Error"), Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                reviewerId,
+                It.Is<string>(m => m.Contains("resolved a dispute", StringComparison.OrdinalIgnoreCase) &&
+                                   m.Contains("upheld the reviewer side", StringComparison.OrdinalIgnoreCase)),
+                "Info"), Times.Once);
         }
 
         [Fact]
@@ -378,6 +461,34 @@ namespace BLL.Tests
             Assert.Single(result);
         }
 
+        [Fact]
+        public async Task GetDisputesAsync_AsReviewer_ReturnsOnlyReviewerDisputes()
+        {
+            var disputes = new List<Dispute>
+            {
+                new Dispute
+                {
+                    Id = 3,
+                    Status = "Resolved",
+                    Assignment = new Assignment
+                    {
+                        ProjectId = 5,
+                        ReviewerId = "reviewer-1"
+                    }
+                }
+            };
+
+            _disputeRepoMock
+                .Setup(r => r.GetDisputesByReviewerAsync("reviewer-1", 5))
+                .ReturnsAsync(disputes);
+
+            var result = await _disputeService.GetDisputesAsync(5, "reviewer-1", UserRoles.Reviewer);
+
+            Assert.Single(result);
+            Assert.Equal(3, result[0].Id);
+        }
+
         #endregion
     }
 }
+

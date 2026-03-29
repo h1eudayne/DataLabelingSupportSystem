@@ -1,4 +1,4 @@
-﻿using DAL.Interfaces;
+using Core.Interfaces;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,3 +14,4 @@ namespace DAL.Repositories
         }
     }
 }
+

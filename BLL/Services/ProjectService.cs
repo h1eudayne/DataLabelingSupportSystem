@@ -1,5 +1,5 @@
 using BLL.Interfaces;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Core.Constants;
 using Core.Entities;
 using System.Text.Json;
@@ -793,9 +793,36 @@ namespace BLL.Services
                 int totalReviewsDone = Math.Max(statReviewsDone, logReviewsDone);
                 int correctDecisions = reviewerStat?.TotalReviewerCorrectByManager ?? 0;
                 int totalMgrDecisions = reviewerStat?.TotalReviewerManagerDecisions ?? 0;
-                double reviewerAccuracy = totalMgrDecisions > 0
-                    ? Math.Round((double)correctDecisions / totalMgrDecisions * 100, 2)
-                    : 0;
+                double reviewerAccuracy;
+                if (totalMgrDecisions > 0)
+                {
+                    reviewerAccuracy = Math.Round((double)correctDecisions / totalMgrDecisions * 100, 2);
+                }
+                else
+                {
+                    var logsForReviewer = allReviewLogs
+                        .Where(rl => rl.ReviewerId == reviewerId)
+                        .ToList();
+                    if (logsForReviewer.Count > 0)
+                    {
+                        int inferredCorrect = logsForReviewer.Count(rl =>
+                        {
+                            var relatedAssignment = allAssignments.FirstOrDefault(a => a.Id == rl.AssignmentId);
+                            if (relatedAssignment == null) return false;
+                            bool isApproveVerdict = rl.Verdict == "Approved" || rl.Verdict == "Approve";
+                            bool isRejectVerdict = rl.Verdict == "Rejected" || rl.Verdict == "Reject";
+                            return (isApproveVerdict && relatedAssignment.Status == TaskStatusConstants.Approved) ||
+                                   (isRejectVerdict && relatedAssignment.Status == TaskStatusConstants.Rejected);
+                        });
+                        correctDecisions = inferredCorrect;
+                        totalMgrDecisions = logsForReviewer.Count;
+                        reviewerAccuracy = Math.Round((double)inferredCorrect / logsForReviewer.Count * 100, 2);
+                    }
+                    else
+                    {
+                        reviewerAccuracy = 0;
+                    }
+                }
 
                 return new ReviewerPerformance
                 {
@@ -1379,3 +1406,4 @@ namespace BLL.Services
         }
     }
 }
+

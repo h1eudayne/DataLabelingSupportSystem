@@ -1,4 +1,4 @@
-using DAL.Interfaces;
+using Core.Interfaces;
 using DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -15,10 +15,10 @@ namespace DAL
                     configuration.GetConnectionString("DefaultConnection"),
                     sqlOptions =>
                     {
-                        sqlOptions.CommandTimeout(30);
+                        sqlOptions.CommandTimeout(120);
                         sqlOptions.EnableRetryOnFailure(
-                            maxRetryCount: 3,
-                            maxRetryDelay: TimeSpan.FromSeconds(10),
+                            maxRetryCount: 5,
+                            maxRetryDelay: TimeSpan.FromSeconds(30),
                             errorNumbersToAdd: null);
                     }));
 
@@ -40,3 +40,4 @@ namespace DAL
         }
     }
 }
+

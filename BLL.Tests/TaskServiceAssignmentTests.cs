@@ -3,7 +3,7 @@ using BLL.Services;
 using Core.Constants;
 using Core.DTOs.Requests;
 using Core.Entities;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Moq;
 using Xunit;
 
@@ -719,5 +719,55 @@ namespace BLL.Tests
                 n => n.SendNotificationAsync("reviewer-2", It.IsAny<string>(), "Info"),
                 Times.Once);
         }
+
+        [Fact]
+        public async Task SaveDraftAsync_WhenAssignmentRejected_KeepsRejectedStatus()
+        {
+            const string annotatorId = "annotator-1";
+            const int assignmentId = 21;
+
+            var existingAnnotation = new Annotation
+            {
+                Id = 300,
+                AssignmentId = assignmentId,
+                DataJSON = "[{\"label\":\"old\"}]",
+                CreatedAt = DateTime.UtcNow.AddMinutes(-5),
+                ClassId = 1
+            };
+
+            var assignment = new Assignment
+            {
+                Id = assignmentId,
+                AnnotatorId = annotatorId,
+                Status = TaskStatusConstants.Rejected,
+                Annotations = new List<Annotation> { existingAnnotation }
+            };
+
+            Annotation? createdAnnotation = null;
+
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentWithDetailsAsync(assignmentId))
+                .ReturnsAsync(assignment);
+
+            _annotationRepoMock
+                .Setup(r => r.AddAsync(It.IsAny<Annotation>()))
+                .Callback<Annotation>(annotation => createdAnnotation = annotation)
+                .Returns(Task.CompletedTask);
+
+            await _taskService.SaveDraftAsync(annotatorId, new SubmitAnnotationRequest
+            {
+                AssignmentId = assignmentId,
+                DataJSON = "[{\"label\":\"updated\"}]",
+                ClassId = 2
+            });
+
+            Assert.Equal(TaskStatusConstants.Rejected, assignment.Status);
+            Assert.NotNull(createdAnnotation);
+            Assert.Equal(assignmentId, createdAnnotation!.AssignmentId);
+            Assert.Equal("[{\"label\":\"updated\"}]", createdAnnotation.DataJSON);
+
+            _annotationRepoMock.Verify(r => r.AddAsync(It.IsAny<Annotation>()), Times.Once);
+        }
     }
 }
+

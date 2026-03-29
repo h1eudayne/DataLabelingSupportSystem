@@ -1,5 +1,5 @@
 using BLL.Interfaces;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Core.Entities;
 using Core.DTOs.Responses;
 using Core.Constants;
@@ -12,14 +12,14 @@ namespace BLL.Services
         private readonly IProjectRepository _projectRepo;
         private readonly IAssignmentRepository _assignmentRepo;
         private readonly IRepository<ReviewLog> _reviewLogRepo;
-        private readonly IRepository<Dispute> _disputeRepo;
+        private readonly IDisputeRepository _disputeRepo;
 
         public StatisticService(
             IRepository<UserProjectStat> statsRepo,
             IProjectRepository projectRepo,
             IAssignmentRepository assignmentRepo,
             IRepository<ReviewLog> reviewLogRepo,
-            IRepository<Dispute> disputeRepo)
+            IDisputeRepository disputeRepo)
         {
             _statsRepo = statsRepo;
             _projectRepo = projectRepo;
@@ -202,26 +202,16 @@ namespace BLL.Services
             var allReviewLogs = await _reviewLogRepo.GetAllAsync();
             var reviewerLogs = allReviewLogs.Where(rl => rl.ReviewerId == reviewerId).ToList();
 
-            var allDisputes = await _disputeRepo.GetAllAsync();
-            var resolvedDisputes = allDisputes.Where(d =>
-                d.Status == "Accepted" || d.Status == "Rejected");
-
-            var reviewerDisputes = new List<Dispute>();
-            foreach (var dispute in resolvedDisputes)
-            {
-                var assignment = await _assignmentRepo.GetByIdAsync(dispute.AssignmentId);
-                if (assignment != null && assignment.ReviewerId == reviewerId)
-                {
-                    reviewerDisputes.Add(dispute);
-                }
-            }
+            var reviewerDisputes = await _disputeRepo.GetDisputesByReviewerAsync(reviewerId);
 
             int totalReviews = reviewerLogs.Count;
             int totalApproved = reviewerLogs.Count(l => l.Verdict == "Approved" || l.Verdict == "Approve");
             int totalRejected = reviewerLogs.Count(l => l.Verdict == "Rejected" || l.Verdict == "Reject");
-            int totalOverridden = reviewerDisputes.Count;
+            int totalOverridden = reviewerDisputes.Count(d =>
+                string.Equals(d.Status, "Resolved", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(d.Status, "Accepted", StringComparison.OrdinalIgnoreCase));
 
-            int totalDisputes = reviewerStats.Sum(s => s.DisputeCount);
+            int totalDisputes = reviewerDisputes.Count;
             double disputeRate = totalReviews > 0 ? Math.Round((double)totalDisputes / totalReviews * 100, 2) : 0;
 
             double approvalRate = totalReviews > 0 ? Math.Round((double)totalApproved / totalReviews * 100, 2) : 0;
@@ -312,3 +302,4 @@ namespace BLL.Services
         }
     }
 }
+

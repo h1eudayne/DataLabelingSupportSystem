@@ -4,7 +4,7 @@ using Core.Constants;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Core.Entities;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Moq;
 using System.Linq.Expressions;
 using Xunit;
@@ -222,6 +222,72 @@ namespace BLL.Tests
 
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 _reviewService.ReviewAssignmentAsync("reviewer-1", request));
+        }
+
+        [Fact]
+        public async Task ReviewAssignmentAsync_AfterResubmission_AllowsReviewerToReviewAgain()
+        {
+            var submittedAt = DateTime.UtcNow;
+            var oldReview = new ReviewLog
+            {
+                ReviewerId = "reviewer-1",
+                Verdict = "Rejected",
+                CreatedAt = submittedAt.AddMinutes(-10)
+            };
+
+            var assignment = new Assignment
+            {
+                Id = 1,
+                AnnotatorId = "annotator-1",
+                ProjectId = 1,
+                Status = TaskStatusConstants.Submitted,
+                ReviewerId = "reviewer-1",
+                SubmittedAt = submittedAt,
+                DataItemId = 1,
+                ReviewLogs = new List<ReviewLog>()
+            };
+            var reviewer = new User { Id = "reviewer-1", Role = UserRoles.Reviewer };
+            var project = new Project { Id = 1, ManagerId = "manager-1", PenaltyUnit = 10 };
+
+            _assignmentRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(assignment);
+            _userRepoMock.Setup(r => r.GetByIdAsync("reviewer-1")).ReturnsAsync(reviewer);
+            _reviewLogRepoMock.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ReviewLog, bool>>>()))
+                .ReturnsAsync(new List<ReviewLog> { oldReview });
+            _reviewLogRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<ReviewLog> { oldReview });
+            _projectRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(project);
+            _dataItemRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(new DataItem { Id = 1 });
+            _reviewLogRepoMock.Setup(r => r.AddAsync(It.IsAny<ReviewLog>())).Returns(Task.CompletedTask);
+            _assignmentRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _projectRepoMock.Setup(r => r.GetProjectWithDetailsAsync(1)).ReturnsAsync((Project?)null);
+            _assignmentRepoMock.Setup(r => r.GetAssignmentWithDetailsAsync(1)).ReturnsAsync(new Assignment
+            {
+                Id = 1,
+                AnnotatorId = "annotator-1",
+                ProjectId = 1,
+                DataItemId = 1,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    oldReview,
+                    new ReviewLog
+                    {
+                        ReviewerId = "reviewer-1",
+                        Verdict = "Approved",
+                        CreatedAt = submittedAt.AddMinutes(1)
+                    }
+                }
+            });
+            _assignmentRepoMock.Setup(r => r.GetRelatedAssignmentsForDisputeAsync(1, "annotator-1", 1))
+                .ReturnsAsync(new List<Assignment>());
+
+            await _reviewService.ReviewAssignmentAsync("reviewer-1", new ReviewRequest
+            {
+                AssignmentId = 1,
+                IsApproved = true,
+                Comment = "Looks good after resubmission"
+            });
+
+            Assert.Equal(TaskStatusConstants.Approved, assignment.Status);
+            _reviewLogRepoMock.Verify(r => r.AddAsync(It.IsAny<ReviewLog>()), Times.Once);
         }
 
         [Fact]
@@ -512,6 +578,60 @@ namespace BLL.Tests
 
         #endregion
 
+        #region Batch Completion Tests
+
+        [Fact]
+        public async Task GetBatchCompletionStatusAsync_IgnoresReviewLogsFromPreviousSubmissionCycle()
+        {
+            var submittedAt = DateTime.UtcNow;
+            var assignment = new Assignment
+            {
+                Id = 1,
+                AnnotatorId = "annotator-1",
+                ReviewerId = "reviewer-1",
+                Status = TaskStatusConstants.Submitted,
+                SubmittedAt = submittedAt,
+                Annotator = new User { Id = "annotator-1", FullName = "Annotator One" },
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog
+                    {
+                        ReviewerId = "reviewer-1",
+                        Verdict = "Rejected",
+                        CreatedAt = submittedAt.AddMinutes(-15)
+                    }
+                }
+            };
+
+            var project = new Project
+            {
+                Id = 1,
+                Name = "Review Project",
+                DataItems = new List<DataItem>
+                {
+                    new DataItem
+                    {
+                        Id = 10,
+                        Assignments = new List<Assignment> { assignment }
+                    }
+                }
+            };
+
+            _projectRepoMock.Setup(r => r.GetProjectWithDetailsAsync(1)).ReturnsAsync(project);
+            _statsRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<UserProjectStat>());
+
+            var result = await _reviewService.GetBatchCompletionStatusAsync(1, "reviewer-1");
+
+            var batch = Assert.Single(result.AnnotatorBatches);
+            Assert.Equal("annotator-1", batch.AnnotatorId);
+            Assert.Equal(0, batch.Approved);
+            Assert.Equal(0, batch.Rejected);
+            Assert.Equal(1, batch.PendingReview);
+            Assert.False(batch.IsComplete);
+        }
+
+        #endregion
+
         #region HandleEscalatedTaskAsync Tests
 
         [Fact]
@@ -683,3 +803,4 @@ namespace BLL.Tests
         #endregion
     }
 }
+

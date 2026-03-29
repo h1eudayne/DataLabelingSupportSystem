@@ -1,6 +1,6 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using Core.Entities;
-using DAL.Interfaces;
+using Core.Interfaces;
 
 namespace BLL.Services
 {

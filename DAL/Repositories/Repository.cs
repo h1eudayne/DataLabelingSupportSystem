@@ -1,6 +1,5 @@
-using DAL.Interfaces;
+using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using System.Linq.Expressions;
 
 namespace DAL.Repositories
@@ -51,9 +50,11 @@ namespace DAL.Repositories
             return await _dbSet.Where(predicate).ToListAsync();
         }
 
-        public async Task<IDbContextTransaction> BeginTransactionAsync()
+        public async Task<ITransaction> BeginTransactionAsync()
         {
-            return await _context.Database.BeginTransactionAsync();
+            var transaction = await _context.Database.BeginTransactionAsync();
+            return new TransactionWrapper(transaction);
         }
     }
 }
+

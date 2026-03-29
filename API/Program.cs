@@ -1,55 +1,19 @@
 using API.Middlewares;
+using API.Services;
+using BLL;
 using BLL.Interfaces;
-using BLL.Services;
-using DAL;
-using DAL.Interfaces;
-using DAL.Repositories;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using API;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpContextAccessor();
-
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
-        sqlServerOptionsAction: sqlOptions =>
-        {
-            sqlOptions.CommandTimeout(120);
-
-            sqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 5,
-                maxRetryDelay: TimeSpan.FromSeconds(30),
-                errorNumbersToAdd: null);
-        }));
-
-builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
-builder.Services.AddScoped<IAssignmentRepository, AssignmentRepository>();
-builder.Services.AddScoped<ILabelRepository, LabelRepository>();
-builder.Services.AddScoped<IDisputeRepository, DisputeRepository>();
-builder.Services.AddScoped<IActivityLogRepository, ActivityLogRepository>();
-
-builder.Services.AddScoped<IUserService, UserService>();
-builder.Services.AddScoped<IProjectService, ProjectService>();
-builder.Services.AddScoped<ITaskService, TaskService>();
-builder.Services.AddScoped<IReviewService, ReviewService>();
-builder.Services.AddScoped<ILabelService, LabelService>();
-builder.Services.AddScoped<IStatisticService, StatisticService>();
-builder.Services.AddScoped<IDisputeService, DisputeService>();
-builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
-builder.Services.AddScoped<IAppNotificationService, AppNotificationService>();
-builder.Services.AddScoped<IEmailService, EmailService>();
-builder.Services.AddScoped<IWorkflowEmailService, WorkflowEmailService>();
+builder.Services.AddBusinessLogic(builder.Configuration);
+builder.Services.AddScoped<IAppNotificationRealtimeDispatcher, SignalRAppNotificationRealtimeDispatcher>();
 
 builder.Services.AddCors(options =>
 {
@@ -190,25 +154,7 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 app.UseMiddleware<ExceptionMiddleware>();
-
-using (var scope = app.Services.CreateScope())
-{
-    var services = scope.ServiceProvider;
-    var env = services.GetRequiredService<IWebHostEnvironment>();
-    var context = services.GetRequiredService<ApplicationDbContext>();
-
-    try
-    {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        await AssignmentSchemaUpdater.EnsureAssignmentIndexesAsync(context, logger);
-        await DAL.DataSeeder.SeedData(services, env.IsDevelopment());
-    }
-    catch (Exception ex)
-    {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while seeding the initial data.");
-    }
-}
+await app.Services.InitializeInfrastructureAsync(app.Environment.IsDevelopment());
 app.UseSwagger();
 app.UseSwaggerUI();
 
