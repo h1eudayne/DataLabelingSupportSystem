@@ -94,8 +94,10 @@ namespace Core.DTOs.Requests
 
     public class ForgotPasswordRequest
     {
+        [Required(ErrorMessage = "Email is required.")]
+        [EmailAddress(ErrorMessage = "Invalid email format.")]
         [JsonPropertyName("email")]
-        public string Email { get; set; } = null!;
+        public string Email { get; set; } = string.Empty;
     }
 
     public class AdminChangePasswordRequest

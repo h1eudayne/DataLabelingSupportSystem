@@ -1,4 +1,4 @@
-using BLL.Interfaces;
+﻿using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using DAL.Interfaces;
@@ -592,29 +592,49 @@ namespace BLL.Services
         public async Task<string> ForgotPasswordAsync(string email)
         {
             var user = await _userRepository.GetUserByEmailAsync(email);
-            if (user == null) throw new Exception("Email not found in the system.");
+
+            if (user == null)
+            {
+                return "If your email is registered in our system, a new password will be sent to you.";
+            }
 
             string newPassword = Guid.NewGuid().ToString().Substring(0, 8);
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
 
-            _userRepository.Update(user);
-            await _userRepository.SaveChangesAsync();
+            string oldPasswordHash = user.PasswordHash;
 
-            await _logService.LogActionAsync(
-                user.Id, "ForgotPassword", "User", user.Id, "User requested a password reset."
-            );
+            try
+            {
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+                _userRepository.Update(user);
+                await _userRepository.SaveChangesAsync();
 
-            string subject = "Your New Password for Data Labeling Support System";
-            string body = $@"
-                <h3>Hello {user.FullName},</h3>
-                <p>You requested a password reset. Your new password is: <strong>{newPassword}</strong></p>
-                <p>Please login and change this password immediately!</p>
-                <br/>
-                <p>Best regards,<br/>Data Labeling Admin Team</p>";
+                string subject = "Your New Password for Data Labeling Support System";
+                string body = $@"
+            <h3>Hello {user.FullName},</h3>
+            <p>You requested a password reset. Your new password is: <strong>{newPassword}</strong></p>
+            <p>Please login and change this password immediately!</p>
+            <br/>
+            <p>Best regards,<br/>Data Labeling Admin Team</p>";
 
-            await _emailService.SendEmailAsync(user.Email, subject, body);
+                await _emailService.SendEmailAsync(user.Email, subject, body);
 
-            return "A new password has been sent to your email.";
+                await _logService.LogActionAsync(
+                    user.Id, "ForgotPassword", "User", user.Id, "User requested and received a new password."
+                );
+
+                return "If your email is registered in our system, a new password will be sent to you.";
+            }
+            catch (Exception ex)
+            {
+                user.PasswordHash = oldPasswordHash;
+                _userRepository.Update(user);
+                await _userRepository.SaveChangesAsync();
+
+                await _logService.LogActionAsync(
+                    user.Id, "ForgotPassword_Failed", "User", user.Id, $"Failed to send email. Password reset aborted. Error: {ex.Message}"
+                );
+                throw new Exception($"LỖI THẬT SỰ TỪ GMAIL: {ex.Message} --- Chi tiết: {ex.InnerException?.Message}");
+            }
         }
         public async Task AdminChangeUserPasswordAsync(string adminId, string targetUserId, string newPassword)
         {

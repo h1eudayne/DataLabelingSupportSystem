@@ -26,8 +26,9 @@ namespace BLL.Services
 
                 using var client = new SmtpClient(mailServer, mailPort)
                 {
-                    Credentials = new NetworkCredential(senderEmail, password),
-                    EnableSsl = true
+                    EnableSsl = true,
+                    UseDefaultCredentials = false,
+                    Credentials = new NetworkCredential(senderEmail, password)
                 };
 
                 var mailMessage = new MailMessage

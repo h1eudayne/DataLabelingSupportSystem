@@ -159,12 +159,23 @@ namespace API.Controllers
         [HttpPost("forgot-password")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(object), 200)]
-        public IActionResult ForgotPassword([FromBody] ForgotPasswordRequest request)
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
         {
-            return Ok(new
+            if (string.IsNullOrWhiteSpace(request.Email))
             {
-                Message = "Please contact your Administrator to reset your password. Self-service password reset is not allowed for security reasons."
-            });
+                return BadRequest(new ErrorResponse { Message = "Email is required." });
+            }
+
+            try
+            {
+                var resultMessage = await _userService.ForgotPasswordAsync(request.Email);
+                return Ok(new { Message = resultMessage });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
         }
     }
 }
