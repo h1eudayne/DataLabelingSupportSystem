@@ -58,22 +58,20 @@ namespace API.Controllers
                 var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp" };
                 const long maxFileSizeBytes = 10 * 1024 * 1024;
 
+                var fileDataList = new List<(Stream Content, string Extension)>();
+
                 for (int i = 0; i < files.Count; i++)
                 {
                     var file = files[i];
 
                     if (file.Length > maxFileSizeBytes)
-                        return BadRequest(new ErrorResponse
-                        {
-                            Message = $"File '{file.FileName}' exceeds the maximum allowed size of 10MB."
-                        });
+                        return BadRequest(new ErrorResponse { Message = $"File '{file.FileName}' exceeds 10MB." });
 
                     var extension = Path.GetExtension(file.FileName)?.ToLowerInvariant();
                     if (string.IsNullOrEmpty(extension) || !allowedExtensions.Contains(extension))
-                        return BadRequest(new ErrorResponse
-                        {
-                            Message = $"File '{file.FileName}' has an unsupported format. Allowed formats: jpg, jpeg, png, gif, webp, bmp."
-                        });
+                        return BadRequest(new ErrorResponse { Message = $"File '{file.FileName}' has unsupported format." });
+
+                    fileDataList.Add((file.OpenReadStream(), extension));
                 }
 
                 var webRootPath = _env.WebRootPath;
@@ -81,7 +79,8 @@ namespace API.Controllers
                 {
                     webRootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
                 }
-                var uploadedCount = await _projectService.UploadDirectDataItemsAsync(projectId, files, webRootPath);
+
+                var uploadedCount = await _projectService.UploadDirectDataItemsAsync(projectId, fileDataList, webRootPath);
                 return Ok(new { Message = $"{uploadedCount} files uploaded successfully." });
             }
             catch (Exception ex)

@@ -12,6 +12,9 @@ namespace BLL.Interfaces
         Task<ManagerStatsResponse> GetManagerStatsAsync(string managerId);
         Task<List<ProjectSummaryResponse>> GetProjectsByManagerAsync(string managerId);
         Task UpdateProjectAsync(int projectId, UpdateProjectRequest request, string actingUserId);
+
+        Task<int> UploadDirectDataItemsAsync(int projectId, List<(Stream Content, string Extension)> files, string webRootPath);
+
         Task DeleteProjectAsync(int projectId);
         Task<List<ProjectSummaryResponse>> GetAllProjectsForAdminAsync();
         Task<List<AnnotatorProjectStatsResponse>> GetAssignedProjectsForUserAsync(string userId);
@@ -22,7 +25,7 @@ namespace BLL.Interfaces
         Task ActivateProjectAsync(int projectId, string managerId);
         Task<byte[]> ExportProjectCsvAsync(int projectId, string userId);
         Task<List<Core.DTOs.Responses.BucketResponse>> GetBucketsAsync(int projectId, string userId);
-        Task<int> UploadDirectDataItemsAsync(int projectId, List<Microsoft.AspNetCore.Http.IFormFile> files, string webRootPath);
+
         Task<byte[]> ExportProjectDataAsync(int projectId, string userId);
         Task<ProjectStatisticsResponse> GetProjectStatisticsAsync(int projectId);
         Task<object> GetUserProjectsByUserIdAsync(string userId);
