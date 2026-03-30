@@ -575,9 +575,9 @@ namespace BLL.Tests
             Assert.Equal("[{\"x\":1}]", firstImage.AnnotationData);
 
             var secondImage = Assert.Single(result, r => r.DataItemId == 202);
-            Assert.Equal(TaskStatusConstants.Rejected, secondImage.Status);
-            Assert.Equal("Need fix", secondImage.RejectionReason);
-            Assert.Equal("bbox", secondImage.ErrorCategory);
+            Assert.Equal("Escalated", secondImage.Status);
+            Assert.True(string.IsNullOrEmpty(secondImage.RejectionReason));
+            Assert.True(string.IsNullOrEmpty(secondImage.ErrorCategory));
         }
 
         [Fact]
@@ -718,6 +718,125 @@ namespace BLL.Tests
             _notificationMock.Verify(
                 n => n.SendNotificationAsync("reviewer-2", It.IsAny<string>(), "Info"),
                 Times.Once);
+        }
+
+        [Fact]
+        public async Task SubmitTaskAsync_WhenResubmittingRejectedImage_ResubmitsAllReviewerCopies()
+        {
+            const string annotatorId = "annotator-1";
+            const int projectId = 16;
+
+            var assignmentOne = new Assignment
+            {
+                Id = 2001,
+                ProjectId = projectId,
+                DataItemId = 700,
+                AnnotatorId = annotatorId,
+                ReviewerId = "reviewer-1",
+                Status = TaskStatusConstants.Rejected,
+                AssignedDate = DateTime.UtcNow,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog { AssignmentId = 2001, ReviewerId = "reviewer-1", Verdict = "Rejected", CreatedAt = DateTime.UtcNow.AddMinutes(-2) }
+                }
+            };
+
+            var assignmentTwo = new Assignment
+            {
+                Id = 2002,
+                ProjectId = projectId,
+                DataItemId = 700,
+                AnnotatorId = annotatorId,
+                ReviewerId = "reviewer-2",
+                Status = TaskStatusConstants.Approved,
+                AssignedDate = DateTime.UtcNow,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog { AssignmentId = 2002, ReviewerId = "reviewer-2", Verdict = "Approved", CreatedAt = DateTime.UtcNow.AddMinutes(-1) }
+                }
+            };
+
+            var groupedAssignments = new List<Assignment> { assignmentOne, assignmentTwo };
+            var capturedAnnotations = new List<Annotation>();
+
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentWithDetailsAsync(assignmentOne.Id))
+                .ReturnsAsync(assignmentOne);
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentsByAnnotatorAsync(annotatorId, projectId, null))
+                .ReturnsAsync(groupedAssignments);
+            _annotationRepoMock
+                .Setup(r => r.AddAsync(It.IsAny<Annotation>()))
+                .Callback<Annotation>(annotation => capturedAnnotations.Add(annotation))
+                .Returns(Task.CompletedTask);
+            _projectRepoMock
+                .Setup(r => r.GetByIdAsync(projectId))
+                .ReturnsAsync(new Project { Id = projectId, Name = "Resubmit Project", ManagerId = "manager-1" });
+
+            await _taskService.SubmitTaskAsync(annotatorId, new SubmitAnnotationRequest
+            {
+                AssignmentId = assignmentOne.Id,
+                DataJSON = "[{\"label\":\"fixed\"}]",
+                ClassId = 9
+            });
+
+            Assert.Equal(TaskStatusConstants.Submitted, assignmentOne.Status);
+            Assert.Equal(TaskStatusConstants.Submitted, assignmentTwo.Status);
+            Assert.True(assignmentOne.SubmittedAt.HasValue);
+            Assert.True(assignmentTwo.SubmittedAt.HasValue);
+            Assert.Equal(2, capturedAnnotations.Count);
+            Assert.Contains(capturedAnnotations, a => a.AssignmentId == assignmentOne.Id);
+            Assert.Contains(capturedAnnotations, a => a.AssignmentId == assignmentTwo.Id);
+        }
+
+        [Fact]
+        public async Task GetTaskImagesAsync_WhenAnotherReviewerStillPending_KeepsImageInSubmittedState()
+        {
+            const string annotatorId = "annotator-1";
+            const int projectId = 17;
+
+            var assignments = new List<Assignment>
+            {
+                new Assignment
+                {
+                    Id = 301,
+                    ProjectId = projectId,
+                    DataItemId = 901,
+                    AnnotatorId = annotatorId,
+                    ReviewerId = "reviewer-1",
+                    Status = TaskStatusConstants.Rejected,
+                    AssignedDate = DateTime.UtcNow,
+                    Project = new Project { Id = projectId, Deadline = DateTime.UtcNow.AddDays(1), MaxTaskDurationHours = 24 },
+                    DataItem = new DataItem { Id = 901, StorageUrl = "image-901.jpg" },
+                    ReviewLogs = new List<ReviewLog>
+                    {
+                        new ReviewLog { AssignmentId = 301, ReviewerId = "reviewer-1", Verdict = "Rejected", Comment = "Need fix", CreatedAt = DateTime.UtcNow }
+                    }
+                },
+                new Assignment
+                {
+                    Id = 302,
+                    ProjectId = projectId,
+                    DataItemId = 901,
+                    AnnotatorId = annotatorId,
+                    ReviewerId = "reviewer-2",
+                    Status = TaskStatusConstants.Submitted,
+                    AssignedDate = DateTime.UtcNow,
+                    Project = new Project { Id = projectId, Deadline = DateTime.UtcNow.AddDays(1), MaxTaskDurationHours = 24 },
+                    DataItem = new DataItem { Id = 901, StorageUrl = "image-901.jpg" }
+                }
+            };
+
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentsByAnnotatorAsync(annotatorId, projectId, null))
+                .ReturnsAsync(assignments);
+
+            var result = await _taskService.GetTaskImagesAsync(projectId, annotatorId);
+
+            var image = Assert.Single(result);
+            Assert.Equal(TaskStatusConstants.Submitted, image.Status);
+            Assert.True(string.IsNullOrEmpty(image.RejectionReason));
+            Assert.True(string.IsNullOrEmpty(image.ErrorCategory));
         }
 
         [Fact]

@@ -18,6 +18,7 @@ namespace BLL.Tests
         private readonly Mock<IAssignmentRepository> _assignmentRepoMock;
         private readonly Mock<IActivityLogRepository> _activityLogRepoMock;
         private readonly Mock<IRepository<ProjectFlag>> _flagRepoMock;
+        private readonly Mock<IDisputeRepository> _disputeRepoMock;
         private readonly Mock<IAppNotificationService> _notificationMock;
         private readonly Mock<IWorkflowEmailService> _workflowEmailServiceMock;
 
@@ -31,6 +32,7 @@ namespace BLL.Tests
             _assignmentRepoMock = new Mock<IAssignmentRepository>();
             _activityLogRepoMock = new Mock<IActivityLogRepository>();
             _flagRepoMock = new Mock<IRepository<ProjectFlag>>();
+            _disputeRepoMock = new Mock<IDisputeRepository>();
             _notificationMock = new Mock<IAppNotificationService>();
             _workflowEmailServiceMock = new Mock<IWorkflowEmailService>();
 
@@ -41,6 +43,7 @@ namespace BLL.Tests
                 _assignmentRepoMock.Object,
                 _activityLogRepoMock.Object,
                 _flagRepoMock.Object,
+                _disputeRepoMock.Object,
                 _notificationMock.Object,
                 _workflowEmailServiceMock.Object
             );
@@ -281,6 +284,163 @@ namespace BLL.Tests
 
             await Assert.ThrowsAsync<Exception>(() =>
                 _projectService.DeleteProjectAsync(999));
+        }
+
+        #endregion
+
+        #region GetProjectStatisticsAsync Tests
+
+        [Fact]
+        public async Task GetProjectStatisticsAsync_ReviewerAccuracy_IncludesRejectedTaskWithoutDispute()
+        {
+            var reviewer = new User
+            {
+                Id = "reviewer-1",
+                FullName = "Reviewer One",
+                Email = "reviewer@test.com",
+                Role = UserRoles.Reviewer
+            };
+
+            var annotator = new User
+            {
+                Id = "annotator-1",
+                FullName = "Annotator One",
+                Email = "annotator@test.com",
+                Role = UserRoles.Annotator
+            };
+
+            var approvedAssignment = new Assignment
+            {
+                Id = 1,
+                ProjectId = 10,
+                DataItemId = 201,
+                ReviewerId = reviewer.Id,
+                Reviewer = reviewer,
+                AnnotatorId = annotator.Id,
+                Annotator = annotator,
+                Status = TaskStatusConstants.Approved,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog
+                    {
+                        Id = 101,
+                        AssignmentId = 1,
+                        ReviewerId = reviewer.Id,
+                        Verdict = "Approved"
+                    }
+                }
+            };
+
+            var overturnedRejectedAssignment = new Assignment
+            {
+                Id = 2,
+                ProjectId = 10,
+                DataItemId = 202,
+                ReviewerId = reviewer.Id,
+                Reviewer = reviewer,
+                AnnotatorId = annotator.Id,
+                Annotator = annotator,
+                Status = TaskStatusConstants.Approved,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog
+                    {
+                        Id = 102,
+                        AssignmentId = 2,
+                        ReviewerId = reviewer.Id,
+                        Verdict = "Rejected"
+                    }
+                }
+            };
+
+            var rejectedWithoutDisputeAssignment = new Assignment
+            {
+                Id = 3,
+                ProjectId = 10,
+                DataItemId = 203,
+                ReviewerId = reviewer.Id,
+                Reviewer = reviewer,
+                AnnotatorId = annotator.Id,
+                Annotator = annotator,
+                Status = TaskStatusConstants.Rejected,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog
+                    {
+                        Id = 103,
+                        AssignmentId = 3,
+                        ReviewerId = reviewer.Id,
+                        Verdict = "Rejected"
+                    }
+                }
+            };
+
+            var project = new Project
+            {
+                Id = 10,
+                Name = "Statistics Project",
+                LabelClasses = new List<LabelClass>(),
+                DataItems = new List<DataItem>
+                {
+                    new DataItem
+                    {
+                        Id = 201,
+                        Status = TaskStatusConstants.Approved,
+                        Assignments = new List<Assignment> { approvedAssignment }
+                    },
+                    new DataItem
+                    {
+                        Id = 202,
+                        Status = TaskStatusConstants.Approved,
+                        Assignments = new List<Assignment> { overturnedRejectedAssignment }
+                    },
+                    new DataItem
+                    {
+                        Id = 203,
+                        Status = TaskStatusConstants.Rejected,
+                        Assignments = new List<Assignment> { rejectedWithoutDisputeAssignment }
+                    }
+                }
+            };
+
+            var reviewerStat = new UserProjectStat
+            {
+                UserId = reviewer.Id,
+                ProjectId = 10,
+                TotalReviewsDone = 3,
+                TotalReviewerManagerDecisions = 2,
+                TotalReviewerCorrectByManager = 1
+            };
+
+            _projectRepoMock
+                .Setup(r => r.GetProjectWithStatsDataAsync(10))
+                .ReturnsAsync(project);
+            _projectRepoMock
+                .Setup(r => r.GetProjectLabelCountsAsync(10))
+                .ReturnsAsync(new Dictionary<int, int>());
+            _statsRepoMock
+                .Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<UserProjectStat, bool>>>()))
+                .ReturnsAsync(new List<UserProjectStat> { reviewerStat });
+            _disputeRepoMock
+                .Setup(r => r.GetDisputesByProjectAsync(10))
+                .ReturnsAsync(new List<Dispute>
+                {
+                    new Dispute
+                    {
+                        Id = 301,
+                        AssignmentId = 2,
+                        AnnotatorId = annotator.Id,
+                        Status = "Resolved"
+                    }
+                });
+
+            var result = await _projectService.GetProjectStatisticsAsync(10);
+
+            var reviewerPerformance = Assert.Single(result.ReviewerPerformances);
+            Assert.Equal(3, reviewerPerformance.TotalReviews);
+            Assert.Equal(2, reviewerPerformance.CorrectDecisions);
+            Assert.Equal(3, reviewerPerformance.TotalManagerDecisions);
+            Assert.Equal(66.67, reviewerPerformance.ReviewerAccuracy);
         }
 
         #endregion

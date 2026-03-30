@@ -48,6 +48,8 @@ namespace BLL.Tests
                 _logServiceMock.Object,
                 _statsRepoMock.Object
             );
+
+            _dataItemRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
         }
 
         #region ReviewAssignmentAsync Tests
@@ -417,6 +419,8 @@ namespace BLL.Tests
                 Comment = "Missing label"
             });
 
+            Assert.Equal("Escalated", currentDetailedAssignment.Status);
+            Assert.All(relatedAssignments, related => Assert.Equal("Escalated", related.Status));
             _notificationMock.Verify(n => n.SendNotificationAsync(
                 "manager-1",
                 It.Is<string>(message => message.Contains("Penalty Project") && message.Contains("tied reviewer result")),
@@ -429,6 +433,328 @@ namespace BLL.Tests
                 "reviewer-2",
                 It.Is<string>(message => message.Contains("Penalty Project") && message.Contains("tied")),
                 "PenaltyReview"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ReviewAssignmentAsync_WhenConsensusApproves_FinalizesAllReviewerCopiesAsApproved()
+        {
+            var assignment = new Assignment
+            {
+                Id = 21,
+                AnnotatorId = "annotator-1",
+                ProjectId = 1,
+                Status = TaskStatusConstants.Submitted,
+                DataItemId = 88,
+                ReviewLogs = new List<ReviewLog>()
+            };
+            var reviewer = new User { Id = "reviewer-4", Role = UserRoles.Reviewer };
+            var project = new Project { Id = 1, Name = "Consensus Project", ManagerId = "manager-1", PenaltyUnit = 10 };
+            var currentDetailedAssignment = new Assignment
+            {
+                Id = 21,
+                AnnotatorId = "annotator-1",
+                ProjectId = 1,
+                DataItemId = 88,
+                Status = TaskStatusConstants.Approved,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog { ReviewerId = "reviewer-4", Verdict = "Approved", CreatedAt = DateTime.UtcNow }
+                }
+            };
+            var relatedAssignments = new List<Assignment>
+            {
+                new Assignment
+                {
+                    Id = 22,
+                    AnnotatorId = "annotator-1",
+                    ProjectId = 1,
+                    DataItemId = 88,
+                    Status = TaskStatusConstants.Approved,
+                    ReviewLogs = new List<ReviewLog>
+                    {
+                        new ReviewLog { ReviewerId = "reviewer-1", Verdict = "Approved", CreatedAt = DateTime.UtcNow.AddMinutes(-3) }
+                    }
+                },
+                new Assignment
+                {
+                    Id = 23,
+                    AnnotatorId = "annotator-1",
+                    ProjectId = 1,
+                    DataItemId = 88,
+                    Status = TaskStatusConstants.Approved,
+                    ReviewLogs = new List<ReviewLog>
+                    {
+                        new ReviewLog { ReviewerId = "reviewer-2", Verdict = "Approved", CreatedAt = DateTime.UtcNow.AddMinutes(-2) }
+                    }
+                },
+                new Assignment
+                {
+                    Id = 24,
+                    AnnotatorId = "annotator-1",
+                    ProjectId = 1,
+                    DataItemId = 88,
+                    Status = TaskStatusConstants.Rejected,
+                    ReviewLogs = new List<ReviewLog>
+                    {
+                        new ReviewLog { ReviewerId = "reviewer-3", Verdict = "Rejected", CreatedAt = DateTime.UtcNow.AddMinutes(-1) }
+                    }
+                }
+            };
+
+            _assignmentRepoMock.Setup(r => r.GetByIdAsync(21)).ReturnsAsync(assignment);
+            _userRepoMock.Setup(r => r.GetByIdAsync("reviewer-4")).ReturnsAsync(reviewer);
+            _reviewLogRepoMock.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ReviewLog, bool>>>())).ReturnsAsync(new List<ReviewLog>());
+            _projectRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(project);
+            _projectRepoMock.Setup(r => r.GetProjectWithDetailsAsync(1)).ReturnsAsync((Project?)null);
+            _reviewLogRepoMock.Setup(r => r.AddAsync(It.IsAny<ReviewLog>())).Returns(Task.CompletedTask);
+            _assignmentRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _assignmentRepoMock.Setup(r => r.GetAssignmentWithDetailsAsync(21)).ReturnsAsync(currentDetailedAssignment);
+            _assignmentRepoMock.Setup(r => r.GetRelatedAssignmentsForDisputeAsync(21, "annotator-1", 88)).ReturnsAsync(relatedAssignments);
+            _dataItemRepoMock.Setup(r => r.GetByIdAsync(88)).ReturnsAsync(new DataItem { Id = 88, Status = TaskStatusConstants.Submitted });
+
+            await _reviewService.ReviewAssignmentAsync("reviewer-4", new ReviewRequest
+            {
+                AssignmentId = 21,
+                IsApproved = true,
+                Comment = "Looks correct"
+            });
+
+            Assert.Equal(TaskStatusConstants.Approved, currentDetailedAssignment.Status);
+            Assert.All(relatedAssignments, related => Assert.Equal(TaskStatusConstants.Approved, related.Status));
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "annotator-1",
+                It.Is<string>(message => message.Contains("reviewer consensus") && message.Contains("3 approve / 1 reject")),
+                "Success"), Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "manager-1",
+                It.IsAny<string>(),
+                "PenaltyReview"), Times.Never);
+        }
+
+        [Fact]
+        public async Task ReviewAssignmentAsync_WhenConsensusRejects_FinalizesAllReviewerCopiesAsRejected()
+        {
+            var assignment = new Assignment
+            {
+                Id = 31,
+                AnnotatorId = "annotator-1",
+                ProjectId = 1,
+                Status = TaskStatusConstants.Submitted,
+                DataItemId = 99,
+                ReviewLogs = new List<ReviewLog>()
+            };
+            var reviewer = new User { Id = "reviewer-4", Role = UserRoles.Reviewer };
+            var project = new Project { Id = 1, Name = "Reject Consensus", ManagerId = "manager-1", PenaltyUnit = 10 };
+            var currentDetailedAssignment = new Assignment
+            {
+                Id = 31,
+                AnnotatorId = "annotator-1",
+                ProjectId = 1,
+                DataItemId = 99,
+                Status = TaskStatusConstants.Rejected,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog { ReviewerId = "reviewer-4", Verdict = "Rejected", Comment = "Missing object", CreatedAt = DateTime.UtcNow }
+                }
+            };
+            var relatedAssignments = new List<Assignment>
+            {
+                new Assignment
+                {
+                    Id = 32,
+                    AnnotatorId = "annotator-1",
+                    ProjectId = 1,
+                    DataItemId = 99,
+                    Status = TaskStatusConstants.Rejected,
+                    ReviewLogs = new List<ReviewLog>
+                    {
+                        new ReviewLog { ReviewerId = "reviewer-1", Verdict = "Rejected", Comment = "Wrong class", CreatedAt = DateTime.UtcNow.AddMinutes(-3) }
+                    }
+                },
+                new Assignment
+                {
+                    Id = 33,
+                    AnnotatorId = "annotator-1",
+                    ProjectId = 1,
+                    DataItemId = 99,
+                    Status = TaskStatusConstants.Rejected,
+                    ReviewLogs = new List<ReviewLog>
+                    {
+                        new ReviewLog { ReviewerId = "reviewer-2", Verdict = "Rejected", Comment = "Wrong box", CreatedAt = DateTime.UtcNow.AddMinutes(-2) }
+                    }
+                },
+                new Assignment
+                {
+                    Id = 34,
+                    AnnotatorId = "annotator-1",
+                    ProjectId = 1,
+                    DataItemId = 99,
+                    Status = TaskStatusConstants.Approved,
+                    ReviewLogs = new List<ReviewLog>
+                    {
+                        new ReviewLog { ReviewerId = "reviewer-3", Verdict = "Approved", CreatedAt = DateTime.UtcNow.AddMinutes(-1) }
+                    }
+                }
+            };
+
+            _assignmentRepoMock.Setup(r => r.GetByIdAsync(31)).ReturnsAsync(assignment);
+            _userRepoMock.Setup(r => r.GetByIdAsync("reviewer-4")).ReturnsAsync(reviewer);
+            _reviewLogRepoMock.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ReviewLog, bool>>>())).ReturnsAsync(new List<ReviewLog>());
+            _projectRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(project);
+            _projectRepoMock.Setup(r => r.GetProjectWithDetailsAsync(1)).ReturnsAsync((Project?)null);
+            _reviewLogRepoMock.Setup(r => r.AddAsync(It.IsAny<ReviewLog>())).Returns(Task.CompletedTask);
+            _assignmentRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _assignmentRepoMock.Setup(r => r.GetAssignmentWithDetailsAsync(31)).ReturnsAsync(currentDetailedAssignment);
+            _assignmentRepoMock.Setup(r => r.GetRelatedAssignmentsForDisputeAsync(31, "annotator-1", 99)).ReturnsAsync(relatedAssignments);
+
+            await _reviewService.ReviewAssignmentAsync("reviewer-4", new ReviewRequest
+            {
+                AssignmentId = 31,
+                IsApproved = false,
+                Comment = "Missing object"
+            });
+
+            Assert.Equal(TaskStatusConstants.Rejected, currentDetailedAssignment.Status);
+            Assert.Equal(1, currentDetailedAssignment.RejectCount);
+            Assert.All(relatedAssignments, related =>
+            {
+                Assert.Equal(TaskStatusConstants.Rejected, related.Status);
+                Assert.Equal(1, related.RejectCount);
+            });
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "annotator-1",
+                It.Is<string>(message => message.Contains("reviewer consensus") && message.Contains("1 approve / 3 reject")),
+                "Error"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ReviewAssignmentAsync_WhenRejectCountReachesThree_EscalatesAndNotifiesAnnotator()
+        {
+            var assignment = new Assignment
+            {
+                Id = 41,
+                AnnotatorId = "annotator-1",
+                ProjectId = 1,
+                Status = TaskStatusConstants.Submitted,
+                DataItemId = 100,
+                RejectCount = 2,
+                ReviewLogs = new List<ReviewLog>()
+            };
+            var reviewer = new User { Id = "reviewer-1", Role = UserRoles.Reviewer };
+            var project = new Project { Id = 1, Name = "Escalation Project", ManagerId = "manager-1", PenaltyUnit = 10 };
+            var currentDetailedAssignment = new Assignment
+            {
+                Id = 41,
+                AnnotatorId = "annotator-1",
+                ProjectId = 1,
+                DataItemId = 100,
+                Status = TaskStatusConstants.Rejected,
+                RejectCount = 2,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog { ReviewerId = "reviewer-1", Verdict = "Rejected", Comment = "Still wrong", CreatedAt = DateTime.UtcNow }
+                }
+            };
+
+            _assignmentRepoMock.Setup(r => r.GetByIdAsync(41)).ReturnsAsync(assignment);
+            _userRepoMock.Setup(r => r.GetByIdAsync("reviewer-1")).ReturnsAsync(reviewer);
+            _reviewLogRepoMock.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ReviewLog, bool>>>())).ReturnsAsync(new List<ReviewLog>());
+            _projectRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(project);
+            _projectRepoMock.Setup(r => r.GetProjectWithDetailsAsync(1)).ReturnsAsync((Project?)null);
+            _reviewLogRepoMock.Setup(r => r.AddAsync(It.IsAny<ReviewLog>())).Returns(Task.CompletedTask);
+            _assignmentRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _assignmentRepoMock.Setup(r => r.GetAssignmentWithDetailsAsync(41)).ReturnsAsync(currentDetailedAssignment);
+            _assignmentRepoMock.Setup(r => r.GetRelatedAssignmentsForDisputeAsync(41, "annotator-1", 100)).ReturnsAsync(new List<Assignment>());
+
+            await _reviewService.ReviewAssignmentAsync("reviewer-1", new ReviewRequest
+            {
+                AssignmentId = 41,
+                IsApproved = false,
+                Comment = "Still wrong"
+            });
+
+            Assert.Equal("Escalated", currentDetailedAssignment.Status);
+            Assert.True(currentDetailedAssignment.IsEscalated);
+            Assert.Equal(3, currentDetailedAssignment.RejectCount);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "manager-1",
+                It.Is<string>(message => message.Contains("escalated after 3 rejected review cycles")),
+                "Urgent"), Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "annotator-1",
+                It.Is<string>(message => message.Contains("rejected 3 times") && message.Contains("manager review")),
+                "Warning"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ReviewAssignmentAsync_IgnoresPreviousSubmissionVotesWhenCheckingTie()
+        {
+            var now = DateTime.UtcNow;
+            var assignment = new Assignment
+            {
+                Id = 11,
+                AnnotatorId = "annotator-1",
+                ProjectId = 1,
+                Status = TaskStatusConstants.Submitted,
+                DataItemId = 9,
+                SubmittedAt = now,
+                ReviewLogs = new List<ReviewLog>()
+            };
+            var reviewer = new User { Id = "reviewer-1", Role = UserRoles.Reviewer };
+            var project = new Project { Id = 1, Name = "Cycle Project", ManagerId = "manager-1", PenaltyUnit = 10 };
+            var currentDetailedAssignment = new Assignment
+            {
+                Id = 11,
+                AnnotatorId = "annotator-1",
+                ProjectId = 1,
+                DataItemId = 9,
+                SubmittedAt = now,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog { ReviewerId = "reviewer-1", Verdict = "Rejected", CreatedAt = now.AddMinutes(1) }
+                }
+            };
+            var relatedAssignments = new List<Assignment>
+            {
+                new Assignment
+                {
+                    Id = 12,
+                    AnnotatorId = "annotator-1",
+                    ProjectId = 1,
+                    DataItemId = 9,
+                    SubmittedAt = now,
+                    ReviewLogs = new List<ReviewLog>
+                    {
+                        new ReviewLog { ReviewerId = "reviewer-2", Verdict = "Approved", CreatedAt = now.AddMinutes(-20) }
+                    }
+                }
+            };
+
+            _assignmentRepoMock.Setup(r => r.GetByIdAsync(11)).ReturnsAsync(assignment);
+            _userRepoMock.Setup(r => r.GetByIdAsync("reviewer-1")).ReturnsAsync(reviewer);
+            _reviewLogRepoMock.Setup(r => r.FindAsync(It.IsAny<Expression<Func<ReviewLog, bool>>>())).ReturnsAsync(new List<ReviewLog>());
+            _projectRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(project);
+            _projectRepoMock.Setup(r => r.GetProjectWithDetailsAsync(1)).ReturnsAsync((Project?)null);
+            _reviewLogRepoMock.Setup(r => r.AddAsync(It.IsAny<ReviewLog>())).Returns(Task.CompletedTask);
+            _assignmentRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _assignmentRepoMock.Setup(r => r.GetAssignmentWithDetailsAsync(11)).ReturnsAsync(currentDetailedAssignment);
+            _assignmentRepoMock.Setup(r => r.GetRelatedAssignmentsForDisputeAsync(11, "annotator-1", 9)).ReturnsAsync(relatedAssignments);
+
+            await _reviewService.ReviewAssignmentAsync("reviewer-1", new ReviewRequest
+            {
+                AssignmentId = 11,
+                IsApproved = false,
+                Comment = "Current cycle reject"
+            });
+
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "manager-1",
+                It.Is<string>(message => message.Contains("tied reviewer result")),
+                "PenaltyReview"), Times.Never);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "reviewer-2",
+                It.Is<string>(message => message.Contains("tied")),
+                "PenaltyReview"), Times.Never);
         }
 
         #endregion

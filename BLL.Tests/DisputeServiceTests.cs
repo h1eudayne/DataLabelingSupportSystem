@@ -50,6 +50,10 @@ namespace BLL.Tests
                 _userRepoMock.Object,
                 _workflowEmailServiceMock.Object
             );
+
+            _assignmentRepoMock
+                .Setup(r => r.GetRelatedAssignmentsForDisputeAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<int>()))
+                .ReturnsAsync(new List<Assignment>());
         }
 
         #region CreateDisputeAsync Tests
@@ -204,6 +208,52 @@ namespace BLL.Tests
             _notificationMock.Verify(n => n.SendNotificationAsync(
                 "manager-1", It.Is<string>(m => m.Contains("Reason: Test dispute")), "Warning"), Times.Once);
             _statisticServiceMock.Verify(s => s.TrackDisputeCountAsync("reviewer-1", 1), Times.Once);
+        }
+
+        [Fact]
+        public async Task CreateDisputeAsync_WhenAnotherReviewerIsStillVoting_ThrowsException()
+        {
+            var submittedAt = DateTime.UtcNow;
+            var assignment = new Assignment
+            {
+                Id = 1,
+                AnnotatorId = "annotator-1",
+                ReviewerId = "reviewer-1",
+                ProjectId = 1,
+                DataItemId = 99,
+                SubmittedAt = submittedAt,
+                Status = TaskStatusConstants.Rejected,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog { ReviewerId = "reviewer-1", Verdict = "Rejected", CreatedAt = submittedAt.AddMinutes(5) }
+                }
+            };
+
+            var pendingReviewerAssignment = new Assignment
+            {
+                Id = 2,
+                AnnotatorId = "annotator-1",
+                ReviewerId = "reviewer-2",
+                ProjectId = 1,
+                DataItemId = 99,
+                SubmittedAt = submittedAt,
+                Status = TaskStatusConstants.Submitted,
+                ReviewLogs = new List<ReviewLog>()
+            };
+
+            _assignmentRepoMock.Setup(r => r.GetAssignmentWithDetailsAsync(1))
+                .ReturnsAsync(assignment);
+            _assignmentRepoMock.Setup(r => r.GetRelatedAssignmentsForDisputeAsync(1, "annotator-1", 99))
+                .ReturnsAsync(new List<Assignment> { pendingReviewerAssignment });
+
+            var ex = await Assert.ThrowsAsync<Exception>(() =>
+                _disputeService.CreateDisputeAsync("annotator-1", new CreateDisputeRequest
+                {
+                    AssignmentId = 1,
+                    Reason = "Still waiting"
+                }));
+
+            Assert.Contains("still voting", ex.Message);
         }
 
         #endregion

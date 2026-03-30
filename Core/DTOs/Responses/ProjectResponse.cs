@@ -68,5 +68,17 @@ namespace Core.DTOs.Responses
         public decimal Progress { get; set; }
 
         public int TotalMembers { get; set; }
+
+        public int PendingDisputeCount { get; set; }
+
+        public int PendingPenaltyCount { get; set; }
+
+        public int RejectedImageCount { get; set; }
+
+        public int PriorityIssueCount { get; set; }
+
+        public bool HasPriorityIssue { get; set; }
+
+        public string DefaultActionTab { get; set; } = "datasets";
     }
 }

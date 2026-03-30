@@ -268,20 +268,17 @@ namespace BLL.Tests
         #region TrackFirstPassCorrectAsync Tests
 
         [Fact]
-        public async Task TrackFirstPassCorrectAsync_IncrementsBothUsers()
+        public async Task TrackFirstPassCorrectAsync_IncrementsAnnotatorOnly()
         {
             var annotatorStat = new UserProjectStat { UserId = "annotator-1", ProjectId = 1 };
-            var reviewerStat = new UserProjectStat { UserId = "reviewer-1", ProjectId = 1 };
 
             _statsRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(
-                new List<UserProjectStat> { annotatorStat, reviewerStat });
+                new List<UserProjectStat> { annotatorStat });
             _statsRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
 
-            await _statisticService.TrackFirstPassCorrectAsync("annotator-1", "reviewer-1", 1);
+            await _statisticService.TrackFirstPassCorrectAsync("annotator-1", 1);
 
             Assert.Equal(1, annotatorStat.TotalFirstPassCorrect);
-            Assert.Equal(1, reviewerStat.TotalReviewerManagerDecisions);
-            Assert.Equal(1, reviewerStat.TotalReviewerCorrectByManager);
         }
 
         #endregion

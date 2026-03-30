@@ -17,7 +17,7 @@ namespace BLL.Interfaces
             List<(string reviewerId, bool wasCorrect)> reviewerResults,
             int projectId,
             bool annotatorWasCorrect);
-        Task TrackFirstPassCorrectAsync(string annotatorId, string reviewerId, int projectId);
+        Task TrackFirstPassCorrectAsync(string annotatorId, int projectId);
 
         Task<ReviewerStatsResponse> GetReviewerStatsAsync(string reviewerId);
 

@@ -112,4 +112,13 @@ namespace Core.DTOs.Requests
         [JsonPropertyName("refreshToken")]
         public string RefreshToken { get; set; } = string.Empty;
     }
+
+    public class ResolveGlobalUserBanRequest
+    {
+        [JsonPropertyName("approve")]
+        public bool Approve { get; set; }
+
+        [JsonPropertyName("decisionNote")]
+        public string? DecisionNote { get; set; }
+    }
 }
