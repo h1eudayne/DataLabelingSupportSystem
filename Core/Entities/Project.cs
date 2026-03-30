@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace Core.Entities
 {
     public class Project
@@ -26,6 +28,7 @@ namespace Core.Entities
         public virtual ICollection<LabelClass> LabelClasses { get; set; } = new List<LabelClass>();
         public virtual ICollection<DataItem> DataItems { get; set; } = new List<DataItem>();
 
+        [InverseProperty(nameof(ProjectFlag.Project))]
         public virtual ICollection<ProjectFlag> ProjectFlags { get; set; } = new List<ProjectFlag>();
     }
 }
