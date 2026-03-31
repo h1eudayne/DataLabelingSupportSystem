@@ -117,7 +117,7 @@ namespace BLL.Services
             if (user == null) return (null, null);
             if (!user.IsActive)
             {
-                throw new ArgumentException("Account is deactivated or banned.");
+                throw new UnauthorizedAccessException("Account is deactivated or banned.");
             }
             if (string.IsNullOrEmpty(user.PasswordHash)) return (null, null);
 

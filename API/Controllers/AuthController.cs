@@ -4,7 +4,6 @@ using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
 namespace API.Controllers
@@ -59,9 +58,8 @@ namespace API.Controllers
                 if (accessToken == null || refreshToken == null)
                     return Unauthorized(new ErrorResponse { Message = "Invalid email or password." });
 
-                var handler = new JwtSecurityTokenHandler();
-                var jwtToken = handler.ReadJwtToken(accessToken);
-                var userId = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+                var authenticatedUser = await _userService.GetUserByEmailAsync(request.Email);
+                var userId = authenticatedUser?.Id;
 
                 int unreadCount = 0;
 
@@ -88,7 +86,7 @@ namespace API.Controllers
                     unreadNotifications = unreadCount
                 });
             }
-            catch (ArgumentException)
+            catch (UnauthorizedAccessException)
             {
                 return StatusCode(403, new ErrorResponse { Message = "Account is deactivated or banned." });
             }
