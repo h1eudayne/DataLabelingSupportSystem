@@ -1,7 +1,7 @@
 using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Core.Constants;
 using Core.Entities;
 using System.Text.Json;
@@ -18,6 +18,7 @@ namespace BLL.Services
         private readonly IProjectRepository _projectRepo;
         private readonly IActivityLogService _logService;
         private readonly IAppNotificationService _notification;
+        private readonly IWorkflowEmailService _workflowEmailService;
 
         private const string GUIDELINE_REFERENCE_COMMENT = "Decision based on official project guidelines";
 
@@ -29,7 +30,8 @@ namespace BLL.Services
             IUserRepository userRepo,
             IProjectRepository projectRepo,
             IAppNotificationService notification,
-            IActivityLogService logService)
+            IActivityLogService logService,
+            IWorkflowEmailService workflowEmailService)
         {
             _assignmentRepo = assignmentRepo;
             _dataItemRepo = dataItemRepo;
@@ -39,10 +41,26 @@ namespace BLL.Services
             _projectRepo = projectRepo;
             _logService = logService;
             _notification = notification;
+            _workflowEmailService = workflowEmailService;
         }
 
         public async Task AssignTeamAsync(string managerId, AssignTeamRequest request)
         {
+            var annotatorIds = (request.AnnotatorIds ?? new List<string>())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var reviewerIds = (request.ReviewerIds ?? new List<string>())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!annotatorIds.Any())
+                throw new InvalidOperationException("At least one annotator must be selected.");
+
             var project = await _projectRepo.GetByIdAsync(request.ProjectId);
             if (project == null)
                 throw new Exception("Project not found.");
@@ -53,31 +71,31 @@ namespace BLL.Services
             if (project.Status == "Completed" || project.Status == "Archived")
                 throw new InvalidOperationException("BR-MNG-20: Tasks cannot be assigned in Completed or Archived projects");
 
-            if (request.AnnotatorIds.Contains(managerId))
+            if (annotatorIds.Contains(managerId, StringComparer.OrdinalIgnoreCase))
                 throw new InvalidOperationException("BR-MNG-27: Manager cannot assign tasks to themselves");
 
-            if (request.ReviewerIds != null && request.ReviewerIds.Contains(managerId))
+            if (reviewerIds.Contains(managerId, StringComparer.OrdinalIgnoreCase))
                 throw new InvalidOperationException("BR-MNG-27: Manager cannot assign tasks to themselves");
 
             var allUsers = await _userRepo.GetAllAsync();
 
             var validAnnotators = allUsers
-                .Where(u => request.AnnotatorIds.Contains(u.Id) &&
+                .Where(u => annotatorIds.Contains(u.Id, StringComparer.OrdinalIgnoreCase) &&
                             u.Role == UserRoles.Annotator)
                 .ToList();
 
-            if (validAnnotators.Count != request.AnnotatorIds.Count)
+            if (validAnnotators.Count != annotatorIds.Count)
                 throw new Exception("One or more Annotator IDs are invalid or lack the required role.");
 
             var validReviewers = new List<User>();
-            if (request.ReviewerIds != null && request.ReviewerIds.Any())
+            if (reviewerIds.Any())
             {
                 validReviewers = allUsers
-                    .Where(u => request.ReviewerIds.Contains(u.Id) &&
+                    .Where(u => reviewerIds.Contains(u.Id, StringComparer.OrdinalIgnoreCase) &&
                                 u.Role == UserRoles.Reviewer)
                     .ToList();
 
-                if (validReviewers.Count != request.ReviewerIds.Count)
+                if (validReviewers.Count != reviewerIds.Count)
                     throw new Exception("One or more Reviewer IDs are invalid or lack the required role.");
             }
 
@@ -155,6 +173,14 @@ namespace BLL.Services
                 $"Each reviewer reviews {baseAssignments} assignments (all annotators' work on all items)."
             );
 
+            var manager = await _userRepo.GetByIdAsync(managerId) ?? new User
+            {
+                Id = managerId,
+                FullName = "Project Manager",
+                Email = string.Empty,
+                Role = UserRoles.Manager
+            };
+
             foreach (var annotator in validAnnotators)
             {
                 await _statisticService.TrackNewAssignmentAsync(annotator.Id, request.ProjectId, totalItems);
@@ -163,6 +189,13 @@ namespace BLL.Services
                     $"Manager has assigned you {totalItems} tasks in project {project.Name}! " +
                     $"(Each of your tasks will be reviewed by {totalRev} reviewers.)",
                     "Success");
+
+                await _workflowEmailService.SendAnnotatorAssignmentEmailAsync(
+                    project,
+                    manager,
+                    annotator,
+                    totalItems,
+                    totalRev);
             }
 
             if (totalRev > 0)
@@ -174,6 +207,13 @@ namespace BLL.Services
                         $"You have been assigned to review ALL {baseAssignments} tasks " +
                         $"(from {totalAnn} annotators, {totalItems} items each) in project {project.Name}!",
                         "Info");
+
+                    await _workflowEmailService.SendReviewerAssignmentEmailAsync(
+                        project,
+                        manager,
+                        reviewer,
+                        baseAssignments,
+                        totalAnn);
                 }
             }
         }
@@ -221,6 +261,118 @@ namespace BLL.Services
             }
 
             return null;
+        }
+
+        private static int GetAnnotatorStatusPriority(string? status)
+        {
+            return status switch
+            {
+                TaskStatusConstants.Rejected => 0,
+                "Escalated" => 1,
+                TaskStatusConstants.InProgress => 2,
+                TaskStatusConstants.Assigned => 3,
+                TaskStatusConstants.Submitted => 4,
+                TaskStatusConstants.Approved => 5,
+                _ => 6
+            };
+        }
+
+        private static string GetAggregatedAnnotatorStatus(IEnumerable<Assignment> assignments)
+        {
+            var groupedAssignments = assignments.ToList();
+
+            if (!groupedAssignments.Any())
+                return TaskStatusConstants.Assigned;
+
+            if (groupedAssignments.Any(a => string.Equals(a.Status, "Escalated", StringComparison.OrdinalIgnoreCase)))
+                return "Escalated";
+
+            if (groupedAssignments.Any(a => string.Equals(a.Status, TaskStatusConstants.InProgress, StringComparison.OrdinalIgnoreCase)))
+                return TaskStatusConstants.InProgress;
+
+            if (groupedAssignments.Any(a => string.Equals(a.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase)))
+                return TaskStatusConstants.Submitted;
+
+            int approvedCount = groupedAssignments.Count(a => string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase));
+            int rejectedCount = groupedAssignments.Count(a => string.Equals(a.Status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase));
+
+            if (approvedCount > 0 || rejectedCount > 0)
+            {
+                if (approvedCount > rejectedCount)
+                    return TaskStatusConstants.Approved;
+
+                if (rejectedCount > approvedCount)
+                    return TaskStatusConstants.Rejected;
+
+                return "Escalated";
+            }
+
+            return TaskStatusConstants.Assigned;
+        }
+
+        private static Assignment SelectRepresentativeAnnotatorAssignment(IEnumerable<Assignment> assignments)
+        {
+            return assignments
+                .OrderBy(a => GetAnnotatorStatusPriority(a.Status))
+                .ThenBy(a => a.Id)
+                .First();
+        }
+
+        private static Annotation? GetLatestAnnotation(IEnumerable<Assignment> assignments)
+        {
+            return assignments
+                .SelectMany(a => a.Annotations ?? Enumerable.Empty<Annotation>())
+                .OrderByDescending(a => a.CreatedAt)
+                .FirstOrDefault();
+        }
+
+        private static ReviewLog? GetLatestReviewLog(IEnumerable<Assignment> assignments)
+        {
+            return assignments
+                .SelectMany(a => a.ReviewLogs ?? Enumerable.Empty<ReviewLog>())
+                .OrderByDescending(r => r.CreatedAt)
+                .FirstOrDefault();
+        }
+
+        private static DateTime CalculateEffectiveDeadline(Assignment assignment)
+        {
+            var taskDeadline = assignment.AssignedDate.AddHours(assignment.Project?.MaxTaskDurationHours ?? 24);
+            var projectDeadline = assignment.Project?.Deadline ?? DateTime.UtcNow;
+            return taskDeadline < projectDeadline ? taskDeadline : projectDeadline;
+        }
+
+        private static string BuildAssignmentGroupKey(Assignment assignment)
+        {
+            return $"{assignment.ProjectId}:{assignment.DataItemId}:{assignment.AnnotatorId}";
+        }
+
+        private static bool HasBeenReviewed(Assignment assignment)
+        {
+            return (assignment.ReviewLogs?.Any() ?? false) ||
+                   string.Equals(assignment.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(assignment.Status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(assignment.Status, "Escalated", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool NeedsAnnotationClone(Assignment assignment, string dataJson, int? classId)
+        {
+            var latestAnnotation = assignment.Annotations?
+                .OrderByDescending(a => a.CreatedAt)
+                .FirstOrDefault();
+
+            return latestAnnotation == null ||
+                   !string.Equals(latestAnnotation.DataJSON, dataJson, StringComparison.Ordinal) ||
+                   latestAnnotation.ClassId != classId;
+        }
+
+        private async Task<List<Assignment>> GetAssignmentGroupAsync(Assignment assignment)
+        {
+            var assignments = await _assignmentRepo.GetAssignmentsByAnnotatorAsync(assignment.AnnotatorId, assignment.ProjectId);
+
+            return assignments
+                .Where(a => a.DataItemId == assignment.DataItemId)
+                .OrderBy(a => a.Id)
+                .ToList();
         }
 
         public async Task<List<AssignmentResponse>> GetTasksByBucketAsync(int projectId, int bucketId, string userId)
@@ -346,17 +498,44 @@ namespace BLL.Services
                 dataItems.Count
             );
 
+            var manager = await _userRepo.GetByIdAsync(managerId) ?? new User
+            {
+                Id = managerId,
+                FullName = "Project Manager",
+                Email = string.Empty,
+                Role = UserRoles.Manager
+            };
+
             await _notification.SendNotificationAsync(
                 request.AnnotatorId,
                 $"Manager has assigned you {dataItems.Count} new tasks in the project!",
                 "Success");
 
+            await _workflowEmailService.SendAnnotatorAssignmentEmailAsync(
+                project,
+                manager,
+                annotator,
+                dataItems.Count,
+                string.IsNullOrEmpty(request.ReviewerId) ? 0 : 1);
+
             if (!string.IsNullOrEmpty(request.ReviewerId))
             {
+                var reviewer = await _userRepo.GetByIdAsync(request.ReviewerId);
+
                 await _notification.SendNotificationAsync(
                     request.ReviewerId,
                     $"You have been assigned as a Reviewer for {dataItems.Count} new tasks!",
                     "Info");
+
+                if (reviewer != null)
+                {
+                    await _workflowEmailService.SendReviewerAssignmentEmailAsync(
+                        project,
+                        manager,
+                        reviewer,
+                        dataItems.Count,
+                        1);
+                }
             }
         }
 
@@ -416,13 +595,23 @@ namespace BLL.Services
                     ThumbnailUrl = g.First().DataItem?.StorageUrl ?? "",
                     AssignedDate = g.Min(a => a.AssignedDate),
                     Deadline = g.First().Project?.Deadline ?? DateTime.UtcNow,
-                    TotalImages = g.Count(),
-                    CompletedImages = g.Count(a =>
-                        a.Status == TaskStatusConstants.Submitted ||
-                        a.Status == TaskStatusConstants.Approved),
-                    Status = g.All(a => a.Status == TaskStatusConstants.Approved)
+                    TotalImages = g.Select(a => a.DataItemId).Distinct().Count(),
+                    CompletedImages = g.GroupBy(a => a.DataItemId)
+                        .Count(imageGroup => string.Equals(
+                            GetAggregatedAnnotatorStatus(imageGroup),
+                            TaskStatusConstants.Approved,
+                            StringComparison.OrdinalIgnoreCase)),
+                    Status = g.GroupBy(a => a.DataItemId)
+                        .All(imageGroup => string.Equals(
+                            GetAggregatedAnnotatorStatus(imageGroup),
+                            TaskStatusConstants.Approved,
+                            StringComparison.OrdinalIgnoreCase))
                         ? "Completed"
-                        : g.Any(a => a.Status != TaskStatusConstants.Assigned)
+                        : g.GroupBy(a => a.DataItemId)
+                            .Any(imageGroup => !string.Equals(
+                                GetAggregatedAnnotatorStatus(imageGroup),
+                                TaskStatusConstants.Assigned,
+                                StringComparison.OrdinalIgnoreCase))
                             ? "InProgress"
                             : "Assigned"
                 })
@@ -433,33 +622,35 @@ namespace BLL.Services
         {
             var assignments = await _assignmentRepo.GetAssignmentsByAnnotatorAsync(annotatorId, projectId);
 
-            return assignments.Select(a =>
-            {
-                var taskDeadline = a.AssignedDate.AddHours(a.Project?.MaxTaskDurationHours ?? 24);
-                var effectiveDeadline = taskDeadline < (a.Project?.Deadline ?? DateTime.UtcNow)
-                    ? taskDeadline
-                    : (a.Project?.Deadline ?? DateTime.UtcNow);
-
-                return new AssignmentResponse
+            return assignments
+                .GroupBy(a => a.DataItemId)
+                .Select(group =>
                 {
-                    Id = a.Id,
-                    DataItemId = a.DataItemId,
-                    DataItemUrl = a.DataItem?.StorageUrl ?? "",
-                    Status = a.Status,
-                    AnnotationData = a.Annotations?
-                        .OrderByDescending(an => an.CreatedAt)
-                        .FirstOrDefault()
-                        ?.DataJSON ?? "",
-                    AssignedDate = a.AssignedDate,
-                    Deadline = effectiveDeadline,
-                    RejectionReason = a.Status == TaskStatusConstants.Rejected
-                    ? (a.ReviewLogs?.OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.Comment ?? "")
-                    : "",
-                    ErrorCategory = a.Status == TaskStatusConstants.Rejected
-                    ? (a.ReviewLogs?.OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.ErrorCategory ?? "")
-                    : ""
-                };
-            }).ToList();
+                    var groupedAssignments = group.ToList();
+                    var representative = SelectRepresentativeAnnotatorAssignment(groupedAssignments);
+                    var aggregatedStatus = GetAggregatedAnnotatorStatus(groupedAssignments);
+                    var latestAnnotation = GetLatestAnnotation(groupedAssignments);
+                    var latestReviewLog = GetLatestReviewLog(groupedAssignments);
+
+                    return new AssignmentResponse
+                    {
+                        Id = representative.Id,
+                        DataItemId = representative.DataItemId,
+                        DataItemUrl = representative.DataItem?.StorageUrl ?? "",
+                        Status = aggregatedStatus,
+                        AnnotationData = latestAnnotation?.DataJSON ?? "",
+                        AssignedDate = groupedAssignments.Min(a => a.AssignedDate),
+                        Deadline = CalculateEffectiveDeadline(representative),
+                        RejectionReason = string.Equals(aggregatedStatus, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase)
+                            ? (latestReviewLog?.Comment ?? "")
+                            : "",
+                        ErrorCategory = string.Equals(aggregatedStatus, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase)
+                            ? (latestReviewLog?.ErrorCategory ?? "")
+                            : ""
+                    };
+                })
+                .OrderBy(a => a.DataItemId)
+                .ToList();
         }
 
         public async Task<AssignmentResponse> JumpToDataItemAsync(int projectId, int dataItemId, string userId)
@@ -519,8 +710,7 @@ namespace BLL.Services
             }
 
             if (assignment.Status == TaskStatusConstants.New ||
-                assignment.Status == TaskStatusConstants.Assigned ||
-                assignment.Status == TaskStatusConstants.Rejected)
+                assignment.Status == TaskStatusConstants.Assigned)
             {
                 assignment.Status = TaskStatusConstants.InProgress;
                 _assignmentRepo.Update(assignment);
@@ -557,20 +747,23 @@ namespace BLL.Services
             if (string.IsNullOrEmpty(request.DataJSON) || request.DataJSON == "[]")
                 throw new InvalidOperationException("Annotation data is empty. Please save a draft before submitting.");
 
-            var annotation = new Annotation
+            var assignmentGroup = await GetAssignmentGroupAsync(assignment);
+            var syncTargets = assignmentGroup.ToList();
+
+            foreach (var target in syncTargets)
             {
-                AssignmentId = assignment.Id,
-                DataJSON = request.DataJSON,
-                CreatedAt = DateTime.UtcNow,
-                ClassId = request.ClassId
-            };
+                await _annotationRepo.AddAsync(new Annotation
+                {
+                    AssignmentId = target.Id,
+                    DataJSON = request.DataJSON,
+                    CreatedAt = DateTime.UtcNow,
+                    ClassId = request.ClassId
+                });
 
-            await _annotationRepo.AddAsync(annotation);
-
-            assignment.Status = TaskStatusConstants.Submitted;
-            assignment.SubmittedAt = DateTime.UtcNow;
-
-            _assignmentRepo.Update(assignment);
+                target.Status = TaskStatusConstants.Submitted;
+                target.SubmittedAt = DateTime.UtcNow;
+                _assignmentRepo.Update(target);
+            }
 
             await _logService.LogActionAsync(
                 userId,
@@ -587,15 +780,21 @@ namespace BLL.Services
             {
                 await _notification.SendNotificationAsync(
                     project.ManagerId,
-                    $"Task #{assignment.Id} has been submitted by annotator and is awaiting review.",
+                    $"Task #{assignment.Id} in project \"{project.Name}\" has been submitted by annotator and is awaiting review.",
                     "Info");
             }
 
-            if (!string.IsNullOrEmpty(assignment.ReviewerId))
+            var reviewerIds = syncTargets
+                .Select(a => a.ReviewerId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var reviewerId in reviewerIds)
             {
                 await _notification.SendNotificationAsync(
-                    assignment.ReviewerId,
-                    $"Task #{assignment.Id} has been submitted and is waiting for your review!",
+                    reviewerId!,
+                    $"Task #{assignment.Id} in project \"{project?.Name ?? $"Project #{assignment.ProjectId}"}\" has been submitted by annotator and is waiting for your review.",
                     "Info");
             }
         }
@@ -604,6 +803,7 @@ namespace BLL.Services
         {
             var response = new SubmitMultipleTasksResponse();
             int? lastProjectId = null;
+            var processedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             using var transaction = await _assignmentRepo.BeginTransactionAsync();
             try
@@ -626,14 +826,24 @@ namespace BLL.Services
                         continue;
                     }
 
-                    if (assignment.Status == TaskStatusConstants.Submitted || assignment.Status == TaskStatusConstants.Approved)
+                    var assignmentGroup = await GetAssignmentGroupAsync(assignment);
+                    var groupKey = BuildAssignmentGroupKey(assignment);
+
+                    if (!processedGroups.Add(groupKey))
+                    {
+                        continue;
+                    }
+
+                    if (assignmentGroup.All(a =>
+                        string.Equals(a.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase)))
                     {
                         response.FailureCount++;
                         response.Errors.Add($"Task ID {id}: Task has already been submitted or approved.");
                         continue;
                     }
 
-                    var latestAnnotation = assignment.Annotations?.OrderByDescending(a => a.CreatedAt).FirstOrDefault();
+                    var latestAnnotation = GetLatestAnnotation(assignmentGroup);
 
                     if (latestAnnotation == null || string.IsNullOrEmpty(latestAnnotation.DataJSON) || latestAnnotation.DataJSON == "[]")
                     {
@@ -642,10 +852,26 @@ namespace BLL.Services
                         continue;
                     }
 
-                    assignment.Status = TaskStatusConstants.Submitted;
-                    assignment.SubmittedAt = DateTime.UtcNow;
+                    var syncTargets = assignmentGroup.ToList();
 
-                    _assignmentRepo.Update(assignment);
+                    foreach (var target in syncTargets)
+                    {
+                        if (NeedsAnnotationClone(target, latestAnnotation.DataJSON, latestAnnotation.ClassId))
+                        {
+                            await _annotationRepo.AddAsync(new Annotation
+                            {
+                                AssignmentId = target.Id,
+                                DataJSON = latestAnnotation.DataJSON,
+                                CreatedAt = DateTime.UtcNow,
+                                ClassId = latestAnnotation.ClassId
+                            });
+                        }
+
+                        target.Status = TaskStatusConstants.Submitted;
+                        target.SubmittedAt = DateTime.UtcNow;
+                        _assignmentRepo.Update(target);
+                    }
+
                     response.SuccessCount++;
                     lastProjectId = assignment.ProjectId;
                 }
@@ -681,3 +907,4 @@ namespace BLL.Services
         }
     }
 }
+

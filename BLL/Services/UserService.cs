@@ -1,15 +1,18 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Core.Constants;
 using Core.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Http;
 using ClosedXML.Excel;
 
@@ -23,8 +26,10 @@ namespace BLL.Services
         private readonly IActivityLogService _logService;
         private readonly IAssignmentRepository _assignmentRepo;
         private readonly IProjectRepository _projectRepo;
+        private readonly IRepository<GlobalUserBanRequest> _globalBanRequestRepo;
+        private readonly IRepository<AppNotification> _appNotificationRepo;
         private readonly IAppNotificationService _notification;
-        private readonly IEmailService _emailService;
+        private readonly IWorkflowEmailService _workflowEmailService;
         public UserService(
             IUserRepository userRepository,
             IRefreshTokenRepository refreshTokenRepository,
@@ -32,8 +37,10 @@ namespace BLL.Services
             IAssignmentRepository assignmentRepo,
             IActivityLogService logService,
             IProjectRepository projectRepo,
+            IRepository<GlobalUserBanRequest> globalBanRequestRepo,
+            IRepository<AppNotification> appNotificationRepo,
             IAppNotificationService notification,
-            IEmailService emailService)
+            IWorkflowEmailService workflowEmailService)
         {
             _userRepository = userRepository;
             _refreshTokenRepository = refreshTokenRepository;
@@ -41,8 +48,10 @@ namespace BLL.Services
             _assignmentRepo = assignmentRepo;
             _logService = logService;
             _projectRepo = projectRepo;
+            _globalBanRequestRepo = globalBanRequestRepo;
+            _appNotificationRepo = appNotificationRepo;
             _notification = notification;
-            _emailService = emailService;
+            _workflowEmailService = workflowEmailService;
         }
 
         public async Task<User> RegisterAsync(string fullName, string email, string password, string role, string? managerId = null)
@@ -82,6 +91,12 @@ namespace BLL.Services
                 user.Id,
                 $"Account created with role {role}."
             );
+
+            var manager = string.IsNullOrWhiteSpace(user.ManagerId)
+                ? null
+                : await _userRepository.GetByIdAsync(user.ManagerId);
+
+            await _workflowEmailService.SendWelcomeEmailAsync(user, manager);
 
             return user;
         }
@@ -190,11 +205,349 @@ namespace BLL.Services
             return await _userRepository.IsEmailExistsAsync(email);
         }
 
+        private static bool IsUnfinishedProject(Project project)
+        {
+            return !string.Equals(project.Status, ProjectStatusConstants.Completed, StringComparison.OrdinalIgnoreCase) &&
+                   !string.Equals(project.Status, ProjectStatusConstants.Archived, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static Dictionary<string, HashSet<int>> BuildAnnotatorProjectMap(IEnumerable<Assignment> assignments)
+        {
+            return assignments
+                .Where(a => !string.IsNullOrWhiteSpace(a.AnnotatorId))
+                .GroupBy(a => a.AnnotatorId, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(a => a.ProjectId).ToHashSet(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static Dictionary<string, HashSet<int>> BuildReviewerProjectMap(IEnumerable<Assignment> assignments)
+        {
+            return assignments
+                .Where(a => !string.IsNullOrWhiteSpace(a.ReviewerId))
+                .GroupBy(a => a.ReviewerId!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(a => a.ProjectId).ToHashSet(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static HashSet<int> GetProjectIdsForUser(
+            User user,
+            IReadOnlyDictionary<string, HashSet<int>> annotatorProjectMap,
+            IReadOnlyDictionary<string, HashSet<int>> reviewerProjectMap,
+            IReadOnlyCollection<Project> allProjects)
+        {
+            if (string.Equals(user.Role, UserRoles.Manager, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(user.Role, UserRoles.Admin, StringComparison.OrdinalIgnoreCase))
+            {
+                return allProjects
+                    .Where(project => string.Equals(project.ManagerId, user.Id, StringComparison.OrdinalIgnoreCase))
+                    .Select(project => project.Id)
+                    .ToHashSet();
+            }
+
+            if (string.Equals(user.Role, UserRoles.Reviewer, StringComparison.OrdinalIgnoreCase))
+            {
+                return reviewerProjectMap.TryGetValue(user.Id, out var reviewerProjects)
+                    ? reviewerProjects
+                    : new HashSet<int>();
+            }
+
+            return annotatorProjectMap.TryGetValue(user.Id, out var annotatorProjects)
+                ? annotatorProjects
+                : new HashSet<int>();
+        }
+
+        private async Task<HashSet<string>> GetPendingGlobalBanUserIdsAsync(IEnumerable<string> userIds)
+        {
+            var normalizedUserIds = userIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!normalizedUserIds.Any())
+            {
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            var pendingRequests = await _globalBanRequestRepo.FindAsync(request =>
+                normalizedUserIds.Contains(request.TargetUserId) &&
+                request.Status == GlobalUserBanRequestStatusConstants.Pending);
+
+            return pendingRequests
+                .Select(request => request.TargetUserId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static UserResponse MapUserResponse(
+            User user,
+            IReadOnlyDictionary<string, HashSet<int>> annotatorProjectMap,
+            IReadOnlyDictionary<string, HashSet<int>> reviewerProjectMap,
+            IReadOnlyCollection<Project> allProjects,
+            IReadOnlySet<int> unfinishedProjectIds,
+            IReadOnlySet<string> pendingGlobalBanUserIds)
+        {
+            var projectIds = GetProjectIdsForUser(user, annotatorProjectMap, reviewerProjectMap, allProjects);
+
+            return new UserResponse
+            {
+                Id = user.Id,
+                FullName = user.FullName ?? "",
+                Email = user.Email ?? "",
+                Role = user.Role ?? "",
+                AvatarUrl = user.AvatarUrl ?? "",
+                IsActive = user.IsActive,
+                ManagerId = user.ManagerId,
+                TotalProjects = projectIds.Count,
+                UnfinishedProjectCount = projectIds.Count(unfinishedProjectIds.Contains),
+                HasPendingGlobalBanRequest = pendingGlobalBanUserIds.Contains(user.Id)
+            };
+        }
+
+        private async Task<List<Project>> GetUnfinishedProjectsForUserAsync(User user)
+        {
+            var allProjects = (await _projectRepo.GetAllAsync()).ToList();
+            var allAssignments = (await _assignmentRepo.GetAllAsync()).ToList();
+            var unfinishedProjectIds = allProjects
+                .Where(IsUnfinishedProject)
+                .Select(project => project.Id)
+                .ToHashSet();
+
+            IEnumerable<int> userProjectIds;
+
+            if (string.Equals(user.Role, UserRoles.Reviewer, StringComparison.OrdinalIgnoreCase))
+            {
+                userProjectIds = allAssignments
+                    .Where(assignment => string.Equals(assignment.ReviewerId, user.Id, StringComparison.OrdinalIgnoreCase))
+                    .Select(assignment => assignment.ProjectId)
+                    .Distinct();
+            }
+            else
+            {
+                userProjectIds = allAssignments
+                    .Where(assignment => string.Equals(assignment.AnnotatorId, user.Id, StringComparison.OrdinalIgnoreCase))
+                    .Select(assignment => assignment.ProjectId)
+                    .Distinct();
+            }
+
+            return allProjects
+                .Where(project => unfinishedProjectIds.Contains(project.Id) && userProjectIds.Contains(project.Id))
+                .OrderBy(project => project.Name)
+                .ToList();
+        }
+
+        private static string BuildGlobalBanRequestMetadata(
+            GlobalUserBanRequest banRequest,
+            User targetUser,
+            User admin,
+            User manager,
+            IEnumerable<Project> unfinishedProjects,
+            string requestStatus,
+            string? decisionNote = null,
+            DateTime? resolvedAt = null)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                banRequestId = banRequest.Id,
+                targetUserId = targetUser.Id,
+                targetUserName = targetUser.FullName,
+                targetUserEmail = targetUser.Email,
+                requestedByAdminId = admin.Id,
+                requestedByAdminName = admin.FullName,
+                managerId = manager.Id,
+                managerName = manager.FullName,
+                unfinishedProjects = unfinishedProjects
+                    .Select(project => new
+                    {
+                        id = project.Id,
+                        name = project.Name,
+                        status = project.Status
+                    })
+                    .ToList(),
+                requestStatus,
+                requestedAt = banRequest.RequestedAt,
+                resolvedAt,
+                decisionNote
+            });
+        }
+
+        private static string UpdateGlobalBanNotificationMetadata(
+            string? metadataJson,
+            string requestStatus,
+            string? decisionNote,
+            DateTime? resolvedAt)
+        {
+            JsonObject metadata;
+
+            try
+            {
+                metadata = JsonNode.Parse(metadataJson ?? "{}")?.AsObject() ?? new JsonObject();
+            }
+            catch
+            {
+                metadata = new JsonObject();
+            }
+
+            metadata["requestStatus"] = requestStatus;
+            metadata["decisionNote"] = decisionNote;
+            metadata["resolvedAt"] = resolvedAt?.ToString("O");
+
+            return metadata.ToJsonString();
+        }
+
+        private async Task SyncGlobalBanRequestNotificationsAsync(
+            GlobalUserBanRequest banRequest,
+            string requestStatus,
+            string? decisionNote)
+        {
+            var notifications = (await _appNotificationRepo.FindAsync(notification =>
+                notification.ReferenceType == "GlobalUserBanRequest" &&
+                notification.ReferenceId == banRequest.Id.ToString()))
+                .ToList();
+
+            if (!notifications.Any())
+            {
+                return;
+            }
+
+            foreach (var notification in notifications)
+            {
+                notification.MetadataJson = UpdateGlobalBanNotificationMetadata(
+                    notification.MetadataJson,
+                    requestStatus,
+                    decisionNote,
+                    banRequest.ResolvedAt);
+
+                if (!string.Equals(requestStatus, GlobalUserBanRequestStatusConstants.Pending, StringComparison.OrdinalIgnoreCase))
+                {
+                    notification.IsRead = true;
+                }
+
+                _appNotificationRepo.Update(notification);
+            }
+
+            await _appNotificationRepo.SaveChangesAsync();
+        }
+
+        private static string ComputeDataItemStatus(IEnumerable<Assignment> remainingAssignments)
+        {
+            var assignments = remainingAssignments.ToList();
+
+            if (!assignments.Any())
+            {
+                return TaskStatusConstants.New;
+            }
+
+            if (assignments.Any(assignment => string.Equals(assignment.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase)))
+            {
+                return TaskStatusConstants.Approved;
+            }
+
+            if (assignments.Any(assignment => string.Equals(assignment.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase)))
+            {
+                return TaskStatusConstants.Submitted;
+            }
+
+            if (assignments.Any(assignment => string.Equals(assignment.Status, TaskStatusConstants.InProgress, StringComparison.OrdinalIgnoreCase)))
+            {
+                return TaskStatusConstants.InProgress;
+            }
+
+            if (assignments.Any(assignment => string.Equals(assignment.Status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase)))
+            {
+                return TaskStatusConstants.Rejected;
+            }
+
+            return TaskStatusConstants.Assigned;
+        }
+
+        private async Task<List<(Project Project, int ChangedAssignments)>> RemoveUserFromUnfinishedProjectsAsync(User user)
+        {
+            var affectedProjects = await GetUnfinishedProjectsForUserAsync(user);
+            var removalResults = new List<(Project Project, int ChangedAssignments)>();
+
+            foreach (var projectSummary in affectedProjects)
+            {
+                var project = await _projectRepo.GetProjectWithDetailsAsync(projectSummary.Id);
+                if (project == null)
+                {
+                    continue;
+                }
+
+                var changedAssignments = 0;
+
+                foreach (var dataItem in project.DataItems)
+                {
+                    var projectAssignments = dataItem.Assignments.ToList();
+
+                    if (string.Equals(user.Role, UserRoles.Reviewer, StringComparison.OrdinalIgnoreCase))
+                    {
+                        foreach (var assignment in projectAssignments.Where(assignment =>
+                                     string.Equals(assignment.ReviewerId, user.Id, StringComparison.OrdinalIgnoreCase) &&
+                                     !string.Equals(assignment.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase) &&
+                                     !string.Equals(assignment.Status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            assignment.ReviewerId = null;
+                            _assignmentRepo.Update(assignment);
+                            changedAssignments++;
+                        }
+                    }
+                    else
+                    {
+                        var assignmentsToDelete = projectAssignments
+                            .Where(assignment =>
+                                string.Equals(assignment.AnnotatorId, user.Id, StringComparison.OrdinalIgnoreCase) &&
+                                !string.Equals(assignment.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+
+                        if (assignmentsToDelete.Any())
+                        {
+                            var removedAssignmentIds = assignmentsToDelete
+                                .Select(assignment => assignment.Id)
+                                .ToHashSet();
+
+                            foreach (var assignment in assignmentsToDelete)
+                            {
+                                _assignmentRepo.Delete(assignment);
+                                changedAssignments++;
+                            }
+
+                            dataItem.Status = ComputeDataItemStatus(
+                                projectAssignments.Where(assignment => !removedAssignmentIds.Contains(assignment.Id)));
+                        }
+                    }
+                }
+
+                if (changedAssignments > 0)
+                {
+                    _projectRepo.Update(project);
+                    removalResults.Add((project, changedAssignments));
+                }
+            }
+
+            if (removalResults.Any())
+            {
+                await _assignmentRepo.SaveChangesAsync();
+                await _projectRepo.SaveChangesAsync();
+            }
+
+            return removalResults;
+        }
+
         public async Task<PagedResponse<UserResponse>> GetAllUsersAsync(int page, int pageSize)
         {
-            var allUsers = await _userRepository.GetAllAsync();
-            var allProjects = await _projectRepo.GetAllAsync();
-            var allAssignments = await _assignmentRepo.GetAllAsync();
+            var allUsers = (await _userRepository.GetAllAsync()).ToList();
+            var allProjects = (await _projectRepo.GetAllAsync()).ToList();
+            var allAssignments = (await _assignmentRepo.GetAllAsync()).ToList();
+            var pendingGlobalBanUserIds = await GetPendingGlobalBanUserIdsAsync(allUsers.Select(user => user.Id));
+            var unfinishedProjectIds = allProjects
+                .Where(IsUnfinishedProject)
+                .Select(project => project.Id)
+                .ToHashSet();
+            var annotatorProjectMap = BuildAnnotatorProjectMap(allAssignments);
+            var reviewerProjectMap = BuildReviewerProjectMap(allAssignments);
 
             var totalCount = allUsers.Count();
             var stats = new
@@ -207,35 +560,14 @@ namespace BLL.Services
                 .OrderByDescending(u => u.Id)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(u =>
-                {
-                    int totalProjects;
-
-                    if (u.Role == UserRoles.Manager || u.Role == UserRoles.Admin)
-                    {
-                        totalProjects = allProjects.Count(p => p.ManagerId == u.Id);
-                    }
-                    else
-                    {
-                        totalProjects = allAssignments
-                            .Where(a => a.AnnotatorId == u.Id || a.ReviewerId == u.Id)
-                            .Select(a => a.ProjectId)
-                            .Distinct()
-                            .Count();
-                    }
-
-                    return new UserResponse
-                    {
-                        Id = u.Id,
-                        FullName = u.FullName ?? "",
-                        Email = u.Email ?? "",
-                        Role = u.Role ?? "",
-                        AvatarUrl = u.AvatarUrl ?? "",
-                        IsActive = u.IsActive,
-                        ManagerId = u.ManagerId,
-                        TotalProjects = totalProjects
-                    };
-                }).ToList();
+                .Select(user => MapUserResponse(
+                    user,
+                    annotatorProjectMap,
+                    reviewerProjectMap,
+                    allProjects,
+                    unfinishedProjectIds,
+                    pendingGlobalBanUserIds))
+                .ToList();
 
             return new PagedResponse<UserResponse>
             {
@@ -249,38 +581,52 @@ namespace BLL.Services
 
         public async Task<List<UserResponse>> GetManagedUsersAsync(string managerId)
         {
-            var allUsers = await _userRepository.GetAllAsync();
+            var allUsers = (await _userRepository.GetAllAsync()).ToList();
+            var allProjects = (await _projectRepo.GetAllAsync()).ToList();
+            var allAssignments = (await _assignmentRepo.GetAllAsync()).ToList();
+            var unfinishedProjectIds = allProjects
+                .Where(IsUnfinishedProject)
+                .Select(project => project.Id)
+                .ToHashSet();
+            var annotatorProjectMap = BuildAnnotatorProjectMap(allAssignments);
+            var reviewerProjectMap = BuildReviewerProjectMap(allAssignments);
+            var pendingGlobalBanUserIds = await GetPendingGlobalBanUserIdsAsync(allUsers.Select(user => user.Id));
             var managedUsers = allUsers
                 .Where(u => u.ManagerId == managerId && u.IsActive)
-                .Select(u => new UserResponse
-                {
-                    Id = u.Id,
-                    FullName = u.FullName ?? "",
-                    Email = u.Email ?? "",
-                    Role = u.Role ?? "",
-                    AvatarUrl = u.AvatarUrl ?? "",
-                    IsActive = u.IsActive,
-                    ManagerId = u.ManagerId,
-                    TotalProjects = 0
-                }).ToList();
+                .Select(user => MapUserResponse(
+                    user,
+                    annotatorProjectMap,
+                    reviewerProjectMap,
+                    allProjects,
+                    unfinishedProjectIds,
+                    pendingGlobalBanUserIds))
+                .ToList();
 
             return managedUsers;
         }
 
         public async Task<List<UserResponse>> GetAllUsersNoPagingAsync()
         {
-            var allUsers = await _userRepository.GetAllAsync();
-            return allUsers.Select(u => new UserResponse
-            {
-                Id = u.Id,
-                FullName = u.FullName ?? "",
-                Email = u.Email ?? "",
-                Role = u.Role ?? "",
-                AvatarUrl = u.AvatarUrl ?? "",
-                IsActive = u.IsActive,
-                ManagerId = u.ManagerId,
-                TotalProjects = 0
-            }).ToList();
+            var allUsers = (await _userRepository.GetAllAsync()).ToList();
+            var allProjects = (await _projectRepo.GetAllAsync()).ToList();
+            var allAssignments = (await _assignmentRepo.GetAllAsync()).ToList();
+            var unfinishedProjectIds = allProjects
+                .Where(IsUnfinishedProject)
+                .Select(project => project.Id)
+                .ToHashSet();
+            var annotatorProjectMap = BuildAnnotatorProjectMap(allAssignments);
+            var reviewerProjectMap = BuildReviewerProjectMap(allAssignments);
+            var pendingGlobalBanUserIds = await GetPendingGlobalBanUserIdsAsync(allUsers.Select(user => user.Id));
+
+            return allUsers
+                .Select(user => MapUserResponse(
+                    user,
+                    annotatorProjectMap,
+                    reviewerProjectMap,
+                    allProjects,
+                    unfinishedProjectIds,
+                    pendingGlobalBanUserIds))
+                .ToList();
         }
 
         public async Task UpdateUserAsync(string userId, string actorId, UpdateUserRequest request)
@@ -387,7 +733,7 @@ namespace BLL.Services
             await _logService.LogActionAsync(userId, "DeleteUser", "User", userId, "Admin deactivated the user account.");
         }
 
-        public async Task ToggleUserStatusAsync(string userId, bool isActive, string? adminId = null)
+        public async Task<ToggleUserStatusResponse> ToggleUserStatusAsync(string userId, bool isActive, string? adminId = null)
         {
             if (!string.IsNullOrEmpty(adminId) && userId == adminId && !isActive)
             {
@@ -396,49 +742,260 @@ namespace BLL.Services
 
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new Exception("User not found");
+
+            var admin = string.IsNullOrWhiteSpace(adminId)
+                ? null
+                : await _userRepository.GetByIdAsync(adminId);
+
             if (!isActive)
             {
+                var unfinishedProjects = await GetUnfinishedProjectsForUserAsync(user);
+                var existingPendingRequest = (await _globalBanRequestRepo.FindAsync(request =>
+                    request.TargetUserId == user.Id &&
+                    request.Status == GlobalUserBanRequestStatusConstants.Pending))
+                    .FirstOrDefault();
+
+                var requiresManagerApproval =
+                    admin != null &&
+                    string.Equals(admin.Role, UserRoles.Admin, StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(user.ManagerId) &&
+                    (string.Equals(user.Role, UserRoles.Annotator, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(user.Role, UserRoles.Reviewer, StringComparison.OrdinalIgnoreCase)) &&
+                    unfinishedProjects.Any();
+
+                if (requiresManagerApproval)
+                {
+                    if (existingPendingRequest != null)
+                    {
+                        return new ToggleUserStatusResponse
+                        {
+                            Message = $"A global ban request for {user.FullName} is already waiting for manager approval.",
+                            IsActive = user.IsActive,
+                            RequiresManagerApproval = true,
+                            GlobalBanRequestId = existingPendingRequest.Id
+                        };
+                    }
+
+                    var manager = await _userRepository.GetByIdAsync(user.ManagerId!);
+                    if (manager == null || !string.Equals(manager.Role, UserRoles.Manager, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new Exception("Cannot create the global ban request because the responsible manager could not be found.");
+                    }
+
+                    var banRequest = new GlobalUserBanRequest
+                    {
+                        TargetUserId = user.Id,
+                        RequestedByAdminId = admin!.Id,
+                        ManagerId = manager.Id,
+                        Status = GlobalUserBanRequestStatusConstants.Pending,
+                        RequestedAt = DateTime.UtcNow
+                    };
+
+                    await _globalBanRequestRepo.AddAsync(banRequest);
+                    await _globalBanRequestRepo.SaveChangesAsync();
+
+                    var metadataJson = BuildGlobalBanRequestMetadata(
+                        banRequest,
+                        user,
+                        admin,
+                        manager,
+                        unfinishedProjects,
+                        GlobalUserBanRequestStatusConstants.Pending);
+
+                    var projectSummary = string.Join(", ", unfinishedProjects.Select(project => $"\"{project.Name}\""));
+
+                    await _notification.SendNotificationAsync(
+                        manager.Id,
+                        $"Admin requested a global ban for {user.Role} \"{user.FullName}\" ({user.Email}). This user is still participating in {unfinishedProjects.Count} unfinished project(s): {projectSummary}. Please approve or reject the request.",
+                        "GlobalUserBanApproval",
+                        "GlobalUserBanRequest",
+                        banRequest.Id.ToString(),
+                        "ResolveGlobalUserBanRequest",
+                        metadataJson);
+
+                    await _logService.LogActionAsync(
+                        admin.Id,
+                        "CreateGlobalUserBanRequest",
+                        "GlobalUserBanRequest",
+                        banRequest.Id.ToString(),
+                        $"Admin requested manager approval to globally ban user {user.Email} while they still participate in {unfinishedProjects.Count} unfinished project(s).");
+
+                    return new ToggleUserStatusResponse
+                    {
+                        Message = $"The global ban request for {user.FullName} has been sent to manager {manager.FullName} for approval.",
+                        IsActive = user.IsActive,
+                        RequiresManagerApproval = true,
+                        GlobalBanRequestId = banRequest.Id
+                    };
+                }
+
                 bool hasPendingTasks = await _assignmentRepo.HasPendingTasksAsync(user.Id, user.Role);
                 if (hasPendingTasks)
                 {
                     throw new Exception($"Cannot deactivate this user. They still have unfinished tasks as an {user.Role}. Please reassign or complete their tasks first.");
                 }
 
-                // Notify managers of active projects when locking annotator/reviewer
-                if (user.Role == UserRoles.Annotator || user.Role == UserRoles.Reviewer)
+                user.IsActive = false;
+                _userRepository.Update(user);
+                await _userRepository.SaveChangesAsync();
+
+                await _logService.LogActionAsync(
+                    adminId ?? userId,
+                    "ToggleUserStatus",
+                    "User",
+                    userId,
+                    "Admin deactivated the user account.");
+
+                return new ToggleUserStatusResponse
                 {
-                    var userAssignments = await _assignmentRepo.GetAllAsync();
-                    var allProjects = await _projectRepo.GetAllAsync();
-
-                    var activeProjects = allProjects.Where(p => p.Status == "Active").ToList();
-                    var affectedProjectIds = userAssignments
-                        .Where(a => (a.AnnotatorId == user.Id || a.ReviewerId == user.Id) &&
-                                    activeProjects.Any(p => p.Id == a.ProjectId))
-                        .Select(a => a.ProjectId)
-                        .Distinct()
-                        .ToList();
-
-                    // Send notification to each affected project's manager
-                    foreach (var projectId in affectedProjectIds)
-                    {
-                        var project = activeProjects.FirstOrDefault(p => p.Id == projectId);
-                        if (project != null && !string.IsNullOrEmpty(project.ManagerId))
-                        {
-                            await _notification.SendNotificationAsync(
-                                project.ManagerId,
-                                $"Admin has locked the account of {user.Role} \"{user.FullName}\" ({user.Email}) who is assigned to your project \"{project.Name}\". Please reassign their tasks to another member.",
-                                "UserLocked"
-                            );
-                        }
-                    }
-                }
+                    Message = $"User {user.FullName} has been deactivated successfully.",
+                    IsActive = false,
+                    RequiresManagerApproval = false
+                };
             }
-            user.IsActive = isActive;
+
+            user.IsActive = true;
             _userRepository.Update(user);
             await _userRepository.SaveChangesAsync();
 
-            var statusStr = isActive ? "activated" : "deactivated";
-            await _logService.LogActionAsync(userId, "ToggleUserStatus", "User", userId, $"Admin {statusStr} the user account.");
+            await _logService.LogActionAsync(
+                adminId ?? userId,
+                "ToggleUserStatus",
+                "User",
+                userId,
+                "Admin activated the user account.");
+
+            return new ToggleUserStatusResponse
+            {
+                Message = $"User {user.FullName} has been activated successfully.",
+                IsActive = true,
+                RequiresManagerApproval = false
+            };
+        }
+
+        public async Task ResolveGlobalUserBanRequestAsync(int requestId, string managerId, ResolveGlobalUserBanRequest request)
+        {
+            var banRequest = await _globalBanRequestRepo.GetByIdAsync(requestId);
+            if (banRequest == null)
+            {
+                throw new Exception("Global ban request not found.");
+            }
+
+            if (!string.Equals(banRequest.ManagerId, managerId, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new UnauthorizedAccessException("Only the responsible manager can resolve this global ban request.");
+            }
+
+            if (!string.Equals(banRequest.Status, GlobalUserBanRequestStatusConstants.Pending, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new Exception("This global ban request has already been resolved.");
+            }
+
+            var manager = await _userRepository.GetByIdAsync(managerId) ?? new User
+            {
+                Id = managerId,
+                FullName = "Manager",
+                Email = string.Empty,
+                Role = UserRoles.Manager
+            };
+            var targetUser = await _userRepository.GetByIdAsync(banRequest.TargetUserId)
+                ?? throw new Exception("Target user not found.");
+            var admin = await _userRepository.GetByIdAsync(banRequest.RequestedByAdminId) ?? new User
+            {
+                Id = banRequest.RequestedByAdminId,
+                FullName = "Administrator",
+                Email = string.Empty,
+                Role = UserRoles.Admin
+            };
+
+            await using var transaction = await _globalBanRequestRepo.BeginTransactionAsync();
+
+            try
+            {
+                var normalizedDecisionNote = string.IsNullOrWhiteSpace(request.DecisionNote)
+                    ? null
+                    : request.DecisionNote.Trim();
+
+                banRequest.Status = request.Approve
+                    ? GlobalUserBanRequestStatusConstants.Approved
+                    : GlobalUserBanRequestStatusConstants.Rejected;
+                banRequest.DecisionNote = normalizedDecisionNote;
+                banRequest.ResolvedAt = DateTime.UtcNow;
+
+                _globalBanRequestRepo.Update(banRequest);
+                await _globalBanRequestRepo.SaveChangesAsync();
+                await SyncGlobalBanRequestNotificationsAsync(banRequest, banRequest.Status, normalizedDecisionNote);
+
+                if (request.Approve)
+                {
+                    var removalResults = await RemoveUserFromUnfinishedProjectsAsync(targetUser);
+                    targetUser.IsActive = false;
+                    _userRepository.Update(targetUser);
+                    await _userRepository.SaveChangesAsync();
+
+                    var impactedProjectSummary = removalResults.Any()
+                        ? string.Join(", ", removalResults.Select(result => $"\"{result.Project.Name}\""))
+                        : "no unfinished projects";
+
+                    await _notification.SendNotificationAsync(
+                        admin.Id,
+                        $"Manager {manager.FullName} approved the global ban for {targetUser.Role} \"{targetUser.FullName}\" ({targetUser.Email}). The account is now blocked from the system and removed from unfinished projects: {impactedProjectSummary}.",
+                        "GlobalUserBanApproved",
+                        "GlobalUserBanRequest",
+                        banRequest.Id.ToString());
+
+                    await _notification.SendNotificationAsync(
+                        targetUser.Id,
+                        "Your account has been globally banned after manager approval. You have been removed from all unfinished projects and can no longer access the system.",
+                        "AccountDeactivated",
+                        "GlobalUserBanRequest",
+                        banRequest.Id.ToString());
+
+                    foreach (var managerGroup in removalResults
+                                 .Where(result => !string.IsNullOrWhiteSpace(result.Project.ManagerId) &&
+                                                  !string.Equals(result.Project.ManagerId, managerId, StringComparison.OrdinalIgnoreCase))
+                                 .GroupBy(result => result.Project.ManagerId!, StringComparer.OrdinalIgnoreCase))
+                    {
+                        var groupedProjectNames = string.Join(", ", managerGroup.Select(result => $"\"{result.Project.Name}\""));
+                        var groupedAssignmentCount = managerGroup.Sum(result => result.ChangedAssignments);
+
+                        await _notification.SendNotificationAsync(
+                            managerGroup.Key,
+                            $"User \"{targetUser.FullName}\" ({targetUser.Email}) was globally banned after manager approval and removed from your unfinished project(s) {groupedProjectNames}. {groupedAssignmentCount} pending assignment(s) were affected and may need reassignment.",
+                            "UserRemoved");
+                    }
+
+                    await _logService.LogActionAsync(
+                        managerId,
+                        "ApproveGlobalUserBanRequest",
+                        "GlobalUserBanRequest",
+                        requestId.ToString(),
+                        $"Manager approved the global ban for user {targetUser.Email}.");
+                }
+                else
+                {
+                    await _notification.SendNotificationAsync(
+                        admin.Id,
+                        $"Manager {manager.FullName} rejected the global ban request for {targetUser.Role} \"{targetUser.FullName}\" ({targetUser.Email}). The account remains active.",
+                        "GlobalUserBanRejected",
+                        "GlobalUserBanRequest",
+                        banRequest.Id.ToString());
+
+                    await _logService.LogActionAsync(
+                        managerId,
+                        "RejectGlobalUserBanRequest",
+                        "GlobalUserBanRequest",
+                        requestId.ToString(),
+                        $"Manager rejected the global ban for user {targetUser.Email}.");
+                }
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         public async Task<ImportUserResponse> ImportUsersFromExcelAsync(Stream fileStream, string adminId)
@@ -458,6 +1015,7 @@ namespace BLL.Services
             }
 
             int rowNumber = 1;
+            var createdUsers = new List<(User User, User? Manager)>();
 
             foreach (var row in rows)
             {
@@ -512,12 +1070,18 @@ namespace BLL.Services
                 };
 
                 await _userRepository.AddAsync(user);
+                createdUsers.Add((user, string.IsNullOrEmpty(managerIdToAssign) ? null : await _userRepository.GetByIdAsync(managerIdToAssign)));
                 response.SuccessCount++;
             }
 
             if (response.SuccessCount > 0)
             {
                 await _userRepository.SaveChangesAsync();
+
+                foreach (var (user, manager) in createdUsers)
+                {
+                    await _workflowEmailService.SendWelcomeEmailAsync(user, manager);
+                }
             }
 
             await _logService.LogActionAsync(
@@ -537,15 +1101,15 @@ namespace BLL.Services
             if (string.IsNullOrEmpty(keyString))
                 throw new InvalidOperationException(
                     "JWT Key is not configured. " +
-                    "Please set 'Jwt:Key' in appsettings.json with at least 16 characters for production use. " +
-                    "Example: \"Jwt\": { \"Key\": \"YourSecureKeyAtLeast16Chars!\" }");
+                    "Please set 'Jwt:Key' or environment variable 'Jwt__Key' with at least 16 characters for production use. " +
+                    "Example: Jwt__Key=YourSecureKeyAtLeast16Chars!");
 
             var keyBytes = Encoding.ASCII.GetBytes(keyString);
             if (keyBytes.Length < 16)
                 throw new InvalidOperationException(
                     $"JWT Key must be at least 16 characters long for security. " +
                     $"Current length: {keyBytes.Length} characters. " +
-                    $"Please update 'Jwt:Key' in appsettings.json with a longer, secure key.");
+                    "Please update 'Jwt:Key' or 'Jwt__Key' with a longer, secure key.");
 
             string safeAvatarUrl = string.IsNullOrEmpty(user.AvatarUrl)
                 ? $"https://ui-avatars.com/api/?name={Uri.EscapeDataString(user.FullName ?? "User")}&background=random"
@@ -591,50 +1155,37 @@ namespace BLL.Services
 
         public async Task<string> ForgotPasswordAsync(string email)
         {
+            const string responseMessage = "If your email is registered in our system, administrators have been notified and will review your password reset request.";
             var user = await _userRepository.GetUserByEmailAsync(email);
 
             if (user == null)
             {
-                return "If your email is registered in our system, a new password will be sent to you.";
+                return responseMessage;
             }
 
-            string newPassword = Guid.NewGuid().ToString().Substring(0, 8);
-
-            string oldPasswordHash = user.PasswordHash;
-
-            try
+            var admins = (await _userRepository.FindAsync(u => u.Role == UserRoles.Admin && u.IsActive)).ToList();
+            if (admins.Any())
             {
-                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
-                _userRepository.Update(user);
-                await _userRepository.SaveChangesAsync();
+                await _workflowEmailService.SendForgotPasswordRequestEmailsAsync(user, admins);
 
-                string subject = "Your New Password for Data Labeling Support System";
-                string body = $@"
-            <h3>Hello {user.FullName},</h3>
-            <p>You requested a password reset. Your new password is: <strong>{newPassword}</strong></p>
-            <p>Please login and change this password immediately!</p>
-            <br/>
-            <p>Best regards,<br/>Data Labeling Admin Team</p>";
-
-                await _emailService.SendEmailAsync(user.Email, subject, body);
-
-                await _logService.LogActionAsync(
-                    user.Id, "ForgotPassword", "User", user.Id, "User requested and received a new password."
-                );
-
-                return "If your email is registered in our system, a new password will be sent to you.";
+                foreach (var admin in admins)
+                {
+                    await _notification.SendNotificationAsync(
+                        admin.Id,
+                        $"User \"{user.FullName}\" ({user.Email}) has requested a manual password reset. Please review it in User Management.",
+                        "PasswordResetRequest");
+                }
             }
-            catch (Exception ex)
-            {
-                user.PasswordHash = oldPasswordHash;
-                _userRepository.Update(user);
-                await _userRepository.SaveChangesAsync();
 
-                await _logService.LogActionAsync(
-                    user.Id, "ForgotPassword_Failed", "User", user.Id, $"Failed to send email. Password reset aborted. Error: {ex.Message}"
-                );
-                throw new Exception($"LỖI THẬT SỰ TỪ GMAIL: {ex.Message} --- Chi tiết: {ex.InnerException?.Message}");
-            }
+            await _logService.LogActionAsync(
+                user.Id,
+                "ForgotPasswordRequested",
+                "User",
+                user.Id,
+                "User requested a password reset. Admin approval is required before the password is changed."
+            );
+
+            return responseMessage;
         }
         public async Task AdminChangeUserPasswordAsync(string adminId, string targetUserId, string newPassword)
         {
@@ -653,6 +1204,9 @@ namespace BLL.Services
                 targetUserId,
                 $"Admin explicitly changed the password for user {user.Email}."
             );
+
+            await _workflowEmailService.SendAdminPasswordResetEmailAsync(user, newPassword);
         }
     }
 }
+

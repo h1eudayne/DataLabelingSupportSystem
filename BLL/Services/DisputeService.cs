@@ -3,7 +3,7 @@ using Core.Constants;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Core.Entities;
-using DAL.Interfaces;
+using Core.Interfaces;
 
 namespace BLL.Services
 {
@@ -17,6 +17,25 @@ namespace BLL.Services
         private readonly IRepository<DataItem> _dataItemRepo;
         private readonly IAppNotificationService _notification;
         private readonly IActivityLogService _logService;
+        private readonly IUserRepository _userRepo;
+        private readonly IWorkflowEmailService _workflowEmailService;
+
+        private static IEnumerable<ReviewLog> GetCurrentSubmissionReviewLogs(
+            IEnumerable<ReviewLog>? reviewLogs,
+            DateTime? submittedAt)
+        {
+            if (reviewLogs == null)
+            {
+                return Enumerable.Empty<ReviewLog>();
+            }
+
+            if (!submittedAt.HasValue)
+            {
+                return reviewLogs;
+            }
+
+            return reviewLogs.Where(log => log.CreatedAt >= submittedAt.Value);
+        }
 
         public DisputeService(
             IDisputeRepository disputeRepo,
@@ -26,7 +45,9 @@ namespace BLL.Services
             IProjectRepository projectRepo,
             IAppNotificationService notification,
             IRepository<DataItem> dataItemRepo,
-            IActivityLogService logService)
+            IActivityLogService logService,
+            IUserRepository userRepo,
+            IWorkflowEmailService workflowEmailService)
         {
             _disputeRepo = disputeRepo;
             _assignmentRepo = assignmentRepo;
@@ -36,6 +57,8 @@ namespace BLL.Services
             _dataItemRepo = dataItemRepo;
             _notification = notification;
             _logService = logService;
+            _userRepo = userRepo;
+            _workflowEmailService = workflowEmailService;
         }
 
         public async Task<DisputeResponse> CreateDisputeAsync(string annotatorId, CreateDisputeRequest request)
@@ -45,7 +68,24 @@ namespace BLL.Services
             if (assignment.AnnotatorId != annotatorId) throw new UnauthorizedAccessException("You can only dispute your own assignments");
             if (assignment.Status != TaskStatusConstants.Rejected) throw new Exception("You can only dispute rejected tasks");
 
-            var lastReview = assignment.ReviewLogs?.OrderByDescending(r => r.CreatedAt).FirstOrDefault();
+            var relatedAssignments = await _assignmentRepo.GetRelatedAssignmentsForDisputeAsync(
+                assignment.Id,
+                assignment.AnnotatorId,
+                assignment.DataItemId);
+            var assignmentGroup = relatedAssignments.Append(assignment).ToList();
+
+            bool hasPendingReviewerVote = assignmentGroup.Any(a =>
+                string.Equals(a.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase) &&
+                !GetCurrentSubmissionReviewLogs(a.ReviewLogs, a.SubmittedAt).Any());
+
+            if (hasPendingReviewerVote)
+            {
+                throw new Exception("You cannot dispute this task yet because other reviewers are still voting on the current submission.");
+            }
+
+            var lastReview = GetCurrentSubmissionReviewLogs(assignment.ReviewLogs, assignment.SubmittedAt)
+                .OrderByDescending(r => r.CreatedAt)
+                .FirstOrDefault();
             if (lastReview != null && (DateTime.UtcNow - lastReview.CreatedAt).TotalHours > 48)
             {
                 throw new Exception("Dispute Window Expired: You can only file a dispute within 48 hours of rejection.");
@@ -63,6 +103,11 @@ namespace BLL.Services
             await _disputeRepo.AddAsync(dispute);
             await _disputeRepo.SaveChangesAsync();
 
+            if (!string.IsNullOrWhiteSpace(assignment.ReviewerId))
+            {
+                await _statisticService.TrackDisputeCountAsync(assignment.ReviewerId, assignment.ProjectId);
+            }
+
             await _logService.LogActionAsync(
                 annotatorId,
                 "CreateDispute",
@@ -73,9 +118,16 @@ namespace BLL.Services
 
             try
             {
+                string projectName = assignment.Project?.Name
+                    ?? (await _projectRepo.GetByIdAsync(assignment.ProjectId))?.Name
+                    ?? $"Project #{assignment.ProjectId}";
+
                 if (!string.IsNullOrEmpty(assignment.ReviewerId))
                 {
-                    await _notification.SendNotificationAsync(assignment.ReviewerId, $"A dispute has been filed for Assignment {assignment.Id}", "Warning");
+                    await _notification.SendNotificationAsync(
+                        assignment.ReviewerId,
+                        $"Annotator has filed a dispute for task #{assignment.Id} in project \"{projectName}\".",
+                        "Warning");
                 }
 
                 string? managerId = null;
@@ -93,7 +145,7 @@ namespace BLL.Services
                 {
                     await _notification.SendNotificationAsync(
                         managerId,
-                        $"A dispute has been filed for Task #{assignment.Id} by annotator. Reason: {request.Reason}",
+                        $"Annotator has filed a dispute for task #{assignment.Id} in project \"{projectName}\". Reason: {request.Reason}",
                         "Warning");
                 }
             }
@@ -210,8 +262,8 @@ namespace BLL.Services
                         string verdict = reviewerReview.Verdict == "Approved" ? "approved" : "rejected";
                         await _notification.SendNotificationAsync(
                             reviewerId,
-                            $"Manager has resolved a dispute for a task you {verdict}. " +
-                            $"Decision: Annotator was correct. Your accuracy has been updated.",
+                            $"Manager resolved a dispute in project \"{project.Name}\" for task #{assignment.Id}. " +
+                            $"You had {verdict} this task, but the final decision favored the annotator. Your review outcome has been marked as unsuccessful.",
                             verdict == "rejected" ? "Warning" : "Info");
                     }
                 }
@@ -241,8 +293,8 @@ namespace BLL.Services
                         string verdict = reviewerReview.Verdict == "Approved" ? "approved" : "rejected";
                         await _notification.SendNotificationAsync(
                             reviewerId,
-                            $"Manager has resolved a dispute for a task you {verdict}. " +
-                            $"Decision: Annotator was incorrect. Your accuracy has been updated.",
+                            $"Manager resolved a dispute in project \"{project.Name}\" for task #{assignment.Id}. " +
+                            $"You had {verdict} this task and the final decision upheld the reviewer side. Your review outcome remains successful.",
                             verdict == "approved" ? "Warning" : "Info");
                     }
                 }
@@ -264,16 +316,52 @@ namespace BLL.Services
             {
                 await _notification.SendNotificationAsync(
                     assignment.AnnotatorId,
-                    $"Your dispute for task #{assignment.Id} has been Accepted. Quality credit has been restored to your score.",
+                    $"Your dispute for task #{assignment.Id} in project \"{project.Name}\" has been accepted. Quality credit has been restored to your score.",
                     "Success");
             }
             else
             {
                 await _notification.SendNotificationAsync(
                     assignment.AnnotatorId,
-                    $"Your dispute for task #{assignment.Id} has been Rejected. Manager's note: {request.ManagerComment}",
+                    $"Your dispute for task #{assignment.Id} in project \"{project.Name}\" has been rejected. Manager's note: {request.ManagerComment}",
                     "Error");
             }
+
+            var manager = await _userRepo.GetByIdAsync(managerId) ?? new User
+            {
+                Id = managerId,
+                FullName = "Project Manager",
+                Email = string.Empty,
+                Role = UserRoles.Manager
+            };
+
+            var annotator = await _userRepo.GetByIdAsync(assignment.AnnotatorId) ?? new User
+            {
+                Id = assignment.AnnotatorId,
+                FullName = "Annotator",
+                Email = string.Empty,
+                Role = UserRoles.Annotator
+            };
+
+            var reviewerIds = allReviewLogs
+                .Select(log => log.ReviewerId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var reviewers = (await _userRepo.GetAllAsync())
+                .Where(user => reviewerIds.Contains(user.Id, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            await _workflowEmailService.SendDisputeResolutionEmailsAsync(
+                project,
+                manager,
+                annotator,
+                assignment,
+                reviewers,
+                allReviewLogs,
+                request.IsAccepted,
+                request.ManagerComment);
         }
 
         public async Task<List<DisputeResponse>> GetDisputesAsync(int projectId, string userId, string role)
@@ -284,12 +372,60 @@ namespace BLL.Services
             {
                 disputes = await _disputeRepo.GetDisputesByProjectAsync(projectId);
             }
+            else if (role == UserRoles.Reviewer)
+            {
+                disputes = await _disputeRepo.GetDisputesByReviewerAsync(userId, projectId);
+            }
             else
             {
                 disputes = await _disputeRepo.GetDisputesByAnnotatorAsync(userId);
             }
 
-            return disputes.Select(MapToResponse).ToList();
+            var responses = new List<DisputeResponse>();
+
+            foreach (var dispute in disputes)
+            {
+                var response = MapToResponse(dispute);
+
+                if (dispute.Assignment != null)
+                {
+                    var relatedAssignments = await _assignmentRepo.GetRelatedAssignmentsForDisputeAsync(
+                        dispute.Assignment.Id,
+                        dispute.Assignment.AnnotatorId,
+                        dispute.Assignment.DataItemId);
+
+                    var assignmentGroup = relatedAssignments
+                        .Append(dispute.Assignment)
+                        .GroupBy(a => a.Id)
+                        .Select(g => g.First())
+                        .ToList();
+
+                    response.ReviewerFeedbacks = assignmentGroup
+                        .Select(assignment => new
+                        {
+                            Assignment = assignment,
+                            LatestReview = GetCurrentSubmissionReviewLogs(assignment.ReviewLogs, assignment.SubmittedAt)
+                                .OrderByDescending(log => log.CreatedAt)
+                                .FirstOrDefault()
+                        })
+                        .Where(item => item.LatestReview != null)
+                        .Select(item => new ReviewerFeedbackResponse
+                        {
+                            ReviewerId = item.LatestReview!.ReviewerId,
+                            ReviewerName = item.Assignment.Reviewer?.FullName ?? item.Assignment.Reviewer?.Email ?? item.LatestReview.ReviewerId,
+                            Verdict = item.LatestReview.Verdict,
+                            Comment = item.LatestReview.Comment,
+                            ErrorCategories = item.LatestReview.ErrorCategory,
+                            ReviewedAt = item.LatestReview.CreatedAt
+                        })
+                        .OrderByDescending(item => item.ReviewedAt)
+                        .ToList();
+                }
+
+                responses.Add(response);
+            }
+
+            return responses;
         }
 
         private static DisputeResponse MapToResponse(Dispute d)
@@ -360,3 +496,4 @@ namespace BLL.Services
         }
     }
 }
+

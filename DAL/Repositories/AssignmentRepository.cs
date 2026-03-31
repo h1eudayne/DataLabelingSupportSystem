@@ -1,5 +1,5 @@
 using Core.DTOs.Responses;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Core.Constants;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -184,3 +184,4 @@ namespace DAL.Repositories
         }
     }
 }
+

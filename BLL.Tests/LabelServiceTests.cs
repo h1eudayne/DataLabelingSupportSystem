@@ -2,7 +2,7 @@ using BLL.Interfaces;
 using BLL.Services;
 using Core.DTOs.Requests;
 using Core.Entities;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Moq;
 using Xunit;
 
@@ -309,3 +309,4 @@ namespace BLL.Tests
         #endregion
     }
 }
+

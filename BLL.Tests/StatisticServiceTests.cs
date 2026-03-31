@@ -2,7 +2,7 @@ using BLL.Interfaces;
 using BLL.Services;
 using Core.Entities;
 using Core.DTOs.Responses;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Moq;
 using Xunit;
 
@@ -14,7 +14,7 @@ namespace BLL.Tests
         private readonly Mock<IProjectRepository> _projectRepoMock;
         private readonly Mock<IAssignmentRepository> _assignmentRepoMock;
         private readonly Mock<IRepository<ReviewLog>> _reviewLogRepoMock;
-        private readonly Mock<IRepository<Dispute>> _disputeRepoMock;
+        private readonly Mock<IDisputeRepository> _disputeRepoMock;
 
         private readonly StatisticService _statisticService;
 
@@ -24,7 +24,7 @@ namespace BLL.Tests
             _projectRepoMock = new Mock<IProjectRepository>();
             _assignmentRepoMock = new Mock<IAssignmentRepository>();
             _reviewLogRepoMock = new Mock<IRepository<ReviewLog>>();
-            _disputeRepoMock = new Mock<IRepository<Dispute>>();
+            _disputeRepoMock = new Mock<IDisputeRepository>();
 
             _statisticService = new StatisticService(
                 _statsRepoMock.Object,
@@ -72,7 +72,6 @@ namespace BLL.Tests
             await _statisticService.TrackNewAssignmentAsync("user-1", 1, 5);
 
             Assert.Equal(10, existingStat.TotalAssigned);
-            // EfficiencyScore = TotalApproved / TotalAssigned * 100 = 3 / 10 * 100 = 30
             Assert.Equal(30f, existingStat.EfficiencyScore, 0.01f);
         }
 
@@ -109,7 +108,6 @@ namespace BLL.Tests
                 taskScore: 100,
                 isCriticalError: false);
 
-            // After approval: TotalApproved = 5 + 1 = 6, TotalManagerDecisions = 0 + 1 = 1
             Assert.Equal(6, annotatorStat.TotalApproved);
             Assert.Equal(1, annotatorStat.TotalManagerDecisions);
             Assert.Equal(2, annotatorStat.TotalReviewedTasks);
@@ -270,20 +268,17 @@ namespace BLL.Tests
         #region TrackFirstPassCorrectAsync Tests
 
         [Fact]
-        public async Task TrackFirstPassCorrectAsync_IncrementsBothUsers()
+        public async Task TrackFirstPassCorrectAsync_IncrementsAnnotatorOnly()
         {
             var annotatorStat = new UserProjectStat { UserId = "annotator-1", ProjectId = 1 };
-            var reviewerStat = new UserProjectStat { UserId = "reviewer-1", ProjectId = 1 };
 
             _statsRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(
-                new List<UserProjectStat> { annotatorStat, reviewerStat });
+                new List<UserProjectStat> { annotatorStat });
             _statsRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
 
-            await _statisticService.TrackFirstPassCorrectAsync("annotator-1", "reviewer-1", 1);
+            await _statisticService.TrackFirstPassCorrectAsync("annotator-1", 1);
 
             Assert.Equal(1, annotatorStat.TotalFirstPassCorrect);
-            Assert.Equal(1, reviewerStat.TotalReviewerManagerDecisions);
-            Assert.Equal(1, reviewerStat.TotalReviewerCorrectByManager);
         }
 
         #endregion
@@ -352,7 +347,7 @@ namespace BLL.Tests
 
             _statsRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<UserProjectStat> { reviewerStat });
             _reviewLogRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(reviewLogs);
-            _disputeRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Dispute>());
+            _disputeRepoMock.Setup(r => r.GetDisputesByReviewerAsync("reviewer-1", 0)).ReturnsAsync(new List<Dispute>());
             _assignmentRepoMock.Setup(r => r.GetByIdAsync(It.IsAny<int>())).ReturnsAsync((int id) => assignments.FirstOrDefault(a => a.Id == id));
             _projectRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(project);
 
@@ -370,13 +365,59 @@ namespace BLL.Tests
         {
             _statsRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<UserProjectStat>());
             _reviewLogRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<ReviewLog>());
-            _disputeRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Dispute>());
+            _disputeRepoMock.Setup(r => r.GetDisputesByReviewerAsync("reviewer-1", 0)).ReturnsAsync(new List<Dispute>());
 
             var result = await _statisticService.GetReviewerStatsAsync("reviewer-1");
 
             Assert.Equal(0, result.TotalReviews);
             Assert.Equal(0, result.TotalApproved);
             Assert.Equal(100, result.KQSScore);
+        }
+
+        [Fact]
+        public async Task GetReviewerStatsAsync_WhenReviewerLosesDispute_UpdatesTotalDisputesAndOverridden()
+        {
+            var reviewerStat = new UserProjectStat
+            {
+                UserId = "reviewer-1",
+                ProjectId = 1,
+                ReviewerQualityScore = 80
+            };
+
+            var reviewLogs = new List<ReviewLog>
+            {
+                new ReviewLog { Id = 1, ReviewerId = "reviewer-1", Verdict = "Rejected", AssignmentId = 1 }
+            };
+
+            var project = new Project { Id = 1, Name = "Test Project" };
+            var disputes = new List<Dispute>
+            {
+                new Dispute
+                {
+                    Id = 1,
+                    AssignmentId = 1,
+                    Status = "Resolved",
+                    Assignment = new Assignment
+                    {
+                        Id = 1,
+                        ProjectId = 1,
+                        ReviewerId = "reviewer-1"
+                    }
+                }
+            };
+
+            _statsRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<UserProjectStat> { reviewerStat });
+            _reviewLogRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(reviewLogs);
+            _disputeRepoMock.Setup(r => r.GetDisputesByReviewerAsync("reviewer-1", 0)).ReturnsAsync(disputes);
+            _projectRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(project);
+            _assignmentRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(new Assignment { Id = 1, ProjectId = 1 });
+
+            var result = await _statisticService.GetReviewerStatsAsync("reviewer-1");
+
+            Assert.Equal(1, result.TotalDisputes);
+            Assert.Equal(1, result.TotalOverridden);
+            Assert.Equal(100, result.DisputeRate);
+            Assert.Equal(100, result.OverrideRate);
         }
 
         #endregion
@@ -386,7 +427,6 @@ namespace BLL.Tests
         [Fact]
         public async Task DeductReliabilityScoreForOverdueTasksAsync_OverdueAssignments_DeductsScore()
         {
-            // Setup assignment with overdue deadline
             var overdueAssignment = new Assignment
             {
                 Id = 1,
@@ -410,7 +450,6 @@ namespace BLL.Tests
 
             await _statisticService.DeductReliabilityScoreForOverdueTasksAsync();
 
-            // With 5 days overdue, deduction = min(5*2, 20) = 10
             Assert.Equal(90, userStat.EfficiencyScore);
         }
 
@@ -447,3 +486,4 @@ namespace BLL.Tests
         #endregion
     }
 }
+

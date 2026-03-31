@@ -4,7 +4,7 @@ using Core.Constants;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Core.Entities;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Moq;
 using Xunit;
 
@@ -20,6 +20,8 @@ namespace BLL.Tests
         private readonly Mock<IRepository<DataItem>> _dataItemRepoMock;
         private readonly Mock<IAppNotificationService> _notificationMock;
         private readonly Mock<IActivityLogService> _logServiceMock;
+        private readonly Mock<IUserRepository> _userRepoMock;
+        private readonly Mock<IWorkflowEmailService> _workflowEmailServiceMock;
 
         private readonly DisputeService _disputeService;
 
@@ -33,6 +35,8 @@ namespace BLL.Tests
             _dataItemRepoMock = new Mock<IRepository<DataItem>>();
             _notificationMock = new Mock<IAppNotificationService>();
             _logServiceMock = new Mock<IActivityLogService>();
+            _userRepoMock = new Mock<IUserRepository>();
+            _workflowEmailServiceMock = new Mock<IWorkflowEmailService>();
 
             _disputeService = new DisputeService(
                 _disputeRepoMock.Object,
@@ -42,8 +46,14 @@ namespace BLL.Tests
                 _projectRepoMock.Object,
                 _notificationMock.Object,
                 _dataItemRepoMock.Object,
-                _logServiceMock.Object
+                _logServiceMock.Object,
+                _userRepoMock.Object,
+                _workflowEmailServiceMock.Object
             );
+
+            _assignmentRepoMock
+                .Setup(r => r.GetRelatedAssignmentsForDisputeAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<int>()))
+                .ReturnsAsync(new List<Assignment>());
         }
 
         #region CreateDisputeAsync Tests
@@ -174,6 +184,8 @@ namespace BLL.Tests
             {
                 Id = 1,
                 AnnotatorId = "annotator-1",
+                ReviewerId = "reviewer-1",
+                ProjectId = 1,
                 Status = TaskStatusConstants.Rejected,
                 Project = new Project { Id = 1, ManagerId = "manager-1", Name = "Test Project" },
                 ReviewLogs = new List<ReviewLog>
@@ -192,7 +204,56 @@ namespace BLL.Tests
             await _disputeService.CreateDisputeAsync("annotator-1", request);
 
             _notificationMock.Verify(n => n.SendNotificationAsync(
-                "manager-1", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+                "reviewer-1", It.Is<string>(m => m.Contains("filed a dispute")), "Warning"), Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "manager-1", It.Is<string>(m => m.Contains("Reason: Test dispute")), "Warning"), Times.Once);
+            _statisticServiceMock.Verify(s => s.TrackDisputeCountAsync("reviewer-1", 1), Times.Once);
+        }
+
+        [Fact]
+        public async Task CreateDisputeAsync_WhenAnotherReviewerIsStillVoting_ThrowsException()
+        {
+            var submittedAt = DateTime.UtcNow;
+            var assignment = new Assignment
+            {
+                Id = 1,
+                AnnotatorId = "annotator-1",
+                ReviewerId = "reviewer-1",
+                ProjectId = 1,
+                DataItemId = 99,
+                SubmittedAt = submittedAt,
+                Status = TaskStatusConstants.Rejected,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog { ReviewerId = "reviewer-1", Verdict = "Rejected", CreatedAt = submittedAt.AddMinutes(5) }
+                }
+            };
+
+            var pendingReviewerAssignment = new Assignment
+            {
+                Id = 2,
+                AnnotatorId = "annotator-1",
+                ReviewerId = "reviewer-2",
+                ProjectId = 1,
+                DataItemId = 99,
+                SubmittedAt = submittedAt,
+                Status = TaskStatusConstants.Submitted,
+                ReviewLogs = new List<ReviewLog>()
+            };
+
+            _assignmentRepoMock.Setup(r => r.GetAssignmentWithDetailsAsync(1))
+                .ReturnsAsync(assignment);
+            _assignmentRepoMock.Setup(r => r.GetRelatedAssignmentsForDisputeAsync(1, "annotator-1", 99))
+                .ReturnsAsync(new List<Assignment> { pendingReviewerAssignment });
+
+            var ex = await Assert.ThrowsAsync<Exception>(() =>
+                _disputeService.CreateDisputeAsync("annotator-1", new CreateDisputeRequest
+                {
+                    AssignmentId = 1,
+                    Reason = "Still waiting"
+                }));
+
+            Assert.Contains("still voting", ex.Message);
         }
 
         #endregion
@@ -208,6 +269,13 @@ namespace BLL.Tests
             int dataItemId = 1;
 
             var reviewers = Enumerable.Range(1, 10).Select(i => $"reviewer-{i}").ToList();
+            var reviewerUsers = reviewers.Select(id => new User
+            {
+                Id = id,
+                FullName = id,
+                Email = $"{id}@test.com",
+                Role = UserRoles.Reviewer
+            }).ToList();
 
             var disputedAssignment = new Assignment
             {
@@ -246,6 +314,9 @@ namespace BLL.Tests
             _projectRepoMock.Setup(r => r.GetByIdAsync(projectId)).ReturnsAsync(new Project { Id = projectId, GuidelineVersion = "1.0" });
             _dataItemRepoMock.Setup(r => r.GetByIdAsync(dataItemId)).ReturnsAsync(new DataItem { Id = dataItemId, Status = TaskStatusConstants.Rejected });
             _assignmentRepoMock.Setup(r => r.GetRelatedAssignmentsForDisputeAsync(disputedAssignment.Id, annotatorId, dataItemId)).ReturnsAsync(relatedAssignments);
+            _userRepoMock.Setup(r => r.GetByIdAsync(managerId)).ReturnsAsync(new User { Id = managerId, FullName = "Manager", Email = "manager@test.com", Role = UserRoles.Manager });
+            _userRepoMock.Setup(r => r.GetByIdAsync(annotatorId)).ReturnsAsync(new User { Id = annotatorId, FullName = "Annotator", Email = "annotator@test.com", Role = UserRoles.Annotator });
+            _userRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(reviewerUsers);
 
             var request = new ResolveDisputeRequest
             {
@@ -261,6 +332,94 @@ namespace BLL.Tests
                 It.Is<List<(string reviewerId, bool wasCorrect)>>(results => results.Count == 10),
                 projectId,
                 annotatorWasCorrect: true), Times.Once);
+            _workflowEmailServiceMock.Verify(w => w.SendDisputeResolutionEmailsAsync(
+                It.Is<Project>(p => p.Id == projectId),
+                It.Is<User>(u => u.Id == managerId),
+                It.Is<User>(u => u.Id == annotatorId),
+                It.Is<Assignment>(a => a.Id == disputedAssignment.Id),
+                It.Is<IReadOnlyCollection<User>>(users => users.Count == 10),
+                It.Is<IReadOnlyCollection<ReviewLog>>(logs => logs.Count == 10),
+                true,
+                It.Is<string>(comment => comment.Contains("guideline", StringComparison.OrdinalIgnoreCase))),
+                Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                annotatorId,
+                It.Is<string>(m => m.Contains("has been accepted", StringComparison.OrdinalIgnoreCase)),
+                "Success"), Times.Once);
+            foreach (var reviewerId in reviewers)
+            {
+                _notificationMock.Verify(n => n.SendNotificationAsync(
+                    reviewerId,
+                    It.Is<string>(m => m.Contains("resolved a dispute", StringComparison.OrdinalIgnoreCase)),
+                    It.IsAny<string>()), Times.Once);
+            }
+        }
+
+        [Fact]
+        public async Task ResolveDisputeAsync_WhenRejected_NotifiesAnnotatorAndReviewer()
+        {
+            const string managerId = "manager-1";
+            const string annotatorId = "annotator-1";
+            const string reviewerId = "reviewer-1";
+            const int projectId = 2;
+            const int dataItemId = 9;
+
+            var assignment = new Assignment
+            {
+                Id = 15,
+                ProjectId = projectId,
+                DataItemId = dataItemId,
+                AnnotatorId = annotatorId,
+                ReviewerId = reviewerId,
+                Status = TaskStatusConstants.Rejected,
+                ReviewLogs = new List<ReviewLog>
+                {
+                    new ReviewLog { ReviewerId = reviewerId, Verdict = "Rejected", CreatedAt = DateTime.UtcNow }
+                }
+            };
+
+            var dispute = new Dispute
+            {
+                Id = 200,
+                AssignmentId = assignment.Id,
+                Assignment = assignment,
+                Status = "Pending",
+                Reason = "Need review",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _disputeRepoMock.Setup(r => r.GetDisputeWithDetailsAsync(dispute.Id)).ReturnsAsync(dispute);
+            _projectRepoMock.Setup(r => r.GetByIdAsync(projectId)).ReturnsAsync(new Project
+            {
+                Id = projectId,
+                Name = "Rejected Dispute Project",
+                GuidelineVersion = "2.0"
+            });
+            _assignmentRepoMock.Setup(r => r.GetRelatedAssignmentsForDisputeAsync(assignment.Id, annotatorId, dataItemId))
+                .ReturnsAsync(new List<Assignment>());
+            _userRepoMock.Setup(r => r.GetByIdAsync(managerId)).ReturnsAsync(new User { Id = managerId, Role = UserRoles.Manager });
+            _userRepoMock.Setup(r => r.GetByIdAsync(annotatorId)).ReturnsAsync(new User { Id = annotatorId, Role = UserRoles.Annotator });
+            _userRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<User>
+            {
+                new User { Id = reviewerId, Role = UserRoles.Reviewer }
+            });
+
+            await _disputeService.ResolveDisputeAsync(managerId, new ResolveDisputeRequest
+            {
+                DisputeId = dispute.Id,
+                IsAccepted = false,
+                ManagerComment = "Still incorrect per guideline v2.0"
+            });
+
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                annotatorId,
+                It.Is<string>(m => m.Contains("has been rejected", StringComparison.OrdinalIgnoreCase)),
+                "Error"), Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                reviewerId,
+                It.Is<string>(m => m.Contains("resolved a dispute", StringComparison.OrdinalIgnoreCase) &&
+                                   m.Contains("upheld the reviewer side", StringComparison.OrdinalIgnoreCase)),
+                "Info"), Times.Once);
         }
 
         [Fact]
@@ -352,6 +511,34 @@ namespace BLL.Tests
             Assert.Single(result);
         }
 
+        [Fact]
+        public async Task GetDisputesAsync_AsReviewer_ReturnsOnlyReviewerDisputes()
+        {
+            var disputes = new List<Dispute>
+            {
+                new Dispute
+                {
+                    Id = 3,
+                    Status = "Resolved",
+                    Assignment = new Assignment
+                    {
+                        ProjectId = 5,
+                        ReviewerId = "reviewer-1"
+                    }
+                }
+            };
+
+            _disputeRepoMock
+                .Setup(r => r.GetDisputesByReviewerAsync("reviewer-1", 5))
+                .ReturnsAsync(disputes);
+
+            var result = await _disputeService.GetDisputesAsync(5, "reviewer-1", UserRoles.Reviewer);
+
+            Assert.Single(result);
+            Assert.Equal(3, result[0].Id);
+        }
+
         #endregion
     }
 }
+

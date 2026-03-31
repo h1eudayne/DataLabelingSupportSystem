@@ -1,5 +1,5 @@
 using BLL.Interfaces;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Core.Entities;
 using Core.DTOs.Responses;
 using Core.Constants;
@@ -12,14 +12,14 @@ namespace BLL.Services
         private readonly IProjectRepository _projectRepo;
         private readonly IAssignmentRepository _assignmentRepo;
         private readonly IRepository<ReviewLog> _reviewLogRepo;
-        private readonly IRepository<Dispute> _disputeRepo;
+        private readonly IDisputeRepository _disputeRepo;
 
         public StatisticService(
             IRepository<UserProjectStat> statsRepo,
             IProjectRepository projectRepo,
             IAssignmentRepository assignmentRepo,
             IRepository<ReviewLog> reviewLogRepo,
-            IRepository<Dispute> disputeRepo)
+            IDisputeRepository disputeRepo)
         {
             _statsRepo = statsRepo;
             _projectRepo = projectRepo;
@@ -164,16 +164,11 @@ namespace BLL.Services
             await _statsRepo.SaveChangesAsync();
         }
 
-        public async Task TrackFirstPassCorrectAsync(string annotatorId, string reviewerId, int projectId)
+        public async Task TrackFirstPassCorrectAsync(string annotatorId, int projectId)
         {
             var annotatorStat = await GetOrCreateStatAsync(annotatorId, projectId);
             annotatorStat.TotalFirstPassCorrect++;
             annotatorStat.Date = DateTime.UtcNow;
-
-            var reviewerStat = await GetOrCreateStatAsync(reviewerId, projectId, isReviewer: true);
-            reviewerStat.TotalReviewerManagerDecisions++;
-            reviewerStat.TotalReviewerCorrectByManager++;
-            reviewerStat.Date = DateTime.UtcNow;
 
             await _statsRepo.SaveChangesAsync();
         }
@@ -202,26 +197,20 @@ namespace BLL.Services
             var allReviewLogs = await _reviewLogRepo.GetAllAsync();
             var reviewerLogs = allReviewLogs.Where(rl => rl.ReviewerId == reviewerId).ToList();
 
-            var allDisputes = await _disputeRepo.GetAllAsync();
-            var resolvedDisputes = allDisputes.Where(d =>
-                d.Status == "Accepted" || d.Status == "Rejected");
-
-            var reviewerDisputes = new List<Dispute>();
-            foreach (var dispute in resolvedDisputes)
-            {
-                var assignment = await _assignmentRepo.GetByIdAsync(dispute.AssignmentId);
-                if (assignment != null && assignment.ReviewerId == reviewerId)
-                {
-                    reviewerDisputes.Add(dispute);
-                }
-            }
+            var reviewerDisputes = await _disputeRepo.GetDisputesByReviewerAsync(reviewerId);
+            var pendingDisputedAssignmentIds = reviewerDisputes
+                .Where(d => string.Equals(d.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+                .Select(d => d.AssignmentId)
+                .ToHashSet();
 
             int totalReviews = reviewerLogs.Count;
             int totalApproved = reviewerLogs.Count(l => l.Verdict == "Approved" || l.Verdict == "Approve");
             int totalRejected = reviewerLogs.Count(l => l.Verdict == "Rejected" || l.Verdict == "Reject");
-            int totalOverridden = reviewerDisputes.Count;
+            int totalOverridden = reviewerDisputes.Count(d =>
+                string.Equals(d.Status, "Resolved", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(d.Status, "Accepted", StringComparison.OrdinalIgnoreCase));
 
-            int totalDisputes = reviewerStats.Sum(s => s.DisputeCount);
+            int totalDisputes = reviewerDisputes.Count;
             double disputeRate = totalReviews > 0 ? Math.Round((double)totalDisputes / totalReviews * 100, 2) : 0;
 
             double approvalRate = totalReviews > 0 ? Math.Round((double)totalApproved / totalReviews * 100, 2) : 0;
@@ -231,9 +220,63 @@ namespace BLL.Services
             int totalAudited = reviewerStats.Sum(s => s.TotalAuditedReviews);
             int correctDecisions = reviewerStats.Sum(s => s.TotalCorrectDecisions);
             double auditAccuracy = totalAudited > 0 ? Math.Round((double)correctDecisions / totalAudited * 100, 2) : 0;
-            double kqsScore = reviewerStats.Count > 0 ? reviewerStats.Average(s => s.ReviewerQualityScore) : 100;
+            int managerAlignedDecisions = 0;
+            int managerAlignedCorrect = 0;
+            var projectDecisionMap = new Dictionary<int, (int Total, int Correct)>();
 
-            var projectIds = reviewerStats.Select(s => s.ProjectId).Distinct().ToList();
+            foreach (var reviewLog in reviewerLogs)
+            {
+                var assignment = await _assignmentRepo.GetByIdAsync(reviewLog.AssignmentId);
+                if (assignment == null)
+                {
+                    continue;
+                }
+
+                if (pendingDisputedAssignmentIds.Contains(assignment.Id))
+                {
+                    continue;
+                }
+
+                bool isResolvedApproval = string.Equals(assignment.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase);
+                bool isResolvedRejection = string.Equals(assignment.Status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase);
+
+                if (!isResolvedApproval && !isResolvedRejection)
+                {
+                    continue;
+                }
+
+                managerAlignedDecisions++;
+
+                if (!projectDecisionMap.TryGetValue(assignment.ProjectId, out var projectStats))
+                {
+                    projectStats = (0, 0);
+                }
+
+                projectStats.Total++;
+
+                bool reviewerWasCorrect =
+                    (isResolvedApproval && (reviewLog.Verdict == "Approved" || reviewLog.Verdict == "Approve")) ||
+                    (isResolvedRejection && (reviewLog.Verdict == "Rejected" || reviewLog.Verdict == "Reject"));
+
+                if (reviewerWasCorrect)
+                {
+                    managerAlignedCorrect++;
+                    projectStats.Correct++;
+                }
+
+                projectDecisionMap[assignment.ProjectId] = projectStats;
+            }
+
+            double kqsScore = managerAlignedDecisions > 0
+                ? Math.Round((double)managerAlignedCorrect / managerAlignedDecisions * 100, 2)
+                : reviewerStats.Count > 0
+                    ? reviewerStats.Average(s => s.ReviewerQualityScore)
+                    : 100;
+
+            var projectIds = reviewerStats.Select(s => s.ProjectId)
+                .Concat(projectDecisionMap.Keys)
+                .Distinct()
+                .ToList();
             var projectSummaries = new List<ProjectReviewSummary>();
 
             foreach (var projectId in projectIds)
@@ -245,6 +288,10 @@ namespace BLL.Services
                     var assignment = _assignmentRepo.GetByIdAsync(l.AssignmentId).Result;
                     return assignment != null && assignment.ProjectId == projectId;
                 }).ToList();
+
+                var alignedProjectDecisions = projectDecisionMap.TryGetValue(projectId, out var projectDecisionStats)
+                    ? projectDecisionStats
+                    : (Total: 0, Correct: 0);
 
                 int projectApproved = logsForProject.Count(l => l.Verdict == "Approved" || l.Verdict == "Approve");
                 int projectRejected = logsForProject.Count(l => l.Verdict == "Rejected" || l.Verdict == "Reject");
@@ -258,7 +305,9 @@ namespace BLL.Services
                     Approved = projectApproved,
                     Rejected = projectRejected,
                     ApprovalRate = projectTotal > 0 ? Math.Round((double)projectApproved / projectTotal * 100, 2) : 0,
-                    KQSScore = stat?.ReviewerQualityScore ?? 100
+                    KQSScore = alignedProjectDecisions.Total > 0
+                        ? Math.Round((double)alignedProjectDecisions.Correct / alignedProjectDecisions.Total * 100, 2)
+                        : stat?.ReviewerQualityScore ?? 100
                 });
             }
 
@@ -312,3 +361,4 @@ namespace BLL.Services
         }
     }
 }
+

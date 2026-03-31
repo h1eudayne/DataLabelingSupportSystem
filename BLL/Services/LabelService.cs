@@ -1,7 +1,7 @@
 using BLL.Interfaces;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Core.Entities;
 using System.Text.Json;
 
@@ -209,3 +209,4 @@ namespace BLL.Services
         }
     }
 }
+

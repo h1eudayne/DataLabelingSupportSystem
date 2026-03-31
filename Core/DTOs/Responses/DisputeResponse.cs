@@ -16,5 +16,6 @@ namespace Core.DTOs.Responses
         public string? DataItemUrl { get; set; }
         public string? AssignmentStatus { get; set; }
         public string? ReviewerName { get; set; }
+        public List<ReviewerFeedbackResponse> ReviewerFeedbacks { get; set; } = new List<ReviewerFeedbackResponse>();
     }
 }

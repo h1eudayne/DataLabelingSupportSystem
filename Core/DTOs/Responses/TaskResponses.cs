@@ -52,6 +52,33 @@ namespace Core.DTOs.Responses
 
         public int TotalMembers { get; set; }
     }
+
+    public class ReviewerFeedbackResponse
+    {
+        public string ReviewerId { get; set; } = string.Empty;
+        public string ReviewerName { get; set; } = string.Empty;
+        public string Verdict { get; set; } = string.Empty;
+        public string? Comment { get; set; }
+        public string? ErrorCategories { get; set; }
+        public DateTime ReviewedAt { get; set; }
+    }
+
+    public class EscalatedReviewResponse
+    {
+        public int AssignmentId { get; set; }
+        public int ProjectId { get; set; }
+        public string ProjectName { get; set; } = string.Empty;
+        public int DataItemId { get; set; }
+        public string? DataItemUrl { get; set; }
+        public string AnnotatorId { get; set; } = string.Empty;
+        public string AnnotatorName { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string EscalationType { get; set; } = string.Empty;
+        public int RejectCount { get; set; }
+        public DateTime? SubmittedAt { get; set; }
+        public List<ReviewerFeedbackResponse> ReviewerFeedbacks { get; set; } = new List<ReviewerFeedbackResponse>();
+    }
+
     public class SubmitMultipleTasksResponse
     {
         public int SuccessCount { get; set; }

@@ -189,5 +189,47 @@ namespace API.Controllers
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
+
+        [HttpGet("projects/{projectId}/escalations")]
+        [Authorize(Roles = "Manager")]
+        [ProducesResponseType(typeof(IEnumerable<EscalatedReviewResponse>), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        public async Task<IActionResult> GetEscalatedTasks(int projectId)
+        {
+            var managerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(managerId)) return Unauthorized();
+
+            try
+            {
+                var escalations = await _reviewService.GetEscalatedTasksAsync(projectId, managerId);
+                return Ok(escalations);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
+        [HttpPost("escalations/resolve")]
+        [Authorize(Roles = "Manager")]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        public async Task<IActionResult> ResolveEscalatedTask([FromBody] EscalationActionRequest request)
+        {
+            var managerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(managerId)) return Unauthorized();
+
+            try
+            {
+                await _reviewService.HandleEscalatedTaskAsync(managerId, request);
+                return Ok(new { Message = "Escalated task resolved successfully." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
     }
 }

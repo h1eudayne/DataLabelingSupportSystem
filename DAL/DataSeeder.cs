@@ -1,9 +1,9 @@
-using DAL;
 using Core.Constants;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
-namespace API
+namespace DAL
 {
     public static class DataSeeder
     {

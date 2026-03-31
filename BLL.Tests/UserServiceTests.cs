@@ -3,7 +3,7 @@ using BLL.Services;
 using Core.Constants;
 using Core.DTOs.Requests;
 using Core.Entities;
-using DAL.Interfaces;
+using Core.Interfaces;
 using Moq;
 using Xunit;
 
@@ -15,20 +15,24 @@ namespace BLL.Tests
         private readonly Mock<IRefreshTokenRepository> _refreshTokenRepoMock;
         private readonly Mock<IAssignmentRepository> _assignmentRepoMock;
         private readonly Mock<IProjectRepository> _projectRepoMock;
+        private readonly Mock<IRepository<GlobalUserBanRequest>> _globalBanRequestRepoMock;
+        private readonly Mock<IRepository<AppNotification>> _appNotificationRepoMock;
         private readonly Mock<IActivityLogService> _logServiceMock;
         private readonly Mock<IAppNotificationService> _notificationMock;
         private readonly Mock<Microsoft.Extensions.Configuration.IConfiguration> _configMock;
-        private readonly Mock<IEmailService> _emailServiceMock;
+        private readonly Mock<IWorkflowEmailService> _workflowEmailServiceMock;
 
         private readonly UserService _userService;
 
         public UserServiceTests()
         {
             _userRepoMock = new Mock<IUserRepository>();
-            _emailServiceMock = new Mock<IEmailService>();
+            _workflowEmailServiceMock = new Mock<IWorkflowEmailService>();
             _refreshTokenRepoMock = new Mock<IRefreshTokenRepository>();
             _assignmentRepoMock = new Mock<IAssignmentRepository>();
             _projectRepoMock = new Mock<IProjectRepository>();
+            _globalBanRequestRepoMock = new Mock<IRepository<GlobalUserBanRequest>>();
+            _appNotificationRepoMock = new Mock<IRepository<AppNotification>>();
             _logServiceMock = new Mock<IActivityLogService>();
             _notificationMock = new Mock<IAppNotificationService>();
             _configMock = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
@@ -38,6 +42,14 @@ namespace BLL.Tests
             jwtSection.Setup(s => s["Issuer"]).Returns("TestIssuer");
             jwtSection.Setup(s => s["Audience"]).Returns("TestAudience");
             _configMock.Setup(c => c.GetSection("Jwt")).Returns(jwtSection.Object);
+            _globalBanRequestRepoMock
+                .Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<GlobalUserBanRequest, bool>>>()))
+                .ReturnsAsync(new List<GlobalUserBanRequest>());
+            _globalBanRequestRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _appNotificationRepoMock
+                .Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<AppNotification, bool>>>()))
+                .ReturnsAsync(new List<AppNotification>());
+            _appNotificationRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
 
             _userService = new UserService(
                 _userRepoMock.Object,
@@ -46,8 +58,10 @@ namespace BLL.Tests
                 _assignmentRepoMock.Object,
                 _logServiceMock.Object,
                 _projectRepoMock.Object,
+                _globalBanRequestRepoMock.Object,
+                _appNotificationRepoMock.Object,
                 _notificationMock.Object,
-                _emailServiceMock.Object
+                _workflowEmailServiceMock.Object
             );
         }
 
@@ -68,6 +82,7 @@ namespace BLL.Tests
             Assert.Equal(UserRoles.Annotator, result.Role);
             _userRepoMock.Verify(r => r.AddAsync(It.IsAny<User>()), Times.Once);
             _logServiceMock.Verify(l => l.LogActionAsync(It.IsAny<string>(), "CreateUser", "User", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            _workflowEmailServiceMock.Verify(w => w.SendWelcomeEmailAsync(It.IsAny<User>(), It.IsAny<User?>()), Times.Once);
         }
 
         [Fact]
@@ -101,14 +116,72 @@ namespace BLL.Tests
         [Fact]
         public async Task RegisterAsync_AsAnnotatorWithManager_SetsManagerId()
         {
+            var manager = new User { Id = "manager-1", FullName = "Manager", Email = "manager@test.com", Role = UserRoles.Manager };
             _userRepoMock.Setup(r => r.IsEmailExistsAsync(It.IsAny<string>())).ReturnsAsync(false);
             _userRepoMock.Setup(r => r.AddAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
             _userRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _userRepoMock.Setup(r => r.GetByIdAsync("manager-1")).ReturnsAsync(manager);
 
             var result = await _userService.RegisterAsync("Jane Doe", "jane@test.com", "Password@123", UserRoles.Annotator, "manager-1");
 
             Assert.NotNull(result);
             Assert.Equal("manager-1", result.ManagerId);
+            _workflowEmailServiceMock.Verify(w => w.SendWelcomeEmailAsync(It.Is<User>(u => u.Email == "jane@test.com"), manager), Times.Once);
+        }
+
+        #endregion
+
+        #region ForgotPasswordAsync Tests
+
+        [Fact]
+        public async Task ForgotPasswordAsync_WithExistingUser_NotifiesAdminsWithoutChangingPassword()
+        {
+            var existingPasswordHash = BCrypt.Net.BCrypt.HashPassword("Password@123");
+            var user = new User
+            {
+                Id = "user-1",
+                Email = "john@test.com",
+                FullName = "John Doe",
+                Role = UserRoles.Annotator,
+                PasswordHash = existingPasswordHash
+            };
+            var admins = new List<User>
+            {
+                new User { Id = "admin-1", Email = "admin@test.com", FullName = "Admin", Role = UserRoles.Admin, IsActive = true }
+            };
+
+            _userRepoMock.Setup(r => r.GetUserByEmailAsync(user.Email)).ReturnsAsync(user);
+            _userRepoMock.Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<User, bool>>>())).ReturnsAsync(admins);
+
+            var message = await _userService.ForgotPasswordAsync(user.Email);
+
+            Assert.Equal("If your email is registered in our system, administrators have been notified and will review your password reset request.", message);
+            Assert.Equal(existingPasswordHash, user.PasswordHash);
+            _userRepoMock.Verify(r => r.Update(It.IsAny<User>()), Times.Never);
+            _workflowEmailServiceMock.Verify(w => w.SendForgotPasswordRequestEmailsAsync(user, It.Is<IReadOnlyCollection<User>>(a => a.Count == 1)), Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "admin-1",
+                It.Is<string>(message => message.Contains(user.Email)),
+                "PasswordResetRequest"), Times.Once);
+        }
+
+        [Fact]
+        public async Task AdminChangeUserPasswordAsync_SendsResetEmailToUser()
+        {
+            var user = new User
+            {
+                Id = "user-1",
+                Email = "john@test.com",
+                FullName = "John Doe",
+                Role = UserRoles.Annotator
+            };
+
+            _userRepoMock.Setup(r => r.GetByIdAsync(user.Id)).ReturnsAsync(user);
+            _userRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+
+            await _userService.AdminChangeUserPasswordAsync("admin-1", user.Id, "Temp1234");
+
+            _workflowEmailServiceMock.Verify(w => w.SendAdminPasswordResetEmailAsync(user, "Temp1234"), Times.Once);
         }
 
         #endregion
@@ -333,10 +406,83 @@ namespace BLL.Tests
             };
 
             _userRepoMock.Setup(r => r.GetByIdAsync("user-1")).ReturnsAsync(user);
+            _userRepoMock.Setup(r => r.GetByIdAsync("admin-1")).ReturnsAsync(new User { Id = "admin-1", Role = UserRoles.Admin });
+            _assignmentRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Assignment>());
+            _projectRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Project>());
+            _globalBanRequestRepoMock
+                .Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<GlobalUserBanRequest, bool>>>()))
+                .ReturnsAsync(new List<GlobalUserBanRequest>());
             _assignmentRepoMock.Setup(r => r.HasPendingTasksAsync(user.Id, user.Role)).ReturnsAsync(true);
 
             await Assert.ThrowsAsync<Exception>(() =>
                 _userService.ToggleUserStatusAsync("user-1", false, "admin-1"));
+        }
+
+        [Fact]
+        public async Task ToggleUserStatusAsync_ManagedUserWithUnfinishedProjects_CreatesPendingGlobalBanRequest()
+        {
+            var user = new User
+            {
+                Id = "user-1",
+                Role = UserRoles.Annotator,
+                FullName = "Worker One",
+                Email = "worker@test.com",
+                IsActive = true,
+                ManagerId = "manager-1"
+            };
+            var admin = new User { Id = "admin-1", FullName = "Admin", Role = UserRoles.Admin };
+            var manager = new User { Id = "manager-1", FullName = "Manager One", Role = UserRoles.Manager };
+            GlobalUserBanRequest? capturedRequest = null;
+
+            _userRepoMock.Setup(r => r.GetByIdAsync("user-1")).ReturnsAsync(user);
+            _userRepoMock.Setup(r => r.GetByIdAsync("admin-1")).ReturnsAsync(admin);
+            _userRepoMock.Setup(r => r.GetByIdAsync("manager-1")).ReturnsAsync(manager);
+            _assignmentRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Assignment>
+            {
+                new Assignment { Id = 1, ProjectId = 9, AnnotatorId = user.Id, Status = TaskStatusConstants.Assigned }
+            });
+            _projectRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Project>
+            {
+                new Project { Id = 9, Name = "Active Project", Status = ProjectStatusConstants.Active, ManagerId = "manager-1" }
+            });
+            _globalBanRequestRepoMock
+                .Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<GlobalUserBanRequest, bool>>>()))
+                .ReturnsAsync(new List<GlobalUserBanRequest>());
+            _globalBanRequestRepoMock
+                .Setup(r => r.AddAsync(It.IsAny<GlobalUserBanRequest>()))
+                .Callback<GlobalUserBanRequest>(request =>
+                {
+                    request.Id = 42;
+                    capturedRequest = request;
+                })
+                .Returns(Task.CompletedTask);
+            _globalBanRequestRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _notificationMock
+                .Setup(n => n.SendNotificationAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>()))
+                .Returns(Task.CompletedTask);
+
+            var result = await _userService.ToggleUserStatusAsync("user-1", false, "admin-1");
+
+            Assert.NotNull(capturedRequest);
+            Assert.True(result.RequiresManagerApproval);
+            Assert.Equal(42, result.GlobalBanRequestId);
+            Assert.True(user.IsActive);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "manager-1",
+                It.Is<string>(message => message.Contains("Worker One") && message.Contains("Active Project")),
+                "GlobalUserBanApproval",
+                "GlobalUserBanRequest",
+                "42",
+                "ResolveGlobalUserBanRequest",
+                It.Is<string>(metadata => metadata.Contains("\"requestStatus\":\"Pending\""))),
+                Times.Once);
         }
 
         [Fact]
@@ -346,18 +492,24 @@ namespace BLL.Tests
             {
                 Id = "user-1",
                 Role = UserRoles.Annotator,
+                FullName = "Worker One",
                 IsActive = true
             };
 
             _userRepoMock.Setup(r => r.GetByIdAsync("user-1")).ReturnsAsync(user);
-            _assignmentRepoMock.Setup(r => r.HasPendingTasksAsync(user.Id, user.Role)).ReturnsAsync(false);
+            _userRepoMock.Setup(r => r.GetByIdAsync("admin-1")).ReturnsAsync(new User { Id = "admin-1", Role = UserRoles.Admin });
             _assignmentRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Assignment>());
             _projectRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Project>());
+            _globalBanRequestRepoMock
+                .Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<GlobalUserBanRequest, bool>>>()))
+                .ReturnsAsync(new List<GlobalUserBanRequest>());
+            _assignmentRepoMock.Setup(r => r.HasPendingTasksAsync(user.Id, user.Role)).ReturnsAsync(false);
             _userRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
 
-            await _userService.ToggleUserStatusAsync("user-1", false, "admin-1");
+            var result = await _userService.ToggleUserStatusAsync("user-1", false, "admin-1");
 
             Assert.False(user.IsActive);
+            Assert.False(result.RequiresManagerApproval);
         }
 
         [Fact]
@@ -373,9 +525,205 @@ namespace BLL.Tests
             _userRepoMock.Setup(r => r.GetByIdAsync("user-1")).ReturnsAsync(user);
             _userRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
 
-            await _userService.ToggleUserStatusAsync("user-1", true);
+            var result = await _userService.ToggleUserStatusAsync("user-1", true);
 
             Assert.True(user.IsActive);
+            Assert.True(result.IsActive);
+        }
+
+        [Fact]
+        public async Task ResolveGlobalUserBanRequestAsync_Approve_DeactivatesUserAndRemovesFromProjects()
+        {
+            var transactionMock = new Mock<ITransaction>();
+            var banRequest = new GlobalUserBanRequest
+            {
+                Id = 42,
+                TargetUserId = "user-1",
+                RequestedByAdminId = "admin-1",
+                ManagerId = "manager-1",
+                Status = GlobalUserBanRequestStatusConstants.Pending,
+                RequestedAt = DateTime.UtcNow.AddMinutes(-10)
+            };
+            var targetUser = new User
+            {
+                Id = "user-1",
+                FullName = "Worker One",
+                Email = "worker@test.com",
+                Role = UserRoles.Annotator,
+                IsActive = true,
+                ManagerId = "manager-1"
+            };
+            var admin = new User { Id = "admin-1", FullName = "Admin", Email = "admin@test.com", Role = UserRoles.Admin };
+            var manager = new User { Id = "manager-1", FullName = "Manager", Email = "manager@test.com", Role = UserRoles.Manager };
+            var assignment = new Assignment
+            {
+                Id = 100,
+                ProjectId = 9,
+                DataItemId = 5,
+                AnnotatorId = "user-1",
+                Status = TaskStatusConstants.Submitted
+            };
+            var detailedProject = new Project
+            {
+                Id = 9,
+                Name = "Pending Project",
+                Status = ProjectStatusConstants.Active,
+                ManagerId = "manager-1",
+                DataItems = new List<DataItem>
+                {
+                    new DataItem
+                    {
+                        Id = 5,
+                        ProjectId = 9,
+                        Status = TaskStatusConstants.Submitted,
+                        Assignments = new List<Assignment> { assignment }
+                    }
+                }
+            };
+            var managerNotification = new AppNotification
+            {
+                Id = 77,
+                UserId = "manager-1",
+                ReferenceType = "GlobalUserBanRequest",
+                ReferenceId = "42",
+                MetadataJson = "{\"requestStatus\":\"Pending\"}",
+                IsRead = false
+            };
+
+            transactionMock.Setup(t => t.CommitAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            transactionMock.Setup(t => t.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            _globalBanRequestRepoMock.Setup(r => r.GetByIdAsync(42)).ReturnsAsync(banRequest);
+            _globalBanRequestRepoMock.Setup(r => r.BeginTransactionAsync()).ReturnsAsync(transactionMock.Object);
+            _globalBanRequestRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _userRepoMock.Setup(r => r.GetByIdAsync("user-1")).ReturnsAsync(targetUser);
+            _userRepoMock.Setup(r => r.GetByIdAsync("admin-1")).ReturnsAsync(admin);
+            _userRepoMock.Setup(r => r.GetByIdAsync("manager-1")).ReturnsAsync(manager);
+            _userRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _assignmentRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Assignment> { assignment });
+            _assignmentRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _projectRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Project>
+            {
+                new Project { Id = 9, Name = "Pending Project", Status = ProjectStatusConstants.Active, ManagerId = "manager-1" }
+            });
+            _projectRepoMock.Setup(r => r.GetProjectWithDetailsAsync(9)).ReturnsAsync(detailedProject);
+            _projectRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _appNotificationRepoMock
+                .Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<AppNotification, bool>>>()))
+                .ReturnsAsync(new List<AppNotification> { managerNotification });
+            _appNotificationRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _notificationMock
+                .Setup(n => n.SendNotificationAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>()))
+                .Returns(Task.CompletedTask);
+
+            await _userService.ResolveGlobalUserBanRequestAsync(42, "manager-1", new ResolveGlobalUserBanRequest
+            {
+                Approve = true
+            });
+
+            Assert.False(targetUser.IsActive);
+            Assert.Equal(GlobalUserBanRequestStatusConstants.Approved, banRequest.Status);
+            Assert.True(managerNotification.IsRead);
+            Assert.Contains("Approved", managerNotification.MetadataJson ?? string.Empty);
+            _assignmentRepoMock.Verify(r => r.Delete(It.Is<Assignment>(a => a.Id == 100)), Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "admin-1",
+                It.Is<string>(message => message.Contains("approved")),
+                "GlobalUserBanApproved",
+                "GlobalUserBanRequest",
+                "42",
+                null,
+                null), Times.Once);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "user-1",
+                It.Is<string>(message => message.Contains("globally banned")),
+                "AccountDeactivated",
+                "GlobalUserBanRequest",
+                "42",
+                null,
+                null), Times.Once);
+        }
+
+        [Fact]
+        public async Task ResolveGlobalUserBanRequestAsync_Reject_KeepsUserActive()
+        {
+            var transactionMock = new Mock<ITransaction>();
+            var banRequest = new GlobalUserBanRequest
+            {
+                Id = 55,
+                TargetUserId = "user-1",
+                RequestedByAdminId = "admin-1",
+                ManagerId = "manager-1",
+                Status = GlobalUserBanRequestStatusConstants.Pending,
+                RequestedAt = DateTime.UtcNow.AddMinutes(-10)
+            };
+            var targetUser = new User
+            {
+                Id = "user-1",
+                FullName = "Worker One",
+                Email = "worker@test.com",
+                Role = UserRoles.Annotator,
+                IsActive = true,
+                ManagerId = "manager-1"
+            };
+            var admin = new User { Id = "admin-1", FullName = "Admin", Email = "admin@test.com", Role = UserRoles.Admin };
+            var manager = new User { Id = "manager-1", FullName = "Manager", Email = "manager@test.com", Role = UserRoles.Manager };
+            var managerNotification = new AppNotification
+            {
+                Id = 88,
+                UserId = "manager-1",
+                ReferenceType = "GlobalUserBanRequest",
+                ReferenceId = "55",
+                MetadataJson = "{\"requestStatus\":\"Pending\"}",
+                IsRead = false
+            };
+
+            transactionMock.Setup(t => t.CommitAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            transactionMock.Setup(t => t.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            _globalBanRequestRepoMock.Setup(r => r.GetByIdAsync(55)).ReturnsAsync(banRequest);
+            _globalBanRequestRepoMock.Setup(r => r.BeginTransactionAsync()).ReturnsAsync(transactionMock.Object);
+            _globalBanRequestRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _userRepoMock.Setup(r => r.GetByIdAsync("user-1")).ReturnsAsync(targetUser);
+            _userRepoMock.Setup(r => r.GetByIdAsync("admin-1")).ReturnsAsync(admin);
+            _userRepoMock.Setup(r => r.GetByIdAsync("manager-1")).ReturnsAsync(manager);
+            _appNotificationRepoMock
+                .Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<AppNotification, bool>>>()))
+                .ReturnsAsync(new List<AppNotification> { managerNotification });
+            _appNotificationRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _notificationMock
+                .Setup(n => n.SendNotificationAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>()))
+                .Returns(Task.CompletedTask);
+
+            await _userService.ResolveGlobalUserBanRequestAsync(55, "manager-1", new ResolveGlobalUserBanRequest
+            {
+                Approve = false
+            });
+
+            Assert.True(targetUser.IsActive);
+            Assert.Equal(GlobalUserBanRequestStatusConstants.Rejected, banRequest.Status);
+            _notificationMock.Verify(n => n.SendNotificationAsync(
+                "admin-1",
+                It.Is<string>(message => message.Contains("rejected")),
+                "GlobalUserBanRejected",
+                "GlobalUserBanRequest",
+                "55",
+                null,
+                null), Times.Once);
         }
 
         #endregion
@@ -621,3 +969,4 @@ namespace BLL.Tests
         #endregion
     }
 }
+

@@ -1,9 +1,10 @@
 using BLL.Interfaces;
+using Core.DTOs.Responses;
 using Core.Entities;
-using DAL.Interfaces;
+using Core.Interfaces;
 using System;
-using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace BLL.Services
@@ -11,25 +12,46 @@ namespace BLL.Services
     public class AppNotificationService : IAppNotificationService
     {
         private readonly IRepository<AppNotification> _notificationRepo;
+        private readonly IAppNotificationRealtimeDispatcher? _realtimeDispatcher;
 
-        public AppNotificationService(IRepository<AppNotification> notificationRepo)
+        public AppNotificationService(
+            IRepository<AppNotification> notificationRepo,
+            IAppNotificationRealtimeDispatcher? realtimeDispatcher = null)
         {
             _notificationRepo = notificationRepo;
+            _realtimeDispatcher = realtimeDispatcher;
         }
 
-        public async Task SendNotificationAsync(string userId, string message, string type)
+        public async Task SendNotificationAsync(
+            string userId,
+            string message,
+            string type,
+            string? referenceType = null,
+            string? referenceId = null,
+            string? actionKey = null,
+            string? metadataJson = null)
         {
             var notification = new AppNotification
             {
                 UserId = userId,
+                Title = BuildTitle(type),
                 Message = message,
                 Type = type,
+                ReferenceType = referenceType,
+                ReferenceId = referenceId,
+                ActionKey = actionKey,
+                MetadataJson = metadataJson,
                 IsRead = false,
                 CreatedAt = DateTime.UtcNow
             };
 
             await _notificationRepo.AddAsync(notification);
             await _notificationRepo.SaveChangesAsync();
+
+            if (_realtimeDispatcher != null)
+            {
+                await _realtimeDispatcher.DispatchAsync(userId, MapToPayload(notification));
+            }
         }
 
         public async Task<int> GetUnreadCountAsync(string userId)
@@ -48,8 +70,13 @@ namespace BLL.Services
                 .Select(n => new
                 {
                     n.Id,
+                    n.Title,
                     n.Message,
                     n.Type,
+                    n.ReferenceType,
+                    n.ReferenceId,
+                    n.ActionKey,
+                    Metadata = ParseMetadata(n.MetadataJson),
                     n.IsRead,
                     n.CreatedAt
                 })
@@ -91,15 +118,18 @@ namespace BLL.Services
             return unreadNotifications
                 .OrderByDescending(n => n.CreatedAt)
                 .Take(50)
-                .Select(notification => new
-                {
-                    Id = notification.Id,
-                    Message = notification.Message,
-                    Type = notification.Type,
-                    IsRead = notification.IsRead,
-                    Timestamp = notification.CreatedAt
-                })
+                .Select(MapToPayload)
                 .ToList();
+        }
+
+        private static string BuildTitle(string type)
+        {
+            if (string.IsNullOrWhiteSpace(type))
+            {
+                return "Notification";
+            }
+
+            return $"{type.Trim()} Notification";
         }
 
         public async Task MarkListAsReadAsync(List<int> notificationIds, string userId)
@@ -120,5 +150,41 @@ namespace BLL.Services
                 await _notificationRepo.SaveChangesAsync();
             }
         }
+
+        private static NotificationPayload MapToPayload(AppNotification notification)
+        {
+            return new NotificationPayload
+            {
+                Id = notification.Id,
+                Title = notification.Title,
+                Message = notification.Message,
+                Type = notification.Type,
+                ReferenceType = notification.ReferenceType,
+                ReferenceId = notification.ReferenceId,
+                ActionKey = notification.ActionKey,
+                Metadata = ParseMetadata(notification.MetadataJson),
+                IsRead = notification.IsRead,
+                Timestamp = notification.CreatedAt
+            };
+        }
+
+        private static JsonElement? ParseMetadata(string? metadataJson)
+        {
+            if (string.IsNullOrWhiteSpace(metadataJson))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(metadataJson);
+                return document.RootElement.Clone();
+            }
+            catch
+            {
+                return null;
+            }
+        }
     }
 }
+
