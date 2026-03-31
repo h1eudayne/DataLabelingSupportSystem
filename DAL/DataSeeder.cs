@@ -28,25 +28,61 @@ namespace DAL
 
         private static async Task SeedDefaultAdminAsync(ApplicationDbContext context, IConfiguration configuration)
         {
-            var adminSeed = ResolveAdminSeed(configuration);
+            var adminSeed = ResolveAdminSeed(configuration, useFallbackDefaults: false);
 
-            if (!adminSeed.Enabled || await context.Users.AnyAsync(user => user.Role == UserRoles.Admin))
+            if (!adminSeed.Enabled)
             {
                 return;
             }
 
-            var admin = new User
-            {
-                FullName = adminSeed.FullName,
-                Username = BuildUsernameFromEmail(adminSeed.Email),
-                Email = adminSeed.Email,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminSeed.Password),
-                Role = UserRoles.Admin,
-                IsActive = true,
-                IsEmailVerified = true
-            };
+            var existingAdmin = await context.Users.FirstOrDefaultAsync(user => user.Role == UserRoles.Admin);
+            var userWithConfiguredEmail = await context.Users.FirstOrDefaultAsync(user => user.Email == adminSeed.Email);
 
-            await context.Users.AddAsync(admin);
+            if (userWithConfiguredEmail == null)
+            {
+                if (existingAdmin != null)
+                {
+                    return;
+                }
+
+                var admin = new User
+                {
+                    FullName = adminSeed.FullName,
+                    Username = BuildUsernameFromEmail(adminSeed.Email),
+                    Email = adminSeed.Email,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminSeed.Password),
+                    Role = UserRoles.Admin,
+                    IsActive = true,
+                    IsEmailVerified = true
+                };
+
+                await context.Users.AddAsync(admin);
+                await context.SaveChangesAsync();
+                return;
+            }
+
+            if (existingAdmin != null && existingAdmin.Id != userWithConfiguredEmail.Id)
+            {
+                return;
+            }
+
+            var shouldRefreshPassword =
+                string.IsNullOrWhiteSpace(userWithConfiguredEmail.PasswordHash) ||
+                !string.Equals(userWithConfiguredEmail.Role, UserRoles.Admin, StringComparison.OrdinalIgnoreCase) ||
+                !userWithConfiguredEmail.IsActive;
+
+            userWithConfiguredEmail.FullName = adminSeed.FullName;
+            userWithConfiguredEmail.Username = BuildUsernameFromEmail(adminSeed.Email);
+            userWithConfiguredEmail.Email = adminSeed.Email;
+            userWithConfiguredEmail.Role = UserRoles.Admin;
+            userWithConfiguredEmail.IsActive = true;
+            userWithConfiguredEmail.IsEmailVerified = true;
+
+            if (shouldRefreshPassword)
+            {
+                userWithConfiguredEmail.PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminSeed.Password);
+            }
+
             await context.SaveChangesAsync();
         }
 
@@ -54,7 +90,7 @@ namespace DAL
         {
             if (await context.Users.AnyAsync()) return;
 
-            var adminSeed = ResolveAdminSeed(configuration);
+            var adminSeed = ResolveAdminSeed(configuration, useFallbackDefaults: true);
             var adminId = "440816a8-8954-4557-a462-196471ce8b02";
             var managerId = "49179920-d356-46f9-bb64-64da9f6ef4ee";
             var annotatorId = "5c023639-82ed-448e-9415-fc2e86b2d325";
@@ -131,18 +167,41 @@ namespace DAL
             await context.SaveChangesAsync();
         }
 
-        private static AdminSeedSettings ResolveAdminSeed(IConfiguration configuration)
+        private static AdminSeedSettings ResolveAdminSeed(IConfiguration configuration, bool useFallbackDefaults)
         {
-            var enabled = configuration.GetValue("SeedAdmin:Enabled", true);
-            var fullName = (configuration["SeedAdmin:FullName"] ?? "System Administrator").Trim();
-            var email = (configuration["SeedAdmin:Email"] ?? "ducnguyen230705@gmail.com").Trim();
-            var password = configuration["SeedAdmin:Password"] ?? "123456";
+            var fullName = (configuration["SeedAdmin:FullName"] ?? string.Empty).Trim();
+            var email = (configuration["SeedAdmin:Email"] ?? string.Empty).Trim();
+            var password = configuration["SeedAdmin:Password"] ?? string.Empty;
+            var configuredEnabled = configuration.GetValue<bool?>("SeedAdmin:Enabled");
+            var hasCredentials = !string.IsNullOrWhiteSpace(email) && !string.IsNullOrWhiteSpace(password);
+
+            if (useFallbackDefaults)
+            {
+                fullName = string.IsNullOrWhiteSpace(fullName) ? "System Administrator" : fullName;
+                email = string.IsNullOrWhiteSpace(email) ? "admin@system.com" : email;
+                password = string.IsNullOrWhiteSpace(password) ? "123456" : password;
+                hasCredentials = true;
+            }
+
+            var enabled = configuredEnabled ?? hasCredentials;
+
+            if (!enabled)
+            {
+                return new AdminSeedSettings(false, string.Empty, string.Empty, string.Empty);
+            }
+
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+            {
+                throw new InvalidOperationException(
+                    "FATAL: Seed admin is enabled but credentials are missing. " +
+                    "Set 'SeedAdmin:Email'/'SeedAdmin__Email' and 'SeedAdmin:Password'/'SeedAdmin__Password'.");
+            }
 
             return new AdminSeedSettings(
                 enabled,
                 string.IsNullOrWhiteSpace(fullName) ? "System Administrator" : fullName,
-                string.IsNullOrWhiteSpace(email) ? "ducnguyen230705@gmail.com" : email,
-                string.IsNullOrWhiteSpace(password) ? "123456" : password);
+                email,
+                password);
         }
 
         private static string BuildUsernameFromEmail(string email)
