@@ -45,6 +45,13 @@ namespace BLL
                 var context = services.GetRequiredService<global::DAL.ApplicationDbContext>();
                 var applyMigrationsOnStartup = configuration.GetValue("Database:ApplyMigrationsOnStartup", true);
                 var ensureCreatedOnStartup = configuration.GetValue("Database:EnsureCreatedOnStartup", true);
+                var connection = context.Database.GetDbConnection();
+
+                logger.LogInformation(
+                    "Database connection target resolved. Provider={Provider}; Server={Server}; Database={Database}",
+                    context.Database.ProviderName,
+                    connection.DataSource,
+                    connection.Database);
 
                 if (applyMigrationsOnStartup)
                 {
