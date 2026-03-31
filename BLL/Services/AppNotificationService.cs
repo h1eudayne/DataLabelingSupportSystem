@@ -3,8 +3,8 @@ using Core.DTOs.Responses;
 using Core.Entities;
 using Core.Interfaces;
 using System;
-using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace BLL.Services
@@ -22,7 +22,14 @@ namespace BLL.Services
             _realtimeDispatcher = realtimeDispatcher;
         }
 
-        public async Task SendNotificationAsync(string userId, string message, string type)
+        public async Task SendNotificationAsync(
+            string userId,
+            string message,
+            string type,
+            string? referenceType = null,
+            string? referenceId = null,
+            string? actionKey = null,
+            string? metadataJson = null)
         {
             var notification = new AppNotification
             {
@@ -30,6 +37,10 @@ namespace BLL.Services
                 Title = BuildTitle(type),
                 Message = message,
                 Type = type,
+                ReferenceType = referenceType,
+                ReferenceId = referenceId,
+                ActionKey = actionKey,
+                MetadataJson = metadataJson,
                 IsRead = false,
                 CreatedAt = DateTime.UtcNow
             };
@@ -62,6 +73,10 @@ namespace BLL.Services
                     n.Title,
                     n.Message,
                     n.Type,
+                    n.ReferenceType,
+                    n.ReferenceId,
+                    n.ActionKey,
+                    Metadata = ParseMetadata(n.MetadataJson),
                     n.IsRead,
                     n.CreatedAt
                 })
@@ -144,9 +159,31 @@ namespace BLL.Services
                 Title = notification.Title,
                 Message = notification.Message,
                 Type = notification.Type,
+                ReferenceType = notification.ReferenceType,
+                ReferenceId = notification.ReferenceId,
+                ActionKey = notification.ActionKey,
+                Metadata = ParseMetadata(notification.MetadataJson),
                 IsRead = notification.IsRead,
                 Timestamp = notification.CreatedAt
             };
+        }
+
+        private static JsonElement? ParseMetadata(string? metadataJson)
+        {
+            if (string.IsNullOrWhiteSpace(metadataJson))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(metadataJson);
+                return document.RootElement.Clone();
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

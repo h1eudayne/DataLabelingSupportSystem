@@ -284,23 +284,27 @@ namespace BLL.Services
             if (!groupedAssignments.Any())
                 return TaskStatusConstants.Assigned;
 
-            if (groupedAssignments.Any(a => string.Equals(a.Status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase)))
-                return TaskStatusConstants.Rejected;
-
             if (groupedAssignments.Any(a => string.Equals(a.Status, "Escalated", StringComparison.OrdinalIgnoreCase)))
                 return "Escalated";
 
             if (groupedAssignments.Any(a => string.Equals(a.Status, TaskStatusConstants.InProgress, StringComparison.OrdinalIgnoreCase)))
                 return TaskStatusConstants.InProgress;
 
-            if (groupedAssignments.All(a => string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase)))
-                return TaskStatusConstants.Approved;
-
-            if (groupedAssignments.Any(a =>
-                    string.Equals(a.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase)))
-            {
+            if (groupedAssignments.Any(a => string.Equals(a.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase)))
                 return TaskStatusConstants.Submitted;
+
+            int approvedCount = groupedAssignments.Count(a => string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase));
+            int rejectedCount = groupedAssignments.Count(a => string.Equals(a.Status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase));
+
+            if (approvedCount > 0 || rejectedCount > 0)
+            {
+                if (approvedCount > rejectedCount)
+                    return TaskStatusConstants.Approved;
+
+                if (rejectedCount > approvedCount)
+                    return TaskStatusConstants.Rejected;
+
+                return "Escalated";
             }
 
             return TaskStatusConstants.Assigned;
@@ -744,14 +748,7 @@ namespace BLL.Services
                 throw new InvalidOperationException("Annotation data is empty. Please save a draft before submitting.");
 
             var assignmentGroup = await GetAssignmentGroupAsync(assignment);
-            var syncTargets = assignmentGroup
-                .Where(a => !HasBeenReviewed(a))
-                .ToList();
-
-            if (!syncTargets.Any())
-            {
-                syncTargets.Add(assignment);
-            }
+            var syncTargets = assignmentGroup.ToList();
 
             foreach (var target in syncTargets)
             {
@@ -855,14 +852,7 @@ namespace BLL.Services
                         continue;
                     }
 
-                    var syncTargets = assignmentGroup
-                        .Where(a => !HasBeenReviewed(a))
-                        .ToList();
-
-                    if (!syncTargets.Any())
-                    {
-                        syncTargets.Add(assignment);
-                    }
+                    var syncTargets = assignmentGroup.ToList();
 
                     foreach (var target in syncTargets)
                     {

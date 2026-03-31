@@ -14,6 +14,8 @@ namespace BLL.Interfaces
 
         Task<BatchCompletionStatusResponse> GetBatchCompletionStatusAsync(int projectId, string reviewerId);
 
+        Task<List<EscalatedReviewResponse>> GetEscalatedTasksAsync(int projectId, string managerId);
+
         Task HandleEscalatedTaskAsync(string managerId, EscalationActionRequest request);
     }
 }

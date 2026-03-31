@@ -22,7 +22,8 @@ namespace BLL.Interfaces
         Task<string> ForgotPasswordAsync(string email);
         Task AdminChangeUserPasswordAsync(string adminId, string targetUserId, string newPassword);
         Task<List<UserResponse>> GetManagementBoardAsync();
-        Task ToggleUserStatusAsync(string userId, bool isActive, string? adminId = null);
+        Task<ToggleUserStatusResponse> ToggleUserStatusAsync(string userId, bool isActive, string? adminId = null);
+        Task ResolveGlobalUserBanRequestAsync(int requestId, string managerId, ResolveGlobalUserBanRequest request);
         Task UpdateAvatarAsync(string userId, string avatarUrl);
         Task<ImportUserResponse> ImportUsersFromExcelAsync(Stream fileStream, string adminId);
         Task<List<UserResponse>> GetManagedUsersAsync(string managerId);

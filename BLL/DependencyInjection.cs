@@ -1,5 +1,6 @@
 using BLL.Interfaces;
 using BLL.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -37,16 +38,37 @@ namespace BLL
             using var scope = serviceProvider.CreateScope();
             var services = scope.ServiceProvider;
             var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+            var configuration = services.GetRequiredService<IConfiguration>();
 
             try
             {
                 var context = services.GetRequiredService<global::DAL.ApplicationDbContext>();
+                var applyMigrationsOnStartup = configuration.GetValue("Database:ApplyMigrationsOnStartup", true);
+                var ensureCreatedOnStartup = configuration.GetValue("Database:EnsureCreatedOnStartup", true);
+
+                if (applyMigrationsOnStartup)
+                {
+                    logger.LogInformation("Applying database migrations on startup.");
+                    await context.Database.MigrateAsync();
+                }
+                else if (ensureCreatedOnStartup)
+                {
+                    logger.LogInformation("Ensuring database schema exists from the current EF model.");
+                    await context.Database.EnsureCreatedAsync();
+                }
+                else
+                {
+                    logger.LogInformation("Skipping automatic database schema initialization on startup.");
+                }
+
                 await global::DAL.AssignmentSchemaUpdater.EnsureAssignmentIndexesAsync(context, logger);
                 await global::DAL.DependencyInjection.SeedDataAsync(services, isDevelopment);
+                logger.LogInformation("Infrastructure initialization completed successfully.");
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "An error occurred while seeding the initial data.");
+                logger.LogCritical(ex, "Infrastructure initialization failed during startup.");
+                throw;
             }
         }
     }

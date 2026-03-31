@@ -20,6 +20,23 @@ namespace BLL.Services
         private readonly IUserRepository _userRepo;
         private readonly IWorkflowEmailService _workflowEmailService;
 
+        private static IEnumerable<ReviewLog> GetCurrentSubmissionReviewLogs(
+            IEnumerable<ReviewLog>? reviewLogs,
+            DateTime? submittedAt)
+        {
+            if (reviewLogs == null)
+            {
+                return Enumerable.Empty<ReviewLog>();
+            }
+
+            if (!submittedAt.HasValue)
+            {
+                return reviewLogs;
+            }
+
+            return reviewLogs.Where(log => log.CreatedAt >= submittedAt.Value);
+        }
+
         public DisputeService(
             IDisputeRepository disputeRepo,
             IAssignmentRepository assignmentRepo,
@@ -51,7 +68,24 @@ namespace BLL.Services
             if (assignment.AnnotatorId != annotatorId) throw new UnauthorizedAccessException("You can only dispute your own assignments");
             if (assignment.Status != TaskStatusConstants.Rejected) throw new Exception("You can only dispute rejected tasks");
 
-            var lastReview = assignment.ReviewLogs?.OrderByDescending(r => r.CreatedAt).FirstOrDefault();
+            var relatedAssignments = await _assignmentRepo.GetRelatedAssignmentsForDisputeAsync(
+                assignment.Id,
+                assignment.AnnotatorId,
+                assignment.DataItemId);
+            var assignmentGroup = relatedAssignments.Append(assignment).ToList();
+
+            bool hasPendingReviewerVote = assignmentGroup.Any(a =>
+                string.Equals(a.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase) &&
+                !GetCurrentSubmissionReviewLogs(a.ReviewLogs, a.SubmittedAt).Any());
+
+            if (hasPendingReviewerVote)
+            {
+                throw new Exception("You cannot dispute this task yet because other reviewers are still voting on the current submission.");
+            }
+
+            var lastReview = GetCurrentSubmissionReviewLogs(assignment.ReviewLogs, assignment.SubmittedAt)
+                .OrderByDescending(r => r.CreatedAt)
+                .FirstOrDefault();
             if (lastReview != null && (DateTime.UtcNow - lastReview.CreatedAt).TotalHours > 48)
             {
                 throw new Exception("Dispute Window Expired: You can only file a dispute within 48 hours of rejection.");
@@ -347,7 +381,51 @@ namespace BLL.Services
                 disputes = await _disputeRepo.GetDisputesByAnnotatorAsync(userId);
             }
 
-            return disputes.Select(MapToResponse).ToList();
+            var responses = new List<DisputeResponse>();
+
+            foreach (var dispute in disputes)
+            {
+                var response = MapToResponse(dispute);
+
+                if (dispute.Assignment != null)
+                {
+                    var relatedAssignments = await _assignmentRepo.GetRelatedAssignmentsForDisputeAsync(
+                        dispute.Assignment.Id,
+                        dispute.Assignment.AnnotatorId,
+                        dispute.Assignment.DataItemId);
+
+                    var assignmentGroup = relatedAssignments
+                        .Append(dispute.Assignment)
+                        .GroupBy(a => a.Id)
+                        .Select(g => g.First())
+                        .ToList();
+
+                    response.ReviewerFeedbacks = assignmentGroup
+                        .Select(assignment => new
+                        {
+                            Assignment = assignment,
+                            LatestReview = GetCurrentSubmissionReviewLogs(assignment.ReviewLogs, assignment.SubmittedAt)
+                                .OrderByDescending(log => log.CreatedAt)
+                                .FirstOrDefault()
+                        })
+                        .Where(item => item.LatestReview != null)
+                        .Select(item => new ReviewerFeedbackResponse
+                        {
+                            ReviewerId = item.LatestReview!.ReviewerId,
+                            ReviewerName = item.Assignment.Reviewer?.FullName ?? item.Assignment.Reviewer?.Email ?? item.LatestReview.ReviewerId,
+                            Verdict = item.LatestReview.Verdict,
+                            Comment = item.LatestReview.Comment,
+                            ErrorCategories = item.LatestReview.ErrorCategory,
+                            ReviewedAt = item.LatestReview.CreatedAt
+                        })
+                        .OrderByDescending(item => item.ReviewedAt)
+                        .ToList();
+                }
+
+                responses.Add(response);
+            }
+
+            return responses;
         }
 
         private static DisputeResponse MapToResponse(Dispute d)

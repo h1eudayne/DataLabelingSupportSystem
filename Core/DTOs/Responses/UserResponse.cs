@@ -10,6 +10,16 @@
         public bool IsActive { get; set; }
         public string? ManagerId { get; set; }
         public int TotalProjects { get; set; }
+        public int UnfinishedProjectCount { get; set; }
+        public bool HasPendingGlobalBanRequest { get; set; }
+    }
+
+    public class ToggleUserStatusResponse
+    {
+        public string Message { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+        public bool RequiresManagerApproval { get; set; }
+        public int? GlobalBanRequestId { get; set; }
     }
 
     public class PagedResponse<T>

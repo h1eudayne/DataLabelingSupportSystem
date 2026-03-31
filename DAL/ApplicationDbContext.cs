@@ -21,6 +21,7 @@ namespace DAL
         public DbSet<ActivityLog> ActivityLogs { get; set; }
         public DbSet<ReviewChecklistItem> ReviewChecklistItems { get; set; }
         public DbSet<AppNotification> AppNotifications { get; set; }
+        public DbSet<GlobalUserBanRequest> GlobalUserBanRequests { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
 
         public DbSet<ProjectFlag> ProjectFlags { get; set; }
@@ -85,6 +86,24 @@ namespace DAL
             modelBuilder.Entity<RefreshToken>()
                 .HasIndex(rt => rt.UserId)
                 .HasDatabaseName("IX_RefreshToken_UserId");
+
+            modelBuilder.Entity<GlobalUserBanRequest>()
+                .HasOne(r => r.TargetUser)
+                .WithMany()
+                .HasForeignKey(r => r.TargetUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<GlobalUserBanRequest>()
+                .HasOne(r => r.RequestedByAdmin)
+                .WithMany()
+                .HasForeignKey(r => r.RequestedByAdminId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<GlobalUserBanRequest>()
+                .HasOne(r => r.Manager)
+                .WithMany()
+                .HasForeignKey(r => r.ManagerId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<ProjectFlag>()
                 .HasOne(pf => pf.Project)

@@ -291,14 +291,47 @@ namespace API.Controllers
             try
             {
                 var adminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                await _userService.ToggleUserStatusAsync(id, isActive, adminId);
-                var status = isActive ? "activated" : "deactivated";
-                return Ok(new { Message = $"User has been {status} successfully." });
+                var result = await _userService.ToggleUserStatusAsync(id, isActive, adminId);
+                return Ok(result);
             }
             catch (Exception ex)
             {
                 if (ex.Message.Contains("User not found"))
                     return NotFound(new ErrorResponse { Message = ex.Message });
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
+        [HttpPost("global-ban-requests/{requestId}/resolve")]
+        [Authorize(Roles = "Manager")]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        [ProducesResponseType(typeof(ErrorResponse), 404)]
+        public async Task<IActionResult> ResolveGlobalBanRequest(int requestId, [FromBody] ResolveGlobalUserBanRequest request)
+        {
+            try
+            {
+                var managerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(managerId)) return Unauthorized();
+
+                await _userService.ResolveGlobalUserBanRequestAsync(requestId, managerId, request);
+
+                var message = request.Approve
+                    ? "Global ban request approved successfully."
+                    : "Global ban request rejected successfully.";
+
+                return Ok(new { Message = message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new ErrorResponse { Message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                if (ex.Message.Contains("not found"))
+                    return NotFound(new ErrorResponse { Message = ex.Message });
+
                 return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
