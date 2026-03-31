@@ -77,21 +77,22 @@ builder.Services.AddCors(options =>
 
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwtSettings["Key"];
+const int minJwtKeyBytes = 32;
 
 if (string.IsNullOrEmpty(jwtKey))
 {
     throw new InvalidOperationException(
         "FATAL: JWT Key is not configured. " +
-        "Set 'Jwt:Key' or the environment variable 'Jwt__Key' with at least 16 characters. " +
+        "Set 'Jwt:Key' or the environment variable 'Jwt__Key' with at least 32 characters. " +
         "For production, use a cryptographically secure random key of 32+ characters.");
 }
 
-var keyBytes = Encoding.ASCII.GetBytes(jwtKey);
-if (keyBytes.Length < 16)
+var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
+if (keyBytes.Length < minJwtKeyBytes)
 {
     throw new InvalidOperationException(
-        $"FATAL: JWT Key is too short ({keyBytes.Length} characters). " +
-        "JWT Key must be at least 16 characters long for HMAC-SHA256 security. " +
+        $"FATAL: JWT Key is too short ({keyBytes.Length} bytes). " +
+        "JWT Key must be at least 32 bytes long for HMAC-SHA256 signing. " +
         $"Current key: '{jwtKey.Substring(0, Math.Min(8, jwtKey.Length))}...' " +
         "Please update 'Jwt:Key' or 'Jwt__Key' with a longer, secure key.");
 }

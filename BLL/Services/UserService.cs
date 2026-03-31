@@ -1098,17 +1098,18 @@ namespace BLL.Services
         {
             var jwtSettings = _configuration.GetSection("Jwt");
             var keyString = jwtSettings["Key"];
+            const int minJwtKeyBytes = 32;
             if (string.IsNullOrEmpty(keyString))
                 throw new InvalidOperationException(
                     "JWT Key is not configured. " +
-                    "Please set 'Jwt:Key' or environment variable 'Jwt__Key' with at least 16 characters for production use. " +
-                    "Example: Jwt__Key=YourSecureKeyAtLeast16Chars!");
+                    "Please set 'Jwt:Key' or environment variable 'Jwt__Key' with at least 32 characters for production use. " +
+                    "Example: Jwt__Key=YourSecureKeyAtLeast32Chars!");
 
-            var keyBytes = Encoding.ASCII.GetBytes(keyString);
-            if (keyBytes.Length < 16)
+            var keyBytes = Encoding.UTF8.GetBytes(keyString);
+            if (keyBytes.Length < minJwtKeyBytes)
                 throw new InvalidOperationException(
-                    $"JWT Key must be at least 16 characters long for security. " +
-                    $"Current length: {keyBytes.Length} characters. " +
+                    $"JWT Key must be at least 32 bytes long for HMAC-SHA256 signing. " +
+                    $"Current length: {keyBytes.Length} bytes. " +
                     "Please update 'Jwt:Key' or 'Jwt__Key' with a longer, secure key.");
 
             string safeAvatarUrl = string.IsNullOrEmpty(user.AvatarUrl)
