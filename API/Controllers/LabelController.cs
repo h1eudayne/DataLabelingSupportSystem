@@ -34,9 +34,13 @@ namespace API.Controllers
                 var result = await _labelService.CreateLabelAsync(userId, request);
                 return Ok(result);
             }
-            catch (Exception ex)
+            catch (InvalidOperationException)
             {
-                return BadRequest(new ErrorResponse { Message = ex.Message });
+                return BadRequest(new ErrorResponse { Message = "Label name already exists in this project." });
+            }
+            catch (Exception)
+            {
+                return BadRequest(new ErrorResponse { Message = "Unable to create the label right now. Please try again." });
             }
         }
 
@@ -54,9 +58,17 @@ namespace API.Controllers
                 var result = await _labelService.UpdateLabelAsync(userId, id, request);
                 return Ok(result);
             }
-            catch (Exception ex)
+            catch (KeyNotFoundException ex)
             {
                 return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+            catch (Exception)
+            {
+                return BadRequest(new ErrorResponse { Message = "Unable to update the label right now. Please try again." });
             }
         }
 
@@ -74,9 +86,17 @@ namespace API.Controllers
                 await _labelService.DeleteLabelAsync(userId, id);
                 return Ok(new { Message = "Label deleted successfully." });
             }
-            catch (Exception ex)
+            catch (KeyNotFoundException ex)
             {
                 return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+            catch (Exception)
+            {
+                return BadRequest(new ErrorResponse { Message = "Unable to delete the label right now. Please try again." });
             }
         }
 

@@ -37,6 +37,57 @@ namespace BLL.Services
             return reviewLogs.Where(log => log.CreatedAt >= submittedAt.Value);
         }
 
+        private static string? GetLatestAnnotationData(Assignment? assignment)
+        {
+            return GetLatestAnnotationData(
+                assignment == null
+                    ? Enumerable.Empty<Assignment>()
+                    : new[] { assignment });
+        }
+
+        private static string? GetLatestAnnotationData(IEnumerable<Assignment> assignments)
+        {
+            return assignments
+                .SelectMany(assignment => assignment.Annotations ?? Enumerable.Empty<Annotation>())
+                .OrderByDescending(annotation => annotation.CreatedAt)
+                .FirstOrDefault()
+                ?.DataJSON;
+        }
+
+        private static ReviewerFeedbackResponse MapReviewerFeedback(Assignment assignment, ReviewLog reviewLog)
+        {
+            return new ReviewerFeedbackResponse
+            {
+                ReviewLogId = reviewLog.Id,
+                ReviewerId = reviewLog.ReviewerId,
+                ReviewerName = assignment.Reviewer?.FullName ?? assignment.Reviewer?.Email ?? reviewLog.ReviewerId,
+                Decision = reviewLog.Decision,
+                Verdict = reviewLog.Verdict,
+                Comment = reviewLog.Comment,
+                ErrorCategories = reviewLog.ErrorCategory,
+                ReviewedAt = reviewLog.CreatedAt,
+                ScorePenalty = reviewLog.ScorePenalty,
+                IsApproved = reviewLog.IsApproved,
+                IsAudited = reviewLog.IsAudited,
+                AuditResult = reviewLog.AuditResult
+            };
+        }
+
+        private static string? GetResolutionType(string? status)
+        {
+            if (string.Equals(status, "Resolved", StringComparison.OrdinalIgnoreCase))
+            {
+                return "annotator_correct";
+            }
+
+            if (string.Equals(status, "Rejected", StringComparison.OrdinalIgnoreCase))
+            {
+                return "annotator_wrong";
+            }
+
+            return null;
+        }
+
         public DisputeService(
             IDisputeRepository disputeRepo,
             IAssignmentRepository assignmentRepo,
@@ -67,6 +118,18 @@ namespace BLL.Services
             if (assignment == null) throw new Exception("Assignment not found");
             if (assignment.AnnotatorId != annotatorId) throw new UnauthorizedAccessException("You can only dispute your own assignments");
             if (assignment.Status != TaskStatusConstants.Rejected) throw new Exception("You can only dispute rejected tasks");
+            if (string.Equals(assignment.ManagerDecision, "reject", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new Exception("This task has already received a final manager rejection. Please revise and resubmit instead of filing another dispute.");
+            }
+
+            var pendingDisputes = await _disputeRepo.FindAsync(d =>
+                d.AssignmentId == request.AssignmentId &&
+                d.Status == "Pending");
+            if (pendingDisputes.Any())
+            {
+                throw new Exception("A dispute for this task is already pending manager review.");
+            }
 
             var relatedAssignments = await _assignmentRepo.GetRelatedAssignmentsForDisputeAsync(
                 assignment.Id,
@@ -116,49 +179,91 @@ namespace BLL.Services
                 $"Annotator filed a dispute for Task {assignment.Id}. Reason: {request.Reason}"
             );
 
-            try
-            {
-                string projectName = assignment.Project?.Name
-                    ?? (await _projectRepo.GetByIdAsync(assignment.ProjectId))?.Name
-                    ?? $"Project #{assignment.ProjectId}";
+            string projectName = assignment.Project?.Name
+                ?? (await _projectRepo.GetByIdAsync(assignment.ProjectId))?.Name
+                ?? $"Project #{assignment.ProjectId}";
 
-                if (!string.IsNullOrEmpty(assignment.ReviewerId))
-                {
-                    await _notification.SendNotificationAsync(
+            if (!string.IsNullOrEmpty(assignment.ReviewerId))
+            {
+                await RunDisputeSideEffectSafelyAsync(
+                    annotatorId,
+                    "CreateDisputeNotificationError",
+                    dispute.Id.ToString(),
+                    $"Dispute created but reviewer notification failed for reviewer {assignment.ReviewerId}.",
+                    () => _notification.SendNotificationAsync(
                         assignment.ReviewerId,
                         $"Annotator has filed a dispute for task #{assignment.Id} in project \"{projectName}\".",
-                        "Warning");
-                }
+                        "Warning"));
+            }
 
-                string? managerId = null;
-                if (assignment.Project != null)
-                {
-                    managerId = assignment.Project.ManagerId;
-                }
-                else
-                {
-                    var project = await _projectRepo.GetByIdAsync(assignment.ProjectId);
-                    managerId = project?.ManagerId;
-                }
+            string? managerId = null;
+            if (assignment.Project != null)
+            {
+                managerId = assignment.Project.ManagerId;
+            }
+            else
+            {
+                var project = await _projectRepo.GetByIdAsync(assignment.ProjectId);
+                managerId = project?.ManagerId;
+            }
 
-                if (!string.IsNullOrEmpty(managerId))
-                {
-                    await _notification.SendNotificationAsync(
+            if (!string.IsNullOrEmpty(managerId))
+            {
+                await RunDisputeSideEffectSafelyAsync(
+                    annotatorId,
+                    "CreateDisputeNotificationError",
+                    dispute.Id.ToString(),
+                    $"Dispute created but manager notification failed for manager {managerId}.",
+                    () => _notification.SendNotificationAsync(
                         managerId,
                         $"Annotator has filed a dispute for task #{assignment.Id} in project \"{projectName}\". Reason: {request.Reason}",
-                        "Warning");
+                        "Warning"));
+            }
+
+            var annotator = await _userRepo.GetByIdAsync(annotatorId) ?? assignment.Annotator ?? new User
+            {
+                Id = annotatorId,
+                FullName = "Annotator",
+                Email = string.Empty,
+                Role = UserRoles.Annotator
+            };
+            var manager = string.IsNullOrWhiteSpace(managerId)
+                ? null
+                : await _userRepo.GetByIdAsync(managerId);
+            var reviewerIds = assignmentGroup
+                .SelectMany(currentAssignment => GetCurrentSubmissionReviewLogs(currentAssignment.ReviewLogs, currentAssignment.SubmittedAt))
+                .Select(log => log.ReviewerId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var reviewers = new List<User>();
+
+            foreach (var reviewerId in reviewerIds)
+            {
+                var reviewer = await _userRepo.GetByIdAsync(reviewerId);
+                if (reviewer != null)
+                {
+                    reviewers.Add(reviewer);
                 }
             }
-            catch (Exception notificationEx)
-            {
-                await _logService.LogActionAsync(
-                    annotatorId,
-                    "NotificationError",
-                    "Dispute",
-                    dispute.Id.ToString(),
-                    $"Dispute created but notification failed: {notificationEx.Message}"
-                );
-            }
+
+            await RunDisputeSideEffectSafelyAsync(
+                annotatorId,
+                "CreateDisputeEmailError",
+                dispute.Id.ToString(),
+                $"Dispute created but email dispatch failed for task {assignment.Id}.",
+                () => _workflowEmailService.SendDisputeCreatedEmailsAsync(
+                    assignment.Project ?? new Project
+                    {
+                        Id = assignment.ProjectId,
+                        Name = projectName,
+                        ManagerId = managerId ?? string.Empty
+                    },
+                    annotator,
+                    assignment,
+                    reviewers,
+                    manager,
+                    request.Reason));
 
             return new DisputeResponse
             {
@@ -221,6 +326,9 @@ namespace BLL.Services
             {
                 dispute.Status = "Resolved";
                 assignment.Status = TaskStatusConstants.Approved;
+                assignment.ManagerDecision = "approve";
+                assignment.ManagerComment = request.ManagerComment;
+                _assignmentRepo.Update(assignment);
 
                 if (assignment.DataItemId > 0)
                 {
@@ -234,11 +342,13 @@ namespace BLL.Services
 
                 foreach (var relatedAssignment in relatedAssignments)
                 {
+                    relatedAssignment.ManagerDecision = "approve";
+                    relatedAssignment.ManagerComment = request.ManagerComment;
                     if (relatedAssignment.Status != TaskStatusConstants.Approved)
                     {
                         relatedAssignment.Status = TaskStatusConstants.Approved;
-                        _assignmentRepo.Update(relatedAssignment);
                     }
+                    _assignmentRepo.Update(relatedAssignment);
                 }
 
                 var reviewerResults = allReviewLogs
@@ -260,17 +370,32 @@ namespace BLL.Services
                     if (reviewerReview != null)
                     {
                         string verdict = reviewerReview.Verdict == "Approved" ? "approved" : "rejected";
-                        await _notification.SendNotificationAsync(
-                            reviewerId,
-                            $"Manager resolved a dispute in project \"{project.Name}\" for task #{assignment.Id}. " +
-                            $"You had {verdict} this task, but the final decision favored the annotator. Your review outcome has been marked as unsuccessful.",
-                            verdict == "rejected" ? "Warning" : "Info");
+                        await RunDisputeSideEffectSafelyAsync(
+                            managerId,
+                            "ResolveDisputeNotificationError",
+                            dispute.Id.ToString(),
+                            $"Dispute resolved but reviewer notification failed for reviewer {reviewerId}.",
+                            () => _notification.SendNotificationAsync(
+                                reviewerId,
+                                $"Manager resolved a dispute in project \"{project.Name}\" for task #{assignment.Id}. " +
+                                $"You had {verdict} this task, but the final decision favored the annotator. Your review outcome has been marked as unsuccessful.",
+                                verdict == "rejected" ? "Warning" : "Info"));
                     }
                 }
             }
             else
             {
                 dispute.Status = "Rejected";
+                assignment.ManagerDecision = "reject";
+                assignment.ManagerComment = request.ManagerComment;
+                _assignmentRepo.Update(assignment);
+
+                foreach (var relatedAssignment in relatedAssignments)
+                {
+                    relatedAssignment.ManagerDecision = "reject";
+                    relatedAssignment.ManagerComment = request.ManagerComment;
+                    _assignmentRepo.Update(relatedAssignment);
+                }
 
                 var reviewerResults = allReviewLogs
                     .Select(r => (
@@ -291,11 +416,16 @@ namespace BLL.Services
                     if (reviewerReview != null)
                     {
                         string verdict = reviewerReview.Verdict == "Approved" ? "approved" : "rejected";
-                        await _notification.SendNotificationAsync(
-                            reviewerId,
-                            $"Manager resolved a dispute in project \"{project.Name}\" for task #{assignment.Id}. " +
-                            $"You had {verdict} this task and the final decision upheld the reviewer side. Your review outcome remains successful.",
-                            verdict == "approved" ? "Warning" : "Info");
+                        await RunDisputeSideEffectSafelyAsync(
+                            managerId,
+                            "ResolveDisputeNotificationError",
+                            dispute.Id.ToString(),
+                            $"Dispute resolved but reviewer notification failed for reviewer {reviewerId}.",
+                            () => _notification.SendNotificationAsync(
+                                reviewerId,
+                                $"Manager resolved a dispute in project \"{project.Name}\" for task #{assignment.Id}. " +
+                                $"You had {verdict} this task and the final decision upheld the reviewer side. Your review outcome remains successful.",
+                                verdict == "approved" ? "Warning" : "Info"));
                     }
                 }
             }
@@ -314,17 +444,27 @@ namespace BLL.Services
 
             if (request.IsAccepted)
             {
-                await _notification.SendNotificationAsync(
-                    assignment.AnnotatorId,
-                    $"Your dispute for task #{assignment.Id} in project \"{project.Name}\" has been accepted. Quality credit has been restored to your score.",
-                    "Success");
+                await RunDisputeSideEffectSafelyAsync(
+                    managerId,
+                    "ResolveDisputeNotificationError",
+                    dispute.Id.ToString(),
+                    $"Dispute resolved but annotator notification failed for annotator {assignment.AnnotatorId}.",
+                    () => _notification.SendNotificationAsync(
+                        assignment.AnnotatorId,
+                        $"Your dispute for task #{assignment.Id} in project \"{project.Name}\" has been accepted. Quality credit has been restored to your score.",
+                        "Success"));
             }
             else
             {
-                await _notification.SendNotificationAsync(
-                    assignment.AnnotatorId,
-                    $"Your dispute for task #{assignment.Id} in project \"{project.Name}\" has been rejected. Manager's note: {request.ManagerComment}",
-                    "Error");
+                await RunDisputeSideEffectSafelyAsync(
+                    managerId,
+                    "ResolveDisputeNotificationError",
+                    dispute.Id.ToString(),
+                    $"Dispute resolved but annotator notification failed for annotator {assignment.AnnotatorId}.",
+                    () => _notification.SendNotificationAsync(
+                        assignment.AnnotatorId,
+                        $"Your dispute for task #{assignment.Id} in project \"{project.Name}\" has been rejected. Manager's note: {request.ManagerComment}",
+                        "Error"));
             }
 
             var manager = await _userRepo.GetByIdAsync(managerId) ?? new User
@@ -353,15 +493,48 @@ namespace BLL.Services
                 .Where(user => reviewerIds.Contains(user.Id, StringComparer.OrdinalIgnoreCase))
                 .ToList();
 
-            await _workflowEmailService.SendDisputeResolutionEmailsAsync(
-                project,
-                manager,
-                annotator,
-                assignment,
-                reviewers,
-                allReviewLogs,
-                request.IsAccepted,
-                request.ManagerComment);
+            await RunDisputeSideEffectSafelyAsync(
+                managerId,
+                "ResolveDisputeEmailError",
+                dispute.Id.ToString(),
+                $"Dispute resolved but email dispatch failed for task {assignment.Id}.",
+                () => _workflowEmailService.SendDisputeResolutionEmailsAsync(
+                    project,
+                    manager,
+                    annotator,
+                    assignment,
+                    reviewers,
+                    allReviewLogs,
+                    request.IsAccepted,
+                    request.ManagerComment));
+        }
+
+        private async Task RunDisputeSideEffectSafelyAsync(
+            string actorUserId,
+            string actionType,
+            string entityId,
+            string description,
+            Func<Task> operation)
+        {
+            try
+            {
+                await operation();
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    await _logService.LogActionAsync(
+                        actorUserId,
+                        actionType,
+                        "Dispute",
+                        entityId,
+                        $"{description} {ex.Message}");
+                }
+                catch
+                {
+                }
+            }
         }
 
         public async Task<List<DisputeResponse>> GetDisputesAsync(int projectId, string userId, string role)
@@ -409,17 +582,14 @@ namespace BLL.Services
                                 .FirstOrDefault()
                         })
                         .Where(item => item.LatestReview != null)
-                        .Select(item => new ReviewerFeedbackResponse
-                        {
-                            ReviewerId = item.LatestReview!.ReviewerId,
-                            ReviewerName = item.Assignment.Reviewer?.FullName ?? item.Assignment.Reviewer?.Email ?? item.LatestReview.ReviewerId,
-                            Verdict = item.LatestReview.Verdict,
-                            Comment = item.LatestReview.Comment,
-                            ErrorCategories = item.LatestReview.ErrorCategory,
-                            ReviewedAt = item.LatestReview.CreatedAt
-                        })
+                        .Select(item => MapReviewerFeedback(item.Assignment, item.LatestReview!))
                         .OrderByDescending(item => item.ReviewedAt)
                         .ToList();
+                    response.AnnotationData = GetLatestAnnotationData(assignmentGroup);
+                    response.RejectCount = assignmentGroup
+                        .Select(assignment => assignment.RejectCount)
+                        .DefaultIfEmpty(0)
+                        .Max();
                 }
 
                 responses.Add(response);
@@ -443,9 +613,17 @@ namespace BLL.Services
                 ResolvedAt = d.ResolvedAt,
                 ProjectId = d.Assignment?.ProjectId,
                 ProjectName = d.Assignment?.Project?.Name,
+                DataItemId = d.Assignment?.DataItemId,
                 DataItemUrl = d.Assignment?.DataItem?.StorageUrl,
+                AnnotationData = GetLatestAnnotationData(d.Assignment),
+                SubmittedAt = d.Assignment?.SubmittedAt,
                 AssignmentStatus = d.Assignment?.Status,
+                ProjectType = d.Assignment?.Project?.AllowGeometryTypes,
+                GuidelineVersion = d.Assignment?.Project?.GuidelineVersion,
+                ResolutionType = GetResolutionType(d.Status),
+                ManagerName = d.Manager?.FullName ?? d.Manager?.Email,
                 ReviewerName = d.Assignment?.Reviewer?.FullName ?? d.Assignment?.Reviewer?.Email,
+                RejectCount = d.Assignment?.RejectCount ?? 0,
             };
         }
 

@@ -71,6 +71,24 @@ namespace Core.DTOs.Requests
         public string? ManagerId { get; set; }
     }
 
+    public class AdminCreateUserRequest
+    {
+        [Required]
+        [JsonPropertyName("fullName")]
+        public string FullName { get; set; } = string.Empty;
+
+        [Required]
+        [EmailAddress]
+        [JsonPropertyName("email")]
+        public string Email { get; set; } = string.Empty;
+
+        [JsonPropertyName("role")]
+        public string Role { get; set; } = "Annotator";
+
+        [JsonPropertyName("managerId")]
+        public string? ManagerId { get; set; }
+    }
+
     public class ChangePasswordRequest
     {
         [Required]
@@ -103,7 +121,7 @@ namespace Core.DTOs.Requests
     public class AdminChangePasswordRequest
     {
         [JsonPropertyName("newPassword")]
-        public string NewPassword { get; set; } = null!;
+        public string? NewPassword { get; set; }
     }
 
     public class RefreshTokenRequest

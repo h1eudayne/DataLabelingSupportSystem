@@ -269,6 +269,56 @@ namespace API.Controllers
             }
         }
 
+        [HttpGet("{projectId}/completion-review")]
+        [Authorize(Roles = "Manager")]
+        [ProducesResponseType(typeof(ProjectCompletionReviewResponse), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        public async Task<IActionResult> GetCompletionReview(int projectId)
+        {
+            var managerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(managerId)) return Unauthorized();
+
+            try
+            {
+                var result = await _projectService.GetProjectCompletionReviewAsync(projectId, managerId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
+        [HttpPost("{projectId}/completion-review/items/{assignmentId}/return")]
+        [Authorize(Roles = "Manager")]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(typeof(ErrorResponse), 400)]
+        [ProducesResponseType(typeof(ErrorResponse), 401)]
+        public async Task<IActionResult> ReturnCompletionReviewItem(
+            int projectId,
+            int assignmentId,
+            [FromBody] ManagerReturnProjectItemRequest request)
+        {
+            var managerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(managerId)) return Unauthorized();
+
+            try
+            {
+                await _projectService.ReturnProjectItemForReworkAsync(
+                    projectId,
+                    assignmentId,
+                    managerId,
+                    request.Comment);
+
+                return Ok(new { Message = "Project item returned for rework successfully." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ErrorResponse { Message = ex.Message });
+            }
+        }
+
         [HttpPost("{projectId}/archive")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(typeof(object), 200)]

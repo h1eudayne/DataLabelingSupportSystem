@@ -55,12 +55,18 @@ namespace Core.DTOs.Responses
 
     public class ReviewerFeedbackResponse
     {
+        public int? ReviewLogId { get; set; }
         public string ReviewerId { get; set; } = string.Empty;
         public string ReviewerName { get; set; } = string.Empty;
+        public string? Decision { get; set; }
         public string Verdict { get; set; } = string.Empty;
         public string? Comment { get; set; }
         public string? ErrorCategories { get; set; }
         public DateTime ReviewedAt { get; set; }
+        public int ScorePenalty { get; set; }
+        public bool IsApproved { get; set; }
+        public bool IsAudited { get; set; }
+        public string? AuditResult { get; set; }
     }
 
     public class EscalatedReviewResponse
@@ -70,10 +76,13 @@ namespace Core.DTOs.Responses
         public string ProjectName { get; set; } = string.Empty;
         public int DataItemId { get; set; }
         public string? DataItemUrl { get; set; }
+        public string? AnnotationData { get; set; }
         public string AnnotatorId { get; set; } = string.Empty;
         public string AnnotatorName { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public string EscalationType { get; set; } = string.Empty;
+        public string? ProjectType { get; set; }
+        public string? GuidelineVersion { get; set; }
         public int RejectCount { get; set; }
         public DateTime? SubmittedAt { get; set; }
         public List<ReviewerFeedbackResponse> ReviewerFeedbacks { get; set; } = new List<ReviewerFeedbackResponse>();

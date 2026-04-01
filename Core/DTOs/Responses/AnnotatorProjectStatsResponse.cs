@@ -14,6 +14,7 @@ namespace Core.DTOs.Responses
         public int PendingReview { get; set; }
 
         public string Status { get; set; } = "Active";
+        public bool IsAwaitingManagerConfirmation { get; set; }
         public DateTime Deadline { get; set; }
     }
 }

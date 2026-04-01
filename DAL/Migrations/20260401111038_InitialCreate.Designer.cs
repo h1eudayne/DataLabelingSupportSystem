@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260331081233_InitialMySql")]
-    partial class InitialMySql
+    [Migration("20260401111038_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -174,6 +174,12 @@ namespace DAL.Migrations
 
                     b.Property<bool>("IsEscalated")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("ManagerComment")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ManagerDecision")
+                        .HasColumnType("longtext");
 
                     b.Property<int>("ProjectId")
                         .HasColumnType("int");
