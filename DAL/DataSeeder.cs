@@ -35,54 +35,38 @@ namespace DAL
                 return;
             }
 
-            var existingAdmin = await context.Users.FirstOrDefaultAsync(user => user.Role == UserRoles.Admin);
             var userWithConfiguredEmail = await context.Users.FirstOrDefaultAsync(user => user.Email == adminSeed.Email);
+            var existingAdmins = await context.Users
+                .Where(user => user.Role == UserRoles.Admin)
+                .OrderBy(user => user.Id)
+                .ToListAsync();
 
-            if (userWithConfiguredEmail == null)
+            if (userWithConfiguredEmail != null)
             {
-                if (existingAdmin != null)
-                {
-                    return;
-                }
+                ApplyAdminSeed(userWithConfiguredEmail, adminSeed);
+                await context.SaveChangesAsync();
+                return;
+            }
 
-                var admin = new User
-                {
-                    FullName = adminSeed.FullName,
-                    Username = BuildUsernameFromEmail(adminSeed.Email),
-                    Email = adminSeed.Email,
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminSeed.Password),
-                    Role = UserRoles.Admin,
-                    IsActive = true,
-                    IsEmailVerified = true
-                };
-
+            if (existingAdmins.Count == 0)
+            {
+                var admin = new User();
+                ApplyAdminSeed(admin, adminSeed);
                 await context.Users.AddAsync(admin);
                 await context.SaveChangesAsync();
                 return;
             }
 
-            if (existingAdmin != null && existingAdmin.Id != userWithConfiguredEmail.Id)
+            if (existingAdmins.Count == 1)
             {
+                ApplyAdminSeed(existingAdmins[0], adminSeed);
+                await context.SaveChangesAsync();
                 return;
             }
 
-            var shouldRefreshPassword =
-                string.IsNullOrWhiteSpace(userWithConfiguredEmail.PasswordHash) ||
-                !string.Equals(userWithConfiguredEmail.Role, UserRoles.Admin, StringComparison.OrdinalIgnoreCase) ||
-                !userWithConfiguredEmail.IsActive;
-
-            userWithConfiguredEmail.FullName = adminSeed.FullName;
-            userWithConfiguredEmail.Username = BuildUsernameFromEmail(adminSeed.Email);
-            userWithConfiguredEmail.Email = adminSeed.Email;
-            userWithConfiguredEmail.Role = UserRoles.Admin;
-            userWithConfiguredEmail.IsActive = true;
-            userWithConfiguredEmail.IsEmailVerified = true;
-
-            if (shouldRefreshPassword)
-            {
-                userWithConfiguredEmail.PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminSeed.Password);
-            }
-
+            var bootstrapAdmin = new User();
+            ApplyAdminSeed(bootstrapAdmin, adminSeed);
+            await context.Users.AddAsync(bootstrapAdmin);
             await context.SaveChangesAsync();
         }
 
@@ -217,6 +201,22 @@ namespace DAL
             }
 
             return sanitized.Length <= 50 ? sanitized : sanitized[..50];
+        }
+
+        private static void ApplyAdminSeed(User user, AdminSeedSettings adminSeed)
+        {
+            user.FullName = adminSeed.FullName;
+            user.Username = BuildUsernameFromEmail(adminSeed.Email);
+            user.Email = adminSeed.Email;
+            user.Role = UserRoles.Admin;
+            user.IsActive = true;
+            user.IsEmailVerified = true;
+
+            if (string.IsNullOrWhiteSpace(user.PasswordHash) ||
+                !BCrypt.Net.BCrypt.Verify(adminSeed.Password, user.PasswordHash))
+            {
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminSeed.Password);
+            }
         }
 
         private sealed record AdminSeedSettings(bool Enabled, string FullName, string Email, string Password);
