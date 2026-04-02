@@ -1,10 +1,8 @@
-using API.Infrastructure;
 using API.Middlewares;
 using API.Services;
 using BLL;
 using BLL.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
@@ -13,65 +11,14 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var railwayPort = builder.Configuration["PORT"];
-if (!string.IsNullOrWhiteSpace(railwayPort))
-{
-    builder.WebHost.UseUrls($"http://+:{railwayPort}");
-}
-else if (!builder.Environment.IsDevelopment())
-{
-    builder.WebHost.UseUrls("http://+:8080");
-}
-
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddApplicationInfrastructure(builder.Configuration);
 builder.Services.AddBusinessLogic(builder.Configuration);
 builder.Services.AddScoped<IAppNotificationRealtimeDispatcher, SignalRAppNotificationRealtimeDispatcher>();
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
-});
-
-var configuredCorsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-    ?.Concat((builder.Configuration["Cors:AllowedOrigins"] ?? string.Empty)
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-    .Select(origin => origin.Trim().TrimEnd('/'))
-    .Where(origin => !string.IsNullOrWhiteSpace(origin))
-    .Distinct(StringComparer.OrdinalIgnoreCase)
-    .ToArray()
-    ?? Array.Empty<string>();
-
-var developmentCorsOrigins = new[]
-{
-    "http://localhost:3000",
-    "https://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://127.0.0.1:3000",
-    "http://localhost:5173",
-    "https://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://127.0.0.1:5173",
-    "http://localhost:4173",
-    "https://localhost:4173",
-    "http://127.0.0.1:4173",
-    "https://127.0.0.1:4173"
-};
-
-var effectiveCorsOrigins = configuredCorsOrigins.Length > 0
-    ? configuredCorsOrigins
-    : builder.Environment.IsDevelopment()
-        ? developmentCorsOrigins
-        : throw new InvalidOperationException(
-            "FATAL: CORS allowed origins are not configured. " +
-            "Set 'Cors:AllowedOrigins' or the environment variable 'Cors__AllowedOrigins' " +
-            "with the public frontend URL, for example 'https://your-frontend.vercel.app'.");
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("Frontend",
-        b => b.WithOrigins(effectiveCorsOrigins)
+    options.AddPolicy("AllowAll",
+        b => b.SetIsOriginAllowed(origin => true)
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials());
@@ -79,24 +26,23 @@ builder.Services.AddCors(options =>
 
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwtSettings["Key"];
-const int minJwtKeyBytes = 32;
 
 if (string.IsNullOrEmpty(jwtKey))
 {
     throw new InvalidOperationException(
         "FATAL: JWT Key is not configured. " +
-        "Set 'Jwt:Key' or the environment variable 'Jwt__Key' with at least 32 characters. " +
+        "Please set 'Jwt:Key' in appsettings.json with at least 16 characters. " +
         "For production, use a cryptographically secure random key of 32+ characters.");
 }
 
-var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
-if (keyBytes.Length < minJwtKeyBytes)
+var keyBytes = Encoding.ASCII.GetBytes(jwtKey);
+if (keyBytes.Length < 16)
 {
     throw new InvalidOperationException(
-        $"FATAL: JWT Key is too short ({keyBytes.Length} bytes). " +
-        "JWT Key must be at least 32 bytes long for HMAC-SHA256 signing. " +
+        $"FATAL: JWT Key is too short ({keyBytes.Length} characters). " +
+        "JWT Key must be at least 16 characters long for HMAC-SHA256 security. " +
         $"Current key: '{jwtKey.Substring(0, Math.Min(8, jwtKey.Length))}...' " +
-        "Please update 'Jwt:Key' or 'Jwt__Key' with a longer, secure key.");
+        "Please update 'Jwt:Key' in appsettings.json with a longer, secure key.");
 }
 
 builder.Services.AddAuthentication(options =>
@@ -207,27 +153,18 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-app.UseForwardedHeaders();
 app.UseMiddleware<ExceptionMiddleware>();
-await app.Services.InitializeApplicationInfrastructureAsync(app.Environment.IsDevelopment());
+await app.Services.InitializeInfrastructureAsync(app.Environment.IsDevelopment());
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseStaticFiles();
 app.UseRouting();
-app.UseCors("Frontend");
+app.UseCors("AllowAll");
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapGet("/", () => Results.Ok(new
-{
-    service = "Data Labeling API",
-    status = "running",
-    environment = app.Environment.EnvironmentName
-})).AllowAnonymous();
-
 app.MapControllers();
-app.MapApplicationHealthEndpoints(app.Environment.IsDevelopment());
 app.MapHub<API.Hubs.AppNotificationHub>("/hubs/notifications");
 app.Run();

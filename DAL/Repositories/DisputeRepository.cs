@@ -16,16 +16,13 @@ namespace DAL.Repositories
         {
             return await AppContext.Disputes
                 .Include(d => d.Annotator)
-                .Include(d => d.Manager)
-                .Include(d => d.Assignment!)
+                .Include(d => d.Assignment)
                     .ThenInclude(a => a.Project)
-                .Include(d => d.Assignment!)
+                .Include(d => d.Assignment)
                     .ThenInclude(a => a.DataItem)
-                .Include(d => d.Assignment!)
+                .Include(d => d.Assignment)
                     .ThenInclude(a => a.Reviewer)
-                .Include(d => d.Assignment!)
-                    .ThenInclude(a => a.Annotations)
-                .Where(d => d.Assignment != null && d.Assignment.ProjectId == projectId)
+                .Where(d => d.Assignment.ProjectId == projectId)
                 .OrderByDescending(d => d.CreatedAt)
                 .ToListAsync();
         }
@@ -34,15 +31,12 @@ namespace DAL.Repositories
         {
             return await AppContext.Disputes
                 .Include(d => d.Annotator)
-                .Include(d => d.Manager)
-                .Include(d => d.Assignment!)
+                .Include(d => d.Assignment)
                     .ThenInclude(a => a.DataItem)
-                .Include(d => d.Assignment!)
+                .Include(d => d.Assignment)
                     .ThenInclude(a => a.Project)
-                .Include(d => d.Assignment!)
+                .Include(d => d.Assignment)
                     .ThenInclude(a => a.Reviewer)
-                .Include(d => d.Assignment!)
-                    .ThenInclude(a => a.Annotations)
                 .Where(d => d.AnnotatorId == annotatorId)
                 .OrderByDescending(d => d.CreatedAt)
                 .ToListAsync();
@@ -52,20 +46,17 @@ namespace DAL.Repositories
         {
             var query = AppContext.Disputes
                 .Include(d => d.Annotator)
-                .Include(d => d.Manager)
-                .Include(d => d.Assignment!)
+                .Include(d => d.Assignment)
                     .ThenInclude(a => a.DataItem)
-                .Include(d => d.Assignment!)
+                .Include(d => d.Assignment)
                     .ThenInclude(a => a.Project)
-                .Include(d => d.Assignment!)
+                .Include(d => d.Assignment)
                     .ThenInclude(a => a.Reviewer)
-                .Include(d => d.Assignment!)
-                    .ThenInclude(a => a.Annotations)
-                .Where(d => d.Assignment != null && d.Assignment.ReviewerId == reviewerId);
+                .Where(d => d.Assignment.ReviewerId == reviewerId);
 
             if (projectId > 0)
             {
-                query = query.Where(d => d.Assignment != null && d.Assignment.ProjectId == projectId);
+                query = query.Where(d => d.Assignment.ProjectId == projectId);
             }
 
             return await query
@@ -77,17 +68,10 @@ namespace DAL.Repositories
         {
             return await AppContext.Disputes
                 .Include(d => d.Annotator)
-                .Include(d => d.Manager)
-                .Include(d => d.Assignment!)
+                .Include(d => d.Assignment)
                     .ThenInclude(a => a.DataItem)
-                .Include(d => d.Assignment!)
+                .Include(d => d.Assignment)
                     .ThenInclude(a => a.ReviewLogs)
-                .Include(d => d.Assignment!)
-                    .ThenInclude(a => a.Annotations)
-                .Include(d => d.Assignment!)
-                    .ThenInclude(a => a.Project)
-                .Include(d => d.Assignment!)
-                    .ThenInclude(a => a.Reviewer)
                 .FirstOrDefaultAsync(d => d.Id == disputeId);
         }
     }

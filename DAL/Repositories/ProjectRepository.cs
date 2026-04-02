@@ -75,9 +75,6 @@ namespace DAL.Repositories
                         .ThenInclude(a => a.Reviewer)
                 .Include(p => p.DataItems)
                     .ThenInclude(d => d.Assignments)
-                        .ThenInclude(a => a.Annotations)
-                .Include(p => p.DataItems)
-                    .ThenInclude(d => d.Assignments)
                         .ThenInclude(a => a.ReviewLogs)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(p => p.Id == id);
@@ -86,11 +83,7 @@ namespace DAL.Repositories
         public async Task<Project?> GetProjectWithStatsDataAsync(int id)
         {
             return await _context.Projects
-                .Include(p => p.Manager)
                 .Include(p => p.LabelClasses)
-                .Include(p => p.DataItems)
-                    .ThenInclude(d => d.Assignments)
-                        .ThenInclude(a => a.Annotations)
                 .Include(p => p.DataItems)
                     .ThenInclude(d => d.Assignments)
                         .ThenInclude(a => a.Annotator)
@@ -100,7 +93,6 @@ namespace DAL.Repositories
                 .Include(p => p.DataItems)
                     .ThenInclude(d => d.Assignments)
                         .ThenInclude(a => a.ReviewLogs)
-                            .ThenInclude(log => log.Reviewer)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(p => p.Id == id);
         }
@@ -108,8 +100,8 @@ namespace DAL.Repositories
         public async Task<Dictionary<int, int>> GetProjectLabelCountsAsync(int projectId)
         {
             return await _context.Annotations
-                .Where(a => a.Assignment != null && a.Assignment.ProjectId == projectId && a.ClassId.HasValue)
-                .GroupBy(a => a.ClassId ?? 0)
+                .Where(a => a.Assignment.ProjectId == projectId && a.ClassId.HasValue)
+                .GroupBy(a => a.ClassId.Value)
                 .Select(g => new { ClassId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.ClassId, x => x.Count);
         }
@@ -122,7 +114,6 @@ namespace DAL.Repositories
                 {
                     Id = p.Id,
                     Name = p.Name,
-                    Status = p.Status,
                     Deadline = p.Deadline,
                     DataItems = p.DataItems.Select(d => new DataItem
                     {
@@ -174,7 +165,6 @@ namespace DAL.Repositories
                 {
                     Id = p.Id,
                     Name = p.Name,
-                    Status = p.Status,
                     Deadline = p.Deadline,
                     DataItems = p.DataItems.Select(d => new DataItem
                     {

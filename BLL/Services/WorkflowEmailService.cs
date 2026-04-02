@@ -1,8 +1,6 @@
 using BLL.Interfaces;
-using BLL.Exceptions;
 using Core.Constants;
 using Core.Entities;
-using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Text;
 
@@ -11,23 +9,17 @@ namespace BLL.Services
     public class WorkflowEmailService : IWorkflowEmailService
     {
         private readonly IEmailService _emailService;
-        private readonly ILogger<WorkflowEmailService> _logger;
 
-        public WorkflowEmailService(
-            IEmailService emailService,
-            ILogger<WorkflowEmailService> logger)
+        public WorkflowEmailService(IEmailService emailService)
         {
             _emailService = emailService;
-            _logger = logger;
         }
 
-        public async Task SendWelcomeEmailAsync(User user, User? manager, string? temporaryPassword = null)
+        public async Task SendWelcomeEmailAsync(User user, User? manager)
         {
             var managerSummary = manager == null
                 ? "Not assigned yet"
                 : $"{Encode(manager.FullName)} ({Encode(manager.Email)})";
-            var failures = new List<string>();
-            var includeTemporaryPassword = !string.IsNullOrWhiteSpace(temporaryPassword);
 
             var body = WrapEmail(
                 "Welcome to Data Labeling Support System",
@@ -39,17 +31,11 @@ namespace BLL.Services
                         ("Role", Encode(user.Role)),
                         ("Email", Encode(user.Email)),
                         ("Direct manager", managerSummary),
-                        includeTemporaryPassword
-                            ? ("Temporary password", Encode(temporaryPassword!))
-                            : ("First-time password", "Already set by you"),
                         ("Activated at", FormatUtc(DateTime.UtcNow))
                     })}
-                    <p>{(includeTemporaryPassword
-                        ? "Please sign in with this temporary password and change it immediately after your first login."
-                        : "Please contact your manager or administrator if you need help with first-time access or onboarding.")}</p>");
+                    <p>Please contact your manager or administrator if you need help with first-time access or onboarding.</p>");
 
-            await TrySendEmailAsync(user.Email, "Welcome to Data Labeling Support System", body, failures);
-            ThrowIfAnyEmailFailed("welcome email", failures);
+            await SendEmailSafelyAsync(user.Email, "Welcome to Data Labeling Support System", body);
         }
 
         public async Task SendAnnotatorAssignmentEmailAsync(Project project, User manager, User annotator, int taskCount, int reviewerCount)
@@ -57,7 +43,6 @@ namespace BLL.Services
             var reviewerSummary = reviewerCount > 0
                 ? reviewerCount.ToString()
                 : "No reviewer assigned yet";
-            var failures = new List<string>();
 
             var body = WrapEmail(
                 $"New tasks assigned in {Encode(project.Name)}",
@@ -75,17 +60,14 @@ namespace BLL.Services
                     })}
                     <p>Please review the project guideline and complete the assigned work before the deadline.</p>");
 
-            await TrySendEmailAsync(
+            await SendEmailSafelyAsync(
                 annotator.Email,
                 $"[Task Assignment] {project.Name}",
-                body,
-                failures);
-            ThrowIfAnyEmailFailed($"annotator assignment email for project {project.Name}", failures);
+                body);
         }
 
         public async Task SendReviewerAssignmentEmailAsync(Project project, User manager, User reviewer, int taskCount, int annotatorCount)
         {
-            var failures = new List<string>();
             var body = WrapEmail(
                 $"Review assignment in {Encode(project.Name)}",
                 $@"
@@ -101,12 +83,10 @@ namespace BLL.Services
                     })}
                     <p>Please review each task carefully and record a clear decision for every assigned item.</p>");
 
-            await TrySendEmailAsync(
+            await SendEmailSafelyAsync(
                 reviewer.Email,
                 $"[Review Assignment] {project.Name}",
-                body,
-                failures);
-            ThrowIfAnyEmailFailed($"reviewer assignment email for project {project.Name}", failures);
+                body);
         }
 
         public async Task SendForgotPasswordRequestEmailsAsync(User requester, IReadOnlyCollection<User> admins)
@@ -114,7 +94,6 @@ namespace BLL.Services
             var managerSummary = string.IsNullOrWhiteSpace(requester.ManagerId)
                 ? "Not assigned"
                 : Encode(requester.ManagerId);
-            var failures = new List<string>();
 
             var subject = "[Action Required] Password reset request";
             var body = WrapEmail(
@@ -133,15 +112,12 @@ namespace BLL.Services
 
             foreach (var admin in admins.Where(a => !string.IsNullOrWhiteSpace(a.Email)))
             {
-                await TrySendEmailAsync(admin.Email, subject, body, failures);
+                await SendEmailSafelyAsync(admin.Email, subject, body);
             }
-
-            ThrowIfAnyEmailFailed("forgot password request email", failures);
         }
 
-        public async Task SendAdminPasswordResetEmailAsync(User user, string temporaryPassword)
+        public async Task SendAdminPasswordResetEmailAsync(User user, string newPassword)
         {
-            var failures = new List<string>();
             var body = WrapEmail(
                 "Your password has been reset by an administrator",
                 $@"
@@ -150,78 +126,15 @@ namespace BLL.Services
                     {BuildTable(new[]
                     {
                         ("Login email", Encode(user.Email)),
-                        ("Temporary password", Encode(temporaryPassword)),
+                        ("Temporary password", Encode(newPassword)),
                         ("Reset at", FormatUtc(DateTime.UtcNow))
                     })}
                     <p>Please sign in with this temporary password and change it immediately for security.</p>");
 
-            await TrySendEmailAsync(
+            await SendEmailSafelyAsync(
                 user.Email,
                 "Your password has been reset by an administrator",
-                body,
-                failures);
-            ThrowIfAnyEmailFailed("admin password reset email", failures);
-        }
-
-        public async Task SendDisputeCreatedEmailsAsync(
-            Project project,
-            User annotator,
-            Assignment assignment,
-            IReadOnlyCollection<User> reviewers,
-            User? manager,
-            string reason)
-        {
-            var failures = new List<string>();
-            var subject = $"[Dispute Filed] {project.Name} - Task #{assignment.Id}";
-            var managerSummary = manager == null
-                ? "Manager not assigned"
-                : $"{Encode(manager.FullName)} ({Encode(manager.Email)})";
-
-            if (manager != null)
-            {
-                var managerBody = WrapEmail(
-                    $"Dispute filed for task #{assignment.Id}",
-                    $@"
-                        <p>Hello {Encode(manager.FullName)},</p>
-                        <p>An annotator has filed a dispute that needs your attention.</p>
-                        {BuildTable(new[]
-                        {
-                            ("Project", Encode(project.Name)),
-                            ("Task", $"#{assignment.Id}"),
-                            ("Annotator", $"{Encode(annotator.FullName)} ({Encode(annotator.Email)})"),
-                            ("Reason", Encode(reason)),
-                            ("Submitted at", FormatUtc(assignment.SubmittedAt)),
-                            ("Reject count", assignment.RejectCount.ToString())
-                        })}
-                        <p>Please review the dispute details, reviewer comments, and current annotation before making a decision.</p>");
-
-                await TrySendEmailAsync(manager.Email, subject, managerBody, failures);
-            }
-
-            foreach (var reviewer in reviewers
-                .Where(user => !string.IsNullOrWhiteSpace(user.Email))
-                .GroupBy(user => user.Id)
-                .Select(group => group.First()))
-            {
-                var reviewerBody = WrapEmail(
-                    $"Annotator dispute filed for task #{assignment.Id}",
-                    $@"
-                        <p>Hello {Encode(reviewer.FullName)},</p>
-                        <p>An annotator has disputed a review outcome on a task you participated in.</p>
-                        {BuildTable(new[]
-                        {
-                            ("Project", Encode(project.Name)),
-                            ("Task", $"#{assignment.Id}"),
-                            ("Annotator", $"{Encode(annotator.FullName)} ({Encode(annotator.Email)})"),
-                            ("Reason", Encode(reason)),
-                            ("Manager", managerSummary)
-                        })}
-                        <p>The final decision will be made by the responsible manager after reviewing the dispute.</p>");
-
-                await TrySendEmailAsync(reviewer.Email, subject, reviewerBody, failures);
-            }
-
-            ThrowIfAnyEmailFailed($"dispute created email for task {assignment.Id}", failures);
+                body);
         }
 
         public async Task SendDisputeResolutionEmailsAsync(
@@ -240,7 +153,6 @@ namespace BLL.Services
             bool hasMixedVerdicts = approvedVotes > 0 && rejectedVotes > 0;
             string decisionLabel = isAccepted ? "Accepted" : "Rejected";
             string reviewerSummary = $"{approvedVotes} approve / {rejectedVotes} reject";
-            var failures = new List<string>();
 
             var annotatorBody = WrapEmail(
                 $"Dispute {decisionLabel.ToLowerInvariant()} for task #{assignment.Id}",
@@ -258,11 +170,10 @@ namespace BLL.Services
                     })}
                     {BuildDisputeContext(hasMixedVerdicts, isTie)}");
 
-            await TrySendEmailAsync(
+            await SendEmailSafelyAsync(
                 annotator.Email,
                 $"[Dispute Result] {project.Name} - Task #{assignment.Id}",
-                annotatorBody,
-                failures);
+                annotatorBody);
 
             foreach (var reviewer in reviewers)
             {
@@ -303,201 +214,11 @@ namespace BLL.Services
                         <p>{Encode(alignmentSummary)}</p>
                         {BuildDisputeContext(hasMixedVerdicts, isTie)}");
 
-                await TrySendEmailAsync(
+                await SendEmailSafelyAsync(
                     reviewer.Email,
                     $"[Dispute Result] {project.Name} - Task #{assignment.Id}",
-                    reviewerBody,
-                    failures);
+                    reviewerBody);
             }
-
-            ThrowIfAnyEmailFailed($"dispute resolution email for task {assignment.Id}", failures);
-        }
-
-        public async Task SendEscalationTriggeredEmailsAsync(
-            Project project,
-            User manager,
-            User annotator,
-            Assignment assignment,
-            IReadOnlyCollection<User> reviewers,
-            IReadOnlyCollection<ReviewLog> reviewLogs,
-            string escalationType,
-            int rejectCount)
-        {
-            string escalationLabel = string.Equals(escalationType, "PenaltyReview", StringComparison.OrdinalIgnoreCase)
-                ? "Penalty review"
-                : "Manager escalation";
-            string reviewerSummary = BuildReviewerSummary(reviewLogs);
-            var failures = new List<string>();
-            var subject = $"[Manager Action Required] {project.Name} - Task #{assignment.Id}";
-
-            var managerBody = WrapEmail(
-                $"{escalationLabel} required for task #{assignment.Id}",
-                $@"
-                    <p>Hello {Encode(manager.FullName)},</p>
-                    <p>A task now requires manager intervention.</p>
-                    {BuildTable(new[]
-                    {
-                        ("Project", Encode(project.Name)),
-                        ("Task", $"#{assignment.Id}"),
-                        ("Escalation type", Encode(escalationLabel)),
-                        ("Annotator", $"{Encode(annotator.FullName)} ({Encode(annotator.Email)})"),
-                        ("Reviewer summary", Encode(reviewerSummary)),
-                        ("Reject count", rejectCount.ToString()),
-                        ("Submitted at", FormatUtc(assignment.SubmittedAt))
-                    })}
-                    <p>Please review the annotation evidence and all reviewer comments before making the final decision.</p>");
-
-            await TrySendEmailAsync(manager.Email, subject, managerBody, failures);
-
-            var annotatorBody = WrapEmail(
-                $"{escalationLabel} opened for task #{assignment.Id}",
-                $@"
-                    <p>Hello {Encode(annotator.FullName)},</p>
-                    <p>Your task is waiting for a manager decision.</p>
-                    {BuildTable(new[]
-                    {
-                        ("Project", Encode(project.Name)),
-                        ("Task", $"#{assignment.Id}"),
-                        ("Escalation type", Encode(escalationLabel)),
-                        ("Reviewer summary", Encode(reviewerSummary)),
-                        ("Reject count", rejectCount.ToString())
-                    })}
-                    <p>You will receive the final decision after the manager completes the review.</p>");
-
-            await TrySendEmailAsync(annotator.Email, subject, annotatorBody, failures);
-
-            foreach (var reviewer in reviewers
-                .Where(user => !string.IsNullOrWhiteSpace(user.Email))
-                .GroupBy(user => user.Id)
-                .Select(group => group.First()))
-            {
-                var reviewerBody = WrapEmail(
-                    $"{escalationLabel} opened for task #{assignment.Id}",
-                    $@"
-                        <p>Hello {Encode(reviewer.FullName)},</p>
-                        <p>A task you reviewed has been escalated for manager review.</p>
-                        {BuildTable(new[]
-                        {
-                            ("Project", Encode(project.Name)),
-                            ("Task", $"#{assignment.Id}"),
-                            ("Escalation type", Encode(escalationLabel)),
-                            ("Annotator", $"{Encode(annotator.FullName)} ({Encode(annotator.Email)})"),
-                            ("Reviewer summary", Encode(reviewerSummary))
-                        })}
-                        <p>The manager will review the tied or repeated rejection outcome and finalize the task.</p>");
-
-                await TrySendEmailAsync(reviewer.Email, subject, reviewerBody, failures);
-            }
-
-            ThrowIfAnyEmailFailed($"escalation trigger email for task {assignment.Id}", failures);
-        }
-
-        public async Task SendEscalationResolvedEmailsAsync(
-            Project project,
-            User manager,
-            Assignment assignment,
-            User? originalAnnotator,
-            User? newAnnotator,
-            IReadOnlyCollection<User> reviewers,
-            IReadOnlyCollection<ReviewLog> reviewLogs,
-            string action,
-            string? managerComment,
-            string escalationType,
-            int rejectCount)
-        {
-            var normalizedAction = (action ?? string.Empty).Trim().ToLowerInvariant();
-            string escalationLabel = string.Equals(escalationType, "PenaltyReview", StringComparison.OrdinalIgnoreCase)
-                ? "Penalty review"
-                : "Manager escalation";
-            string reviewerSummary = BuildReviewerSummary(reviewLogs);
-            string note = string.IsNullOrWhiteSpace(managerComment) ? "No manager note" : managerComment.Trim();
-            var failures = new List<string>();
-            var subject = $"[Escalation Decision] {project.Name} - Task #{assignment.Id}";
-
-            if (originalAnnotator != null)
-            {
-                string annotatorOutcome = normalizedAction switch
-                {
-                    "approve" => "approved your task",
-                    "reject" => "rejected your task and requested another revision",
-                    "reassign" => "reassigned the task to another annotator",
-                    "lock" => "locked your access to the task after escalation review",
-                    _ => "completed the escalation review"
-                };
-
-                var annotatorBody = WrapEmail(
-                    $"Final escalation decision for task #{assignment.Id}",
-                    $@"
-                        <p>Hello {Encode(originalAnnotator.FullName)},</p>
-                        <p>The manager has finalized the {Encode(escalationLabel.ToLowerInvariant())} and {Encode(annotatorOutcome)}.</p>
-                        {BuildTable(new[]
-                        {
-                            ("Project", Encode(project.Name)),
-                            ("Task", $"#{assignment.Id}"),
-                            ("Action", Encode(normalizedAction)),
-                            ("Manager", $"{Encode(manager.FullName)} ({Encode(manager.Email)})"),
-                            ("Reviewer summary", Encode(reviewerSummary)),
-                            ("Reject count", rejectCount.ToString()),
-                            ("Manager note", Encode(note))
-                        })}");
-
-                await TrySendEmailAsync(originalAnnotator.Email, subject, annotatorBody, failures);
-            }
-
-            if (newAnnotator != null)
-            {
-                var newAnnotatorBody = WrapEmail(
-                    $"Task #{assignment.Id} reassigned to you",
-                    $@"
-                        <p>Hello {Encode(newAnnotator.FullName)},</p>
-                        <p>A manager has reassigned an escalated task to you.</p>
-                        {BuildTable(new[]
-                        {
-                            ("Project", Encode(project.Name)),
-                            ("Task", $"#{assignment.Id}"),
-                            ("Previous escalation type", Encode(escalationLabel)),
-                            ("Manager", $"{Encode(manager.FullName)} ({Encode(manager.Email)})"),
-                            ("Manager note", Encode(note))
-                        })}
-                        <p>Please review the task details in the project workspace before starting your work.</p>");
-
-                await TrySendEmailAsync(newAnnotator.Email, subject, newAnnotatorBody, failures);
-            }
-
-            foreach (var reviewer in reviewers
-                .Where(user => !string.IsNullOrWhiteSpace(user.Email))
-                .GroupBy(user => user.Id)
-                .Select(group => group.First()))
-            {
-                var reviewerVerdict = reviewLogs
-                    .Where(log => string.Equals(log.ReviewerId, reviewer.Id, StringComparison.OrdinalIgnoreCase))
-                    .OrderByDescending(log => log.CreatedAt)
-                    .Select(log => log.Verdict)
-                    .FirstOrDefault();
-
-                string alignmentSummary = BuildReviewerAlignmentSummary(normalizedAction, reviewerVerdict);
-
-                var reviewerBody = WrapEmail(
-                    $"Final escalation decision for task #{assignment.Id}",
-                    $@"
-                        <p>Hello {Encode(reviewer.FullName)},</p>
-                        <p>The manager has finalized an escalated task that you reviewed.</p>
-                        {BuildTable(new[]
-                        {
-                            ("Project", Encode(project.Name)),
-                            ("Task", $"#{assignment.Id}"),
-                            ("Escalation type", Encode(escalationLabel)),
-                            ("Manager action", Encode(normalizedAction)),
-                            ("Your latest verdict", Encode(reviewerVerdict ?? "No recorded verdict")),
-                            ("Reviewer summary", Encode(reviewerSummary)),
-                            ("Manager note", Encode(note))
-                        })}
-                        <p>{Encode(alignmentSummary)}</p>");
-
-                await TrySendEmailAsync(reviewer.Email, subject, reviewerBody, failures);
-            }
-
-            ThrowIfAnyEmailFailed($"escalation resolution email for task {assignment.Id}", failures);
         }
 
         public async Task SendProjectCompletedEmailsAsync(
@@ -511,7 +232,6 @@ namespace BLL.Services
             var distinctItemCount = assignments.Select(a => a.DataItemId).Distinct().Count();
             var annotatorCount = assignments.Select(a => a.AnnotatorId).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().Count();
             var reviewerCount = assignments.Select(a => a.ReviewerId).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().Count();
-            var failures = new List<string>();
 
             var managerBody = WrapEmail(
                 $"Project completed: {Encode(project.Name)}",
@@ -530,7 +250,7 @@ namespace BLL.Services
                     })}
                     <p>Personalized completion summaries have been sent to all project participants.</p>");
 
-            await TrySendEmailAsync(manager.Email, subject, managerBody, failures);
+            await SendEmailSafelyAsync(manager.Email, subject, managerBody);
 
             foreach (var participant in participants
                 .Where(user => user.Id != manager.Id)
@@ -538,10 +258,8 @@ namespace BLL.Services
                 .Select(group => group.First()))
             {
                 var body = BuildParticipantCompletionBody(project, manager, participant, assignments, projectStats);
-                await TrySendEmailAsync(participant.Email, subject, body, failures);
+                await SendEmailSafelyAsync(participant.Email, subject, body);
             }
-
-            ThrowIfAnyEmailFailed($"project completion email for project {project.Name}", failures);
         }
 
         private string BuildParticipantCompletionBody(
@@ -632,12 +350,10 @@ namespace BLL.Services
             return string.Empty;
         }
 
-        private async Task TrySendEmailAsync(string? toEmail, string subject, string htmlBody, ICollection<string> failures)
+        private async Task SendEmailSafelyAsync(string? toEmail, string subject, string htmlBody)
         {
             if (string.IsNullOrWhiteSpace(toEmail))
             {
-                _logger.LogWarning("Skipped workflow email because recipient address is empty. Subject: {Subject}", subject);
-                failures.Add($"Missing recipient address for subject '{subject}'.");
                 return;
             }
 
@@ -645,22 +361,9 @@ namespace BLL.Services
             {
                 await _emailService.SendEmailAsync(toEmail, subject, htmlBody);
             }
-            catch (Exception ex)
+            catch
             {
-                _logger.LogWarning(ex, "Workflow email dispatch failed for {ToEmail}: {Subject}", toEmail, subject);
-                failures.Add($"{toEmail}: {ex.Message}");
             }
-        }
-
-        private static void ThrowIfAnyEmailFailed(string context, IReadOnlyCollection<string> failures)
-        {
-            if (failures.Count == 0)
-            {
-                return;
-            }
-
-            throw new EmailDeliveryException(
-                $"Workflow {context} failed for {failures.Count} recipient(s). {string.Join(" | ", failures)}");
         }
 
         private static bool IsApprovedVerdict(string? verdict)
@@ -673,37 +376,6 @@ namespace BLL.Services
         {
             return string.Equals(verdict, "Rejected", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(verdict, "Reject", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string BuildReviewerSummary(IReadOnlyCollection<ReviewLog> reviewLogs)
-        {
-            int approvedVotes = reviewLogs.Count(log => IsApprovedVerdict(log.Verdict));
-            int rejectedVotes = reviewLogs.Count(log => IsRejectedVerdict(log.Verdict));
-            return $"{approvedVotes} approve / {rejectedVotes} reject";
-        }
-
-        private static string BuildReviewerAlignmentSummary(string action, string? reviewerVerdict)
-        {
-            if (string.IsNullOrWhiteSpace(reviewerVerdict))
-            {
-                return "No reviewer verdict was recorded for alignment comparison.";
-            }
-
-            bool aligned = action switch
-            {
-                "approve" => IsApprovedVerdict(reviewerVerdict),
-                "reject" => IsRejectedVerdict(reviewerVerdict),
-                _ => false
-            };
-
-            if (action == "reassign" || action == "lock")
-            {
-                return "The manager applied an escalation action instead of a direct approve or reject outcome.";
-            }
-
-            return aligned
-                ? "Your review aligned with the final manager decision."
-                : "Your review did not align with the final manager decision.";
         }
 
         private static string WrapEmail(string title, string body)

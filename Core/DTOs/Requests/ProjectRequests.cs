@@ -122,11 +122,4 @@ namespace Core.DTOs.Requests
         [JsonPropertyName("reviewerIds")]
         public List<string> ReviewerIds { get; set; } = new List<string>();
     }
-
-    public class ManagerReturnProjectItemRequest
-    {
-        [Required]
-        [JsonPropertyName("comment")]
-        public string Comment { get; set; } = string.Empty;
-    }
 }

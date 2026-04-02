@@ -16,10 +16,10 @@ namespace Core.Entities
 
         [Required]
         [MaxLength(100)]
-        public string FlagType { get; set; } = string.Empty;
+        public string FlagType { get; set; }
 
         [MaxLength(500)]
-        public string Description { get; set; } = string.Empty;
+        public string Description { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

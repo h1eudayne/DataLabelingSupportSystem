@@ -3,7 +3,6 @@ using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 
 namespace API.Controllers
@@ -15,12 +14,10 @@ namespace API.Controllers
     public class UserController : ControllerBase
     {
         private readonly IUserService _userService;
-        private readonly ILogger<UserController> _logger;
 
-        public UserController(IUserService userService, ILogger<UserController> logger)
+        public UserController(IUserService userService)
         {
             _userService = userService;
-            _logger = logger;
         }
 
         [HttpGet("me")]
@@ -80,11 +77,22 @@ namespace API.Controllers
 
             try
             {
-                using (var fileStream = file.OpenReadStream())
+                var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "avatars");
+                if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+
+                var fileExtension = Path.GetExtension(file.FileName);
+                var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
+                var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+                using (var fileStream = new FileStream(filePath, FileMode.Create))
                 {
-                    var avatarUrl = await _userService.UploadAvatarAsync(userId, fileStream, file.FileName);
-                    return Ok(new { Message = "Avatar uploaded successfully.", AvatarUrl = avatarUrl });
+                    await file.CopyToAsync(fileStream);
                 }
+
+                var avatarUrl = $"/avatars/{uniqueFileName}";
+                await _userService.UpdateAvatarAsync(userId, avatarUrl);
+
+                return Ok(new { Message = "Avatar uploaded successfully.", AvatarUrl = avatarUrl });
             }
             catch (Exception ex)
             {
@@ -188,27 +196,22 @@ namespace API.Controllers
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         [ProducesResponseType(typeof(ErrorResponse), 409)]
-        public async Task<IActionResult> CreateUser([FromBody] AdminCreateUserRequest request)
+        public async Task<IActionResult> CreateUser([FromBody] RegisterRequest request)
         {
             try
             {
-                var adminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(adminId)) return Unauthorized();
-
-                var result = await _userService.CreateManagedUserAsync(
-                    adminId,
+                var user = await _userService.RegisterAsync(
                     request.FullName,
                     request.Email,
+                    request.Password,
                     request.Role,
                     request.ManagerId
                 );
 
                 return Ok(new
                 {
-                    Message = result.Message,
-                    emailDelivered = result.EmailDelivered,
-                    emailDeliveryMode = result.EmailDeliveryMode,
-                    emailDeliveryTarget = result.EmailDeliveryTarget
+                    Message = "User created successfully.",
+                    UserId = user.Id
                 });
             }
             catch (Exception ex)
@@ -226,22 +229,19 @@ namespace API.Controllers
         [ProducesResponseType(typeof(ErrorResponse), 400)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
         [ProducesResponseType(typeof(ErrorResponse), 404)]
-        public async Task<IActionResult> AdminChangePassword(string id, [FromBody] AdminChangePasswordRequest? request)
+        public async Task<IActionResult> AdminChangePassword(string id, [FromBody] AdminChangePasswordRequest request)
         {
             try
             {
                 var adminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(adminId)) return Unauthorized();
 
-                var result = await _userService.AdminChangeUserPasswordAsync(adminId, id);
+                if (string.IsNullOrEmpty(request.NewPassword))
+                    return BadRequest(new ErrorResponse { Message = "New password cannot be empty." });
 
-                return Ok(new
-                {
-                    Message = result.Message,
-                    emailDelivered = result.EmailDelivered,
-                    emailDeliveryMode = result.EmailDeliveryMode,
-                    emailDeliveryTarget = result.EmailDeliveryTarget
-                });
+                await _userService.AdminChangeUserPasswordAsync(adminId, id, request.NewPassword);
+
+                return Ok(new { Message = "Password has been successfully changed by Admin." });
             }
             catch (Exception ex)
             {
@@ -331,18 +331,8 @@ namespace API.Controllers
             {
                 if (ex.Message.Contains("not found"))
                     return NotFound(new ErrorResponse { Message = ex.Message });
-                if (ex.Message.Contains("already been resolved"))
-                    return BadRequest(new ErrorResponse { Message = ex.Message });
 
-                _logger.LogError(
-                    ex,
-                    "Unexpected error while resolving global ban request {RequestId}.",
-                    requestId);
-
-                return StatusCode(500, new ErrorResponse
-                {
-                    Message = "Unable to process the global ban request right now. Please try again."
-                });
+                return BadRequest(new ErrorResponse { Message = ex.Message });
             }
         }
 

@@ -31,12 +31,6 @@ namespace Core.DTOs.Responses
 
         public int Progress { get; set; }
 
-        public string Status { get; set; } = string.Empty;
-
-        public bool IsAwaitingManagerConfirmation { get; set; }
-
-        public bool CanManagerConfirmCompletion { get; set; }
-
         public List<MemberResponse> Members { get; set; } = new List<MemberResponse>();
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
@@ -86,9 +80,5 @@ namespace Core.DTOs.Responses
         public bool HasPriorityIssue { get; set; }
 
         public string DefaultActionTab { get; set; } = "datasets";
-
-        public bool IsAwaitingManagerConfirmation { get; set; }
-
-        public bool CanManagerConfirmCompletion { get; set; }
     }
 }

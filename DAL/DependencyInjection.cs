@@ -3,7 +3,6 @@ using DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 namespace DAL
 {
@@ -11,20 +10,13 @@ namespace DAL
     {
         public static IServiceCollection AddDataAccess(this IServiceCollection services, IConfiguration configuration)
         {
-            var connectionString = DatabaseConnectionStringResolver.GetRequiredConnectionString(configuration);
-            var configuredServerVersion = configuration["Database:ServerVersion"];
-            var serverVersion = !string.IsNullOrWhiteSpace(configuredServerVersion)
-                ? ServerVersion.Parse(configuredServerVersion)
-                : ServerVersion.AutoDetect(connectionString);
-
             services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseMySql(
-                    connectionString,
-                    serverVersion,
-                    mySqlOptions =>
+                options.UseSqlServer(
+                    configuration.GetConnectionString("DefaultConnection"),
+                    sqlOptions =>
                     {
-                        mySqlOptions.CommandTimeout(120);
-                        mySqlOptions.EnableRetryOnFailure(
+                        sqlOptions.CommandTimeout(120);
+                        sqlOptions.EnableRetryOnFailure(
                             maxRetryCount: 5,
                             maxRetryDelay: TimeSpan.FromSeconds(30),
                             errorNumbersToAdd: null);

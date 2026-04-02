@@ -1,5 +1,4 @@
 using BLL.Interfaces;
-using BLL.Helpers;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Core.Interfaces;
@@ -20,7 +19,6 @@ namespace BLL.Services
         private readonly IActivityLogService _logService;
         private readonly IAppNotificationService _notification;
         private readonly IRepository<UserProjectStat> _statsRepo;
-        private readonly IWorkflowEmailService? _workflowEmailService;
 
         public ReviewService(
             IAssignmentRepository assignmentRepo,
@@ -31,8 +29,7 @@ namespace BLL.Services
             IUserRepository userRepo,
             IAppNotificationService notification,
             IActivityLogService logService,
-            IRepository<UserProjectStat> statsRepo,
-            IWorkflowEmailService? workflowEmailService = null)
+            IRepository<UserProjectStat> statsRepo)
         {
             _assignmentRepo = assignmentRepo;
             _reviewLogRepo = reviewLogRepo;
@@ -43,7 +40,6 @@ namespace BLL.Services
             _logService = logService;
             _notification = notification;
             _statsRepo = statsRepo;
-            _workflowEmailService = workflowEmailService;
         }
 
         private static IEnumerable<ReviewLog> GetCurrentSubmissionReviewLogs(
@@ -81,21 +77,6 @@ namespace BLL.Services
         {
             return string.Equals(verdict, "Rejected", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(verdict, "Reject", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool HasReviewerReviewedCurrentSubmission(Assignment assignment, string reviewerId)
-        {
-            return GetCurrentSubmissionReviewLogs(assignment.ReviewLogs, assignment.SubmittedAt)
-                .Any(log => string.Equals(log.ReviewerId, reviewerId, StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static List<Assignment> FilterPendingAssignmentsForReviewer(IEnumerable<Assignment> assignments, string reviewerId)
-        {
-            return assignments
-                .Where(a =>
-                    string.Equals(a.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase) &&
-                    !HasReviewerReviewedCurrentSubmission(a, reviewerId))
-                .ToList();
         }
 
         private async Task<List<Assignment>> GetAssignmentGroupAsync(Assignment assignment)
@@ -148,44 +129,20 @@ namespace BLL.Services
             return string.Join(" | ", reasons);
         }
 
-        private static string? GetLatestAnnotationData(IEnumerable<Assignment> assignments)
-        {
-            return assignments
-                .SelectMany(assignment => assignment.Annotations ?? Enumerable.Empty<Annotation>())
-                .OrderByDescending(annotation => annotation.CreatedAt)
-                .FirstOrDefault()
-                ?.DataJSON;
-        }
-
         private static List<ReviewerFeedbackResponse> MapReviewerFeedbacks(IEnumerable<(Assignment Assignment, ReviewLog? LatestLog)> latestCycleReviews)
         {
             return latestCycleReviews
                 .Where(item => item.LatestLog != null)
                 .Select(item => new ReviewerFeedbackResponse
                 {
-                    ReviewLogId = item.LatestLog!.Id,
-                    ReviewerId = item.LatestLog.ReviewerId,
+                    ReviewerId = item.LatestLog!.ReviewerId,
                     ReviewerName = item.Assignment.Reviewer?.FullName ?? item.Assignment.Reviewer?.Email ?? item.LatestLog.ReviewerId,
-                    Decision = item.LatestLog.Decision,
                     Verdict = item.LatestLog.Verdict,
                     Comment = item.LatestLog.Comment,
                     ErrorCategories = item.LatestLog.ErrorCategory,
-                    ReviewedAt = item.LatestLog.CreatedAt,
-                    ScorePenalty = item.LatestLog.ScorePenalty,
-                    IsApproved = item.LatestLog.IsApproved,
-                    IsAudited = item.LatestLog.IsAudited,
-                    AuditResult = item.LatestLog.AuditResult
+                    ReviewedAt = item.LatestLog.CreatedAt
                 })
                 .OrderByDescending(item => item.ReviewedAt)
-                .ToList();
-        }
-
-        private static List<ReviewLog> ExtractLatestReviewLogs(IEnumerable<(Assignment Assignment, ReviewLog? LatestLog)> latestCycleReviews)
-        {
-            return latestCycleReviews
-                .Where(item => item.LatestLog != null)
-                .Select(item => item.LatestLog!)
-                .OrderByDescending(log => log.CreatedAt)
                 .ToList();
         }
 
@@ -222,52 +179,6 @@ namespace BLL.Services
             }
 
             await _assignmentRepo.SaveChangesAsync();
-        }
-
-        private async Task<List<User>> GetUsersByIdsAsync(IEnumerable<string?> userIds)
-        {
-            var users = new List<User>();
-
-            foreach (var userId in userIds
-                .Where(id => !string.IsNullOrWhiteSpace(id))
-                .Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                var user = await _userRepo.GetByIdAsync(userId!);
-                if (user != null)
-                {
-                    users.Add(user);
-                }
-            }
-
-            return users;
-        }
-
-        private async Task RunReviewSideEffectSafelyAsync(
-            string actorUserId,
-            string actionType,
-            string entityId,
-            string description,
-            Func<Task> operation)
-        {
-            try
-            {
-                await operation();
-            }
-            catch (Exception ex)
-            {
-                try
-                {
-                    await _logService.LogActionAsync(
-                        actorUserId,
-                        actionType,
-                        "Assignment",
-                        entityId,
-                        $"{description} {ex.Message}");
-                }
-                catch
-                {
-                }
-            }
         }
 
         private async Task NotifyManagerIfProjectReadyForCompletionAsync(int projectId)
@@ -366,7 +277,12 @@ namespace BLL.Services
 
         public async Task<List<AssignedProjectResponse>> GetReviewerProjectsAsync(string reviewerId)
         {
-            var reviewerAssignments = await _assignmentRepo.GetAssignmentsRelevantToReviewerAsync(reviewerId);
+            var allAssignments = await _assignmentRepo.GetAllAsync();
+
+            var reviewerAssignments = allAssignments
+                .Where(a => a.ReviewerId == reviewerId ||
+                            (a.ReviewLogs != null && a.ReviewLogs.Any(r => r.ReviewerId == reviewerId)))
+                .ToList();
 
             var response = new List<AssignedProjectResponse>();
             var grouped = reviewerAssignments.GroupBy(a => a.ProjectId);
@@ -374,17 +290,6 @@ namespace BLL.Services
             foreach (var g in grouped)
             {
                 var project = await _projectRepo.GetProjectWithDetailsAsync(g.Key);
-                var totalProjectItems = project?.DataItems?.Count ?? 0;
-                var approvedProjectItems = ProjectWorkflowStatusHelper.CountApprovedDataItems(project);
-                var completedImages = g.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected);
-                var allReviewerItemsResolved = g.Any() && completedImages == g.Count();
-                var awaitingManagerConfirmation = allReviewerItemsResolved &&
-                    ProjectWorkflowStatusHelper.IsAwaitingManagerConfirmation(project, totalProjectItems, approvedProjectItems);
-                var status = string.Equals(project?.Status, ProjectStatusConstants.Completed, StringComparison.OrdinalIgnoreCase)
-                    ? ProjectStatusConstants.Completed
-                    : awaitingManagerConfirmation
-                        ? ProjectStatusConstants.AwaitingManagerConfirmation
-                        : ProjectStatusConstants.InProgressDisplay;
 
                 response.Add(new AssignedProjectResponse
                 {
@@ -395,9 +300,8 @@ namespace BLL.Services
                     AssignedDate = g.Min(a => a.AssignedDate),
                     Deadline = project?.Deadline ?? DateTime.MinValue,
                     TotalImages = g.Count(),
-                    CompletedImages = completedImages,
-                    Status = status,
-                    IsAwaitingManagerConfirmation = awaitingManagerConfirmation
+                    CompletedImages = g.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected),
+                    Status = g.All(a => a.Status == TaskStatusConstants.Approved) ? "Completed" : "InProgress"
                 });
             }
 
@@ -453,9 +357,20 @@ namespace BLL.Services
             if (request.IsApproved)
             {
                 currentTaskScore = 100;
+                assignment.Status = TaskStatusConstants.Approved;
+
+                if (assignment.ReviewLogs != null && assignment.ReviewLogs.Any())
+                {
+                    foreach (var reviewLog in assignment.ReviewLogs)
+                    {
+                        reviewLog.ErrorCategory = null;
+                        _reviewLogRepo.Update(reviewLog);
+                    }
+                }
             }
             else
             {
+                assignment.Status = TaskStatusConstants.Rejected;
                 int weight = 0;
 
                 if (project.ChecklistItems != null &&
@@ -527,7 +442,6 @@ namespace BLL.Services
                 int approvedCount = latestCycleReviews.Count(item => item.LatestLog != null && IsApprovedVerdict(item.LatestLog.Verdict));
                 int rejectedCount = latestCycleReviews.Count(item => item.LatestLog != null && IsRejectedVerdict(item.LatestLog.Verdict));
                 int currentRejectCount = assignmentGroup.Select(item => item.RejectCount).DefaultIfEmpty(0).Max();
-                var latestReviewLogs = ExtractLatestReviewLogs(latestCycleReviews);
 
                 if (approvedCount > rejectedCount)
                 {
@@ -580,31 +494,6 @@ namespace BLL.Services
                             assignment.AnnotatorId,
                             $"Your task #{assignment.Id} in project \"{project.Name}\" has been rejected {nextRejectCount} times and is now waiting for manager review. Latest reviewer notes: {BuildRejectionSummary(rejectionFeedbacks)}",
                             "Warning");
-
-                        if (_workflowEmailService != null && !string.IsNullOrWhiteSpace(project.ManagerId))
-                        {
-                            var manager = await _userRepo.GetByIdAsync(project.ManagerId);
-                            var annotator = await _userRepo.GetByIdAsync(assignment.AnnotatorId);
-                            var reviewers = await GetUsersByIdsAsync(latestReviewLogs.Select(log => log.ReviewerId));
-
-                            if (manager != null && annotator != null)
-                            {
-                                await RunReviewSideEffectSafelyAsync(
-                                    reviewerId,
-                                    "EscalationTriggerEmailError",
-                                    assignment.Id.ToString(),
-                                    $"Escalation triggered for task {assignment.Id}, but escalation emails could not be delivered.",
-                                    () => _workflowEmailService.SendEscalationTriggeredEmailsAsync(
-                                        project,
-                                        manager,
-                                        annotator,
-                                        assignment,
-                                        reviewers,
-                                        latestReviewLogs,
-                                        "RepeatedReject",
-                                        nextRejectCount));
-                            }
-                        }
                     }
                     else
                     {
@@ -626,31 +515,6 @@ namespace BLL.Services
                         "Warning");
 
                     await NotifyPenaltyTieIfNeededAsync(assignment, project);
-
-                    if (_workflowEmailService != null && !string.IsNullOrWhiteSpace(project.ManagerId))
-                    {
-                        var manager = await _userRepo.GetByIdAsync(project.ManagerId);
-                        var annotator = await _userRepo.GetByIdAsync(assignment.AnnotatorId);
-                        var reviewers = await GetUsersByIdsAsync(latestReviewLogs.Select(log => log.ReviewerId));
-
-                        if (manager != null && annotator != null)
-                        {
-                            await RunReviewSideEffectSafelyAsync(
-                                reviewerId,
-                                "EscalationTriggerEmailError",
-                                assignment.Id.ToString(),
-                                $"Penalty review triggered for task {assignment.Id}, but escalation emails could not be delivered.",
-                                () => _workflowEmailService.SendEscalationTriggeredEmailsAsync(
-                                    project,
-                                    manager,
-                                    annotator,
-                                    assignment,
-                                    reviewers,
-                                    latestReviewLogs,
-                                    "PenaltyReview",
-                                    currentRejectCount));
-                        }
-                    }
                 }
             }
 
@@ -782,7 +646,6 @@ namespace BLL.Services
         public async Task<List<TaskResponse>> GetTasksForReviewAsync(int projectId, string reviewerId)
         {
             var assignments = await _assignmentRepo.GetAssignmentsForReviewerAsync(projectId, reviewerId);
-            assignments = FilterPendingAssignmentsForReviewer(assignments, reviewerId);
 
             var project = await _projectRepo.GetByIdAsync(projectId);
             int samplingRate = 100;
@@ -925,8 +788,7 @@ namespace BLL.Services
 
         public async Task<BatchCompletionStatusResponse> GetBatchCompletionStatusAsync(int projectId, string reviewerId)
         {
-            var project = await _projectRepo.GetProjectWithStatsDataAsync(projectId)
-                ?? await _projectRepo.GetProjectWithDetailsAsync(projectId);
+            var project = await _projectRepo.GetProjectWithDetailsAsync(projectId);
             if (project == null) throw new Exception("Project not found");
 
             var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
@@ -1030,13 +892,10 @@ namespace BLL.Services
                         ProjectName = project.Name,
                         DataItemId = representative.DataItemId,
                         DataItemUrl = group.Select(item => item.DataItem.StorageUrl).FirstOrDefault(),
-                        AnnotationData = GetLatestAnnotationData(assignments),
                         AnnotatorId = representative.AnnotatorId,
                         AnnotatorName = representative.Annotator?.FullName ?? representative.Annotator?.Email ?? representative.AnnotatorId,
                         Status = representative.Status,
                         EscalationType = GetEscalationType(latestCycleReviews),
-                        ProjectType = project.AllowGeometryTypes,
-                        GuidelineVersion = project.GuidelineVersion,
                         RejectCount = assignments.Select(a => a.RejectCount).DefaultIfEmpty(0).Max(),
                         SubmittedAt = assignments.Max(a => a.SubmittedAt),
                         ReviewerFeedbacks = MapReviewerFeedbacks(latestCycleReviews)
@@ -1065,23 +924,13 @@ namespace BLL.Services
             var latestCycleReviews = GetLatestCycleReviews(assignmentGroup);
             var escalationType = GetEscalationType(latestCycleReviews);
             var reviewerFeedbacks = MapReviewerFeedbacks(latestCycleReviews);
-            var latestReviewLogs = ExtractLatestReviewLogs(latestCycleReviews);
             int currentRejectCount = assignmentGroup.Select(a => a.RejectCount).DefaultIfEmpty(0).Max();
             var originalAnnotatorId = assignment.AnnotatorId;
-            var normalizedManagerComment = string.IsNullOrWhiteSpace(request.Comment)
-                ? null
-                : request.Comment.Trim();
 
             switch (request.Action.ToLower())
             {
                 case "approve":
                     await MarkAssignmentsAsync(assignmentGroup, TaskStatusConstants.Approved, currentRejectCount, false);
-                    foreach (var target in assignmentGroup)
-                    {
-                        target.ManagerDecision = "approve";
-                        target.ManagerComment = normalizedManagerComment;
-                        _assignmentRepo.Update(target);
-                    }
 
                     var dataItem = await _dataItemRepo.GetByIdAsync(assignment.DataItemId);
                     if (dataItem != null)
@@ -1116,12 +965,6 @@ namespace BLL.Services
                         : currentRejectCount;
 
                     await MarkAssignmentsAsync(assignmentGroup, TaskStatusConstants.Rejected, resolvedRejectCount, false);
-                    foreach (var target in assignmentGroup)
-                    {
-                        target.ManagerDecision = "reject";
-                        target.ManagerComment = normalizedManagerComment;
-                        _assignmentRepo.Update(target);
-                    }
 
                     await _notification.SendNotificationAsync(
                         assignment.AnnotatorId,
@@ -1157,8 +1000,6 @@ namespace BLL.Services
                         target.Status = TaskStatusConstants.Assigned;
                         target.IsEscalated = false;
                         target.RejectCount = 0;
-                        target.ManagerDecision = null;
-                        target.ManagerComment = null;
                         _assignmentRepo.Update(target);
                     }
 
@@ -1178,8 +1019,6 @@ namespace BLL.Services
                     {
                         target.IsEscalated = false;
                         target.AnnotatorId = "";
-                        target.ManagerDecision = null;
-                        target.ManagerComment = null;
                         _assignmentRepo.Update(target);
                     }
 
@@ -1208,45 +1047,6 @@ namespace BLL.Services
                 "Assignment",
                 assignment.Id.ToString(),
                 $"Manager performed '{request.Action}' action on escalated task {assignment.Id}.");
-
-            if (_workflowEmailService != null && assignment.Project != null)
-            {
-                var reviewers = await GetUsersByIdsAsync(reviewerFeedbacks.Select(feedback => feedback.ReviewerId));
-                var originalAnnotator = string.IsNullOrWhiteSpace(originalAnnotatorId)
-                    ? null
-                    : await _userRepo.GetByIdAsync(originalAnnotatorId);
-                var manager = await _userRepo.GetByIdAsync(managerId) ?? new User
-                {
-                    Id = managerId,
-                    FullName = "Project Manager",
-                    Email = string.Empty,
-                    Role = UserRoles.Manager
-                };
-                User? newAnnotator = null;
-
-                if (!string.IsNullOrWhiteSpace(request.NewAnnotatorId))
-                {
-                    newAnnotator = await _userRepo.GetByIdAsync(request.NewAnnotatorId);
-                }
-
-                await RunReviewSideEffectSafelyAsync(
-                    managerId,
-                    "EscalationResolutionEmailError",
-                    assignment.Id.ToString(),
-                    $"Escalation resolved for task {assignment.Id}, but resolution emails could not be delivered.",
-                    () => _workflowEmailService.SendEscalationResolvedEmailsAsync(
-                        assignment.Project,
-                        manager,
-                        assignment,
-                        originalAnnotator,
-                        newAnnotator,
-                        reviewers,
-                        latestReviewLogs,
-                        request.Action,
-                        normalizedManagerComment,
-                        escalationType,
-                        assignmentGroup.Select(a => a.RejectCount).DefaultIfEmpty(0).Max()));
-            }
         }
     }
 }
