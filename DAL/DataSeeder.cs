@@ -91,6 +91,7 @@ namespace DAL
             if (await context.Users.AnyAsync()) return;
 
             var adminSeed = ResolveAdminSeed(configuration, useFallbackDefaults: true);
+            if (!adminSeed.Enabled) return;
             var adminId = "440816a8-8954-4557-a462-196471ce8b02";
             var managerId = "49179920-d356-46f9-bb64-64da9f6ef4ee";
             var annotatorId = "5c023639-82ed-448e-9415-fc2e86b2d325";
@@ -173,17 +174,15 @@ namespace DAL
             var email = (configuration["SeedAdmin:Email"] ?? string.Empty).Trim();
             var password = configuration["SeedAdmin:Password"] ?? string.Empty;
             var configuredEnabled = configuration.GetValue<bool?>("SeedAdmin:Enabled");
-            var hasCredentials = !string.IsNullOrWhiteSpace(email) && !string.IsNullOrWhiteSpace(password);
 
             if (useFallbackDefaults)
             {
                 fullName = string.IsNullOrWhiteSpace(fullName) ? "System Administrator" : fullName;
                 email = string.IsNullOrWhiteSpace(email) ? "admin@system.com" : email;
                 password = string.IsNullOrWhiteSpace(password) ? "123456" : password;
-                hasCredentials = true;
             }
 
-            var enabled = configuredEnabled ?? hasCredentials;
+            var enabled = configuredEnabled ?? useFallbackDefaults;
 
             if (!enabled)
             {
@@ -194,7 +193,8 @@ namespace DAL
             {
                 throw new InvalidOperationException(
                     "FATAL: Seed admin is enabled but credentials are missing. " +
-                    "Set 'SeedAdmin:Email'/'SeedAdmin__Email' and 'SeedAdmin:Password'/'SeedAdmin__Password'.");
+                    "Set 'SeedAdmin:Enabled'/'SeedAdmin__Enabled' to true together with " +
+                    "'SeedAdmin:Email'/'SeedAdmin__Email' and 'SeedAdmin:Password'/'SeedAdmin__Password'.");
             }
 
             return new AdminSeedSettings(

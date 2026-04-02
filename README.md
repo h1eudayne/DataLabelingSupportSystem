@@ -69,6 +69,8 @@ Copy values from `.env.example` and set them in Railway:
 * `Database__ApplyMigrationsOnStartup`
 * `Database__EnsureCreatedOnStartup`
 * `Database__ServerVersion` (optional override)
+* `SeedAdmin__Enabled`
+* `SeedAdmin__Email` / `SeedAdmin__Password` (only when intentionally bootstrapping an admin account)
 * `Cors__AllowedOrigins`
 * `EmailSettings__DeliveryMode` (`Network` for real SMTP, `PickupDirectory` for local mail-drop)
 * `EmailSettings__MailServer` (required for `Network`)
@@ -96,9 +98,21 @@ If you later move this backend into a larger monorepo, then configure Railway to
 
 ### Runtime behavior
 * The API listens on Railway's `PORT` automatically, with `8080` as the container fallback.
-* By default, the app applies the bundled MySQL EF migration on startup when `Database__ApplyMigrationsOnStartup=true`.
+* Production now defaults to `Database__ApplyMigrationsOnStartup=false`, so a normal redeploy does not automatically change schema.
+* Development still auto-applies the bundled MySQL EF migration by default.
+* If automatic migrations are explicitly enabled, the API now blocks startup before running DDL when the target database already contains app tables but has no `__EFMigrationsHistory` table.
 * `Database__EnsureCreatedOnStartup` is now only a fallback mode for local or disposable databases.
+* Production admin seeding is opt-in. Set `SeedAdmin__Enabled=true` together with `SeedAdmin__Email` and `SeedAdmin__Password` only when you intentionally want startup to create or reconcile the default admin account.
 * In production, the API now fails fast if `Cors__AllowedOrigins` is missing.
 * In local development, email delivery defaults to a file-based pickup directory at `API/mail-drop` so workflow emails can still be verified without a live SMTP password.
 * `/health` returns `200` only when the API can reach the database.
 * `/` returns a simple service status payload that helps confirm the container started.
+
+### Applying migrations manually
+Run schema changes as a separate release step instead of during every deploy:
+
+```powershell
+cd API
+dotnet tool restore
+dotnet tool run dotnet-ef database update --project ../DAL/DAL.csproj --startup-project API.csproj
+```
