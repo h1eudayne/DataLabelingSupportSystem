@@ -1,10 +1,11 @@
-using API.Infrastructure;
 using API.Middlewares;
 using API.Services;
 using BLL;
 using BLL.Interfaces;
+using DAL;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
@@ -23,8 +24,9 @@ else if (!builder.Environment.IsDevelopment())
     builder.WebHost.UseUrls("http://+:8080");
 }
 
+DatabaseConnectionStringResolver.GetRequiredConnectionString(builder.Configuration);
+
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddApplicationInfrastructure(builder.Configuration);
 builder.Services.AddBusinessLogic(builder.Configuration);
 builder.Services.AddScoped<IAppNotificationRealtimeDispatcher, SignalRAppNotificationRealtimeDispatcher>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -45,10 +47,6 @@ var configuredCorsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigin
 
 var developmentCorsOrigins = new[]
 {
-    "http://localhost:3000",
-    "https://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://127.0.0.1:3000",
     "http://localhost:5173",
     "https://localhost:5173",
     "http://127.0.0.1:5173",
@@ -209,7 +207,7 @@ var app = builder.Build();
 
 app.UseForwardedHeaders();
 app.UseMiddleware<ExceptionMiddleware>();
-await app.Services.InitializeApplicationInfrastructureAsync(app.Environment.IsDevelopment());
+await app.Services.InitializeInfrastructureAsync(app.Environment.IsDevelopment());
 app.UseSwagger();
 app.UseSwaggerUI();
 
@@ -227,7 +225,26 @@ app.MapGet("/", () => Results.Ok(new
     environment = app.Environment.EnvironmentName
 })).AllowAnonymous();
 
+app.MapGet("/health", async (DAL.ApplicationDbContext db, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var canConnect = await db.Database.CanConnectAsync(cancellationToken);
+        return canConnect
+            ? Results.Ok(new { status = "ok", database = "reachable" })
+            : Results.Problem(
+                title: "Database unavailable",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(
+            title: "Database unavailable",
+            detail: app.Environment.IsDevelopment() ? ex.Message : null,
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+}).AllowAnonymous();
+
 app.MapControllers();
-app.MapApplicationHealthEndpoints(app.Environment.IsDevelopment());
 app.MapHub<API.Hubs.AppNotificationHub>("/hubs/notifications");
 app.Run();

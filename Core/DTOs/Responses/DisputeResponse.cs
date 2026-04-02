@@ -13,17 +13,9 @@ namespace Core.DTOs.Responses
         public DateTime? ResolvedAt { get; set; }
         public int? ProjectId { get; set; }
         public string? ProjectName { get; set; }
-        public int? DataItemId { get; set; }
         public string? DataItemUrl { get; set; }
-        public string? AnnotationData { get; set; }
-        public DateTime? SubmittedAt { get; set; }
         public string? AssignmentStatus { get; set; }
-        public string? ProjectType { get; set; }
-        public string? GuidelineVersion { get; set; }
-        public string? ResolutionType { get; set; }
-        public string? ManagerName { get; set; }
         public string? ReviewerName { get; set; }
-        public int RejectCount { get; set; }
         public List<ReviewerFeedbackResponse> ReviewerFeedbacks { get; set; } = new List<ReviewerFeedbackResponse>();
     }
 }

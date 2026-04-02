@@ -15,11 +15,10 @@ namespace Core.DTOs.Responses
         public double OverrideRate { get; set; }
 
         public double DisputeRate { get; set; }
-        public double? KQSScore { get; set; }
+        public double KQSScore { get; set; }
         public int TotalAuditedReviews { get; set; }
         public int CorrectDecisions { get; set; }
-        public int TotalManagerDecisions { get; set; }
-        public double? AuditAccuracy { get; set; }
+        public double AuditAccuracy { get; set; }
         public DateTime LastUpdated { get; set; }
         public List<ProjectReviewSummary> ProjectSummaries { get; set; } = new List<ProjectReviewSummary>();
     }
@@ -32,7 +31,6 @@ namespace Core.DTOs.Responses
         public int Approved { get; set; }
         public int Rejected { get; set; }
         public double ApprovalRate { get; set; }
-        public int TotalManagerDecisions { get; set; }
-        public double? KQSScore { get; set; }
+        public double KQSScore { get; set; }
     }
 }

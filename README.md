@@ -70,14 +70,11 @@ Copy values from `.env.example` and set them in Railway:
 * `Database__EnsureCreatedOnStartup`
 * `Database__ServerVersion` (optional override)
 * `Cors__AllowedOrigins`
-* `EmailSettings__DeliveryMode` (`Network` for real SMTP, `PickupDirectory` for local mail-drop)
-* `EmailSettings__MailServer` (required for `Network`)
-* `EmailSettings__MailPort` (required for `Network`)
-* `EmailSettings__SenderName`
-* `EmailSettings__SenderEmail` (required)
-* `EmailSettings__Username` (optional, defaults to sender email)
-* `EmailSettings__Password` (required for `Network` when `UseDefaultCredentials=false`)
-* `EmailSettings__PickupDirectory` (optional, used by `PickupDirectory`)
+* `EmailSettings__MailServer` (optional)
+* `EmailSettings__MailPort` (optional)
+* `EmailSettings__SenderName` (optional)
+* `EmailSettings__SenderEmail` (optional)
+* `EmailSettings__Password` (optional)
 
 ### Railway setup steps
 1. Create a new Railway service from this repository.
@@ -99,6 +96,5 @@ If you later move this backend into a larger monorepo, then configure Railway to
 * By default, the app applies the bundled MySQL EF migration on startup when `Database__ApplyMigrationsOnStartup=true`.
 * `Database__EnsureCreatedOnStartup` is now only a fallback mode for local or disposable databases.
 * In production, the API now fails fast if `Cors__AllowedOrigins` is missing.
-* In local development, email delivery defaults to a file-based pickup directory at `API/mail-drop` so workflow emails can still be verified without a live SMTP password.
 * `/health` returns `200` only when the API can reach the database.
 * `/` returns a simple service status payload that helps confirm the container started.

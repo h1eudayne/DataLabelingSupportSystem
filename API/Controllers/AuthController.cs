@@ -181,15 +181,8 @@ namespace API.Controllers
 
             try
             {
-                var result = await _userService.ForgotPasswordAsync(request.Email);
-                return Ok(new
-                {
-                    Message = result.Message,
-                    emailDelivered = result.EmailDelivered,
-                    notificationDelivered = result.NotificationDelivered,
-                    emailDeliveryMode = result.EmailDeliveryMode,
-                    emailDeliveryTarget = result.EmailDeliveryTarget
-                });
+                var resultMessage = await _userService.ForgotPasswordAsync(request.Email);
+                return Ok(new { Message = resultMessage });
             }
             catch (Exception ex)
             {

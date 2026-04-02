@@ -75,7 +75,6 @@ namespace DAL.Repositories
                 .Include(a => a.Project)
                     .ThenInclude(p => p.LabelClasses)
                 .Include(a => a.Annotations)
-                .Include(a => a.ReviewLogs)
                 .Include(a => a.Reviewer)
                 .Include(a => a.Annotator)
                 .Where(a => a.ProjectId == projectId &&
@@ -93,7 +92,6 @@ namespace DAL.Repositories
                     .ThenInclude(p => p.LabelClasses)
                 .Include(a => a.Annotations)
                 .Include(a => a.ReviewLogs)
-                .Include(a => a.Reviewer)
                 .Where(a => a.AnnotatorId == annotatorId);
 
             if (projectId > 0)
@@ -124,43 +122,7 @@ namespace DAL.Repositories
                     .ThenInclude(p => p.LabelClasses)
                 .Include(a => a.Annotations)
                 .Include(a => a.ReviewLogs)
-                .Include(a => a.Reviewer)
                 .FirstOrDefaultAsync(a => a.Id == assignmentId);
-        }
-
-        public async Task<Assignment?> GetAccessibleAssignmentForUserOnDataItemAsync(int projectId, int dataItemId, string userId)
-        {
-            return await AppContext.Assignments
-                .Include(a => a.DataItem)
-                .Include(a => a.Project)
-                    .ThenInclude(p => p.LabelClasses)
-                .Include(a => a.Annotations)
-                .Include(a => a.ReviewLogs)
-                .Where(a => a.ProjectId == projectId && a.DataItemId == dataItemId)
-                .Where(a =>
-                    a.AnnotatorId == userId ||
-                    a.ReviewerId == userId ||
-                    a.ReviewLogs.Any(log => log.ReviewerId == userId) ||
-                    a.Project!.ManagerId == userId)
-                .OrderBy(a => a.Id)
-                .FirstOrDefaultAsync();
-        }
-
-        public async Task<List<Assignment>> GetAssignmentsByProjectWithDetailsAsync(int projectId)
-        {
-            return await AppContext.Assignments
-                .Include(a => a.DataItem)
-                .Include(a => a.Project)
-                    .ThenInclude(p => p.LabelClasses)
-                .Include(a => a.Annotations)
-                .Include(a => a.ReviewLogs)
-                .Include(a => a.Reviewer)
-                .Include(a => a.Annotator)
-                .Where(a => a.ProjectId == projectId)
-                .OrderBy(a => a.DataItemId)
-                .ThenBy(a => a.AnnotatorId)
-                .ThenBy(a => a.Id)
-                .ToListAsync();
         }
 
         public async Task<AnnotatorStatsResponse> GetAnnotatorStatsAsync(string annotatorId)
@@ -205,12 +167,7 @@ namespace DAL.Repositories
         public async Task<List<Assignment>> GetRelatedAssignmentsForDisputeAsync(int assignmentId, string annotatorId, int dataItemId)
         {
             return await AppContext.Assignments
-                .Include(a => a.DataItem)
-                .Include(a => a.Project)
-                .Include(a => a.Annotations)
                 .Include(a => a.ReviewLogs)
-                .Include(a => a.Reviewer)
-                .Include(a => a.Annotator)
                 .Where(a => a.DataItemId == dataItemId &&
                             a.AnnotatorId == annotatorId &&
                             a.Id != assignmentId)
@@ -223,16 +180,6 @@ namespace DAL.Repositories
                 .Where(a => a.ReviewerId == reviewerId)
                 .Select(a => a.ProjectId)
                 .Distinct()
-                .ToListAsync();
-        }
-
-        public async Task<List<Assignment>> GetAssignmentsRelevantToReviewerAsync(string reviewerId)
-        {
-            return await AppContext.Assignments
-                .Where(a => a.ReviewerId == reviewerId ||
-                            a.ReviewLogs.Any(r => r.ReviewerId == reviewerId))
-                .OrderBy(a => a.ProjectId)
-                .ThenBy(a => a.AssignedDate)
                 .ToListAsync();
         }
     }

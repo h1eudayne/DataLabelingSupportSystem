@@ -189,35 +189,6 @@ namespace BLL.Services
             await _statsRepo.SaveChangesAsync();
         }
 
-        private static bool IsApprovedVerdict(string? verdict)
-        {
-            return string.Equals(verdict, "Approved", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(verdict, "Approve", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool IsRejectedVerdict(string? verdict)
-        {
-            return string.Equals(verdict, "Rejected", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(verdict, "Reject", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static IEnumerable<ReviewLog> GetCurrentSubmissionReviewLogs(
-            IEnumerable<ReviewLog>? reviewLogs,
-            DateTime? submittedAt)
-        {
-            if (reviewLogs == null)
-            {
-                return Enumerable.Empty<ReviewLog>();
-            }
-
-            if (!submittedAt.HasValue)
-            {
-                return reviewLogs;
-            }
-
-            return reviewLogs.Where(log => log.CreatedAt >= submittedAt.Value);
-        }
-
         public async Task<ReviewerStatsResponse> GetReviewerStatsAsync(string reviewerId)
         {
             var allStats = await _statsRepo.GetAllAsync();
@@ -225,13 +196,6 @@ namespace BLL.Services
 
             var allReviewLogs = await _reviewLogRepo.GetAllAsync();
             var reviewerLogs = allReviewLogs.Where(rl => rl.ReviewerId == reviewerId).ToList();
-            var reviewerAssignmentIds = reviewerLogs
-                .Select(rl => rl.AssignmentId)
-                .Distinct()
-                .ToHashSet();
-            var assignmentLookup = (await _assignmentRepo.GetAllAsync())
-                .Where(assignment => reviewerAssignmentIds.Contains(assignment.Id))
-                .ToDictionary(assignment => assignment.Id);
 
             var reviewerDisputes = await _disputeRepo.GetDisputesByReviewerAsync(reviewerId);
             var pendingDisputedAssignmentIds = reviewerDisputes
@@ -255,45 +219,18 @@ namespace BLL.Services
 
             int totalAudited = reviewerStats.Sum(s => s.TotalAuditedReviews);
             int correctDecisions = reviewerStats.Sum(s => s.TotalCorrectDecisions);
-            double? auditAccuracy = totalAudited > 0
-                ? Math.Round((double)correctDecisions / totalAudited * 100, 2)
-                : null;
+            double auditAccuracy = totalAudited > 0 ? Math.Round((double)correctDecisions / totalAudited * 100, 2) : 0;
             int managerAlignedDecisions = 0;
             int managerAlignedCorrect = 0;
             var projectDecisionMap = new Dictionary<int, (int Total, int Correct)>();
 
-            var latestCurrentCycleLogs = reviewerLogs
-                .GroupBy(log => log.AssignmentId)
-                .Select(group =>
-                {
-                    if (!assignmentLookup.TryGetValue(group.Key, out var assignment))
-                    {
-                        return null;
-                    }
-
-                    var latestCurrentLog = GetCurrentSubmissionReviewLogs(group, assignment.SubmittedAt)
-                        .OrderByDescending(log => log.CreatedAt)
-                        .FirstOrDefault();
-
-                    if (latestCurrentLog == null)
-                    {
-                        return null;
-                    }
-
-                    return new
-                    {
-                        Assignment = assignment,
-                        ReviewLog = latestCurrentLog
-                    };
-                })
-                .Where(item => item != null)
-                .Select(item => item!)
-                .ToList();
-
-            foreach (var item in latestCurrentCycleLogs)
+            foreach (var reviewLog in reviewerLogs)
             {
-                var assignment = item.Assignment;
-                var reviewLog = item.ReviewLog;
+                var assignment = await _assignmentRepo.GetByIdAsync(reviewLog.AssignmentId);
+                if (assignment == null)
+                {
+                    continue;
+                }
 
                 if (pendingDisputedAssignmentIds.Contains(assignment.Id))
                 {
@@ -330,13 +267,14 @@ namespace BLL.Services
                 projectDecisionMap[assignment.ProjectId] = projectStats;
             }
 
-            double? kqsScore = managerAlignedDecisions > 0
+            double kqsScore = managerAlignedDecisions > 0
                 ? Math.Round((double)managerAlignedCorrect / managerAlignedDecisions * 100, 2)
-                : auditAccuracy;
+                : reviewerStats.Count > 0
+                    ? reviewerStats.Average(s => s.ReviewerQualityScore)
+                    : 100;
 
             var projectIds = reviewerStats.Select(s => s.ProjectId)
                 .Concat(projectDecisionMap.Keys)
-                .Concat(assignmentLookup.Values.Select(assignment => assignment.ProjectId))
                 .Distinct()
                 .ToList();
             var projectSummaries = new List<ProjectReviewSummary>();
@@ -344,16 +282,19 @@ namespace BLL.Services
             foreach (var projectId in projectIds)
             {
                 var project = await _projectRepo.GetByIdAsync(projectId);
-                var logsForProject = reviewerLogs
-                    .Where(log => assignmentLookup.TryGetValue(log.AssignmentId, out var assignment) && assignment.ProjectId == projectId)
-                    .ToList();
+                var stat = reviewerStats.FirstOrDefault(s => s.ProjectId == projectId);
+                var logsForProject = reviewerLogs.Where(l =>
+                {
+                    var assignment = _assignmentRepo.GetByIdAsync(l.AssignmentId).Result;
+                    return assignment != null && assignment.ProjectId == projectId;
+                }).ToList();
 
                 var alignedProjectDecisions = projectDecisionMap.TryGetValue(projectId, out var projectDecisionStats)
                     ? projectDecisionStats
                     : (Total: 0, Correct: 0);
 
-                int projectApproved = logsForProject.Count(l => IsApprovedVerdict(l.Verdict));
-                int projectRejected = logsForProject.Count(l => IsRejectedVerdict(l.Verdict));
+                int projectApproved = logsForProject.Count(l => l.Verdict == "Approved" || l.Verdict == "Approve");
+                int projectRejected = logsForProject.Count(l => l.Verdict == "Rejected" || l.Verdict == "Reject");
                 int projectTotal = logsForProject.Count;
 
                 projectSummaries.Add(new ProjectReviewSummary
@@ -364,10 +305,9 @@ namespace BLL.Services
                     Approved = projectApproved,
                     Rejected = projectRejected,
                     ApprovalRate = projectTotal > 0 ? Math.Round((double)projectApproved / projectTotal * 100, 2) : 0,
-                    TotalManagerDecisions = alignedProjectDecisions.Total,
                     KQSScore = alignedProjectDecisions.Total > 0
                         ? Math.Round((double)alignedProjectDecisions.Correct / alignedProjectDecisions.Total * 100, 2)
-                        : null
+                        : stat?.ReviewerQualityScore ?? 100
                 });
             }
 
@@ -386,7 +326,6 @@ namespace BLL.Services
                 KQSScore = kqsScore,
                 TotalAuditedReviews = totalAudited,
                 CorrectDecisions = correctDecisions,
-                TotalManagerDecisions = managerAlignedDecisions,
                 AuditAccuracy = auditAccuracy,
                 LastUpdated = DateTime.UtcNow,
                 ProjectSummaries = projectSummaries

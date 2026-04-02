@@ -1,6 +1,5 @@
 using BLL.Interfaces;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.SignalR;
 
 namespace API.Hubs
@@ -9,14 +8,10 @@ namespace API.Hubs
     public class AppNotificationHub : Hub
     {
         private readonly IAppNotificationService _notificationService;
-        private readonly ILogger<AppNotificationHub> _logger;
 
-        public AppNotificationHub(
-            IAppNotificationService notificationService,
-            ILogger<AppNotificationHub> logger)
+        public AppNotificationHub(IAppNotificationService notificationService)
         {
             _notificationService = notificationService;
-            _logger = logger;
         }
 
         public override async Task OnConnectedAsync()
@@ -50,9 +45,8 @@ namespace API.Hubs
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                _logger.LogWarning(ex, "Failed to send pending notifications to user {UserId}.", userId);
             }
         }
 
@@ -65,9 +59,8 @@ namespace API.Hubs
             {
                 await _notificationService.MarkListAsReadAsync(notificationIds, userId);
             }
-            catch (Exception ex)
+            catch
             {
-                _logger.LogWarning(ex, "Failed to acknowledge notifications for user {UserId}.", userId);
             }
         }
     }
