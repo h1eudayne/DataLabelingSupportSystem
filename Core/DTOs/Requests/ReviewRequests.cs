@@ -60,7 +60,7 @@ namespace Core.DTOs.Requests
 
         [Required]
         [JsonPropertyName("action")]
-        public string Action { get; set; }
+        public string Action { get; set; } = string.Empty;
 
         [JsonPropertyName("comment")]
         public string? Comment { get; set; }

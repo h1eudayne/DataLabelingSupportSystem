@@ -12,7 +12,11 @@ namespace DAL.Repositories
 
         public async Task<User?> GetUserByEmailAsync(string email)
         {
-            return await _dbSet.FirstOrDefaultAsync(u => u.Email == email);
+            return await _dbSet
+                .Where(u => u.Email == email)
+                .OrderByDescending(u => u.IsActive)
+                .ThenByDescending(u => u.LastActivityAt)
+                .FirstOrDefaultAsync();
         }
 
         public async Task<bool> IsEmailExistsAsync(string email)

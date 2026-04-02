@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace DAL
@@ -7,40 +6,15 @@ namespace DAL
     {
         public static async Task EnsureAssignmentIndexesAsync(ApplicationDbContext context, ILogger logger)
         {
-            if (!context.Database.IsSqlServer())
+            if (!string.Equals(context.Database.ProviderName, "Pomelo.EntityFrameworkCore.MySql", StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            const string sql = """
-                IF OBJECT_ID(N'[dbo].[Assignments]', N'U') IS NULL
-                    RETURN;
-
-                IF EXISTS (
-                    SELECT 1
-                    FROM sys.indexes
-                    WHERE name = N'IX_Assignment_DataItem_Annotator'
-                      AND object_id = OBJECT_ID(N'[dbo].[Assignments]')
-                )
-                BEGIN
-                    DROP INDEX [IX_Assignment_DataItem_Annotator] ON [dbo].[Assignments];
-                END
-
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM sys.indexes
-                    WHERE name = N'IX_Assignment_DataItem_Annotator_Reviewer'
-                      AND object_id = OBJECT_ID(N'[dbo].[Assignments]')
-                )
-                BEGIN
-                    CREATE UNIQUE INDEX [IX_Assignment_DataItem_Annotator_Reviewer]
-                    ON [dbo].[Assignments] ([DataItemId], [AnnotatorId], [ReviewerId]);
-                END
-                """;
-
             try
             {
-                await context.Database.ExecuteSqlRawAsync(sql);
+                logger.LogInformation("Skipping legacy assignment index updater because MySQL schema is created from the current EF model.");
+                await Task.CompletedTask;
             }
             catch (Exception ex)
             {

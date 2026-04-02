@@ -4,7 +4,6 @@ using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
 namespace API.Controllers
@@ -17,12 +16,18 @@ namespace API.Controllers
         private readonly IUserService _userService;
         private readonly IActivityLogService _logService;
         private readonly IAppNotificationService _notificationService;
+        private readonly ILogger<AuthController> _logger;
 
-        public AuthController(IUserService userService, IActivityLogService logService, IAppNotificationService notificationService)
+        public AuthController(
+            IUserService userService,
+            IActivityLogService logService,
+            IAppNotificationService notificationService,
+            ILogger<AuthController> logger)
         {
             _userService = userService;
             _logService = logService;
             _notificationService = notificationService;
+            _logger = logger;
         }
 
         [HttpPost("register")]
@@ -59,23 +64,29 @@ namespace API.Controllers
                 if (accessToken == null || refreshToken == null)
                     return Unauthorized(new ErrorResponse { Message = "Invalid email or password." });
 
-                var handler = new JwtSecurityTokenHandler();
-                var jwtToken = handler.ReadJwtToken(accessToken);
-                var userId = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+                var authenticatedUser = await _userService.GetUserByEmailAsync(request.Email);
+                var userId = authenticatedUser?.Id;
 
                 int unreadCount = 0;
 
                 if (!string.IsNullOrEmpty(userId))
                 {
-                    await _logService.LogActionAsync(
-                        userId,
-                        "Login",
-                        "User",
-                        userId,
-                        "User logged into the system."
-                    );
+                    try
+                    {
+                        await _logService.LogActionAsync(
+                            userId,
+                            "Login",
+                            "User",
+                            userId,
+                            "User logged into the system."
+                        );
 
-                    unreadCount = await _notificationService.GetUnreadCountAsync(userId);
+                        unreadCount = await _notificationService.GetUnreadCountAsync(userId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Login side-effects failed for {Email}", request.Email);
+                    }
                 }
 
                 return Ok(new
@@ -88,12 +99,13 @@ namespace API.Controllers
                     unreadNotifications = unreadCount
                 });
             }
-            catch (ArgumentException)
+            catch (UnauthorizedAccessException)
             {
                 return StatusCode(403, new ErrorResponse { Message = "Account is deactivated or banned." });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Login failed for {Email}", request.Email);
                 return StatusCode(500, new ErrorResponse { Message = "An error occurred during login. Please try again later." });
             }
         }
@@ -169,8 +181,15 @@ namespace API.Controllers
 
             try
             {
-                var resultMessage = await _userService.ForgotPasswordAsync(request.Email);
-                return Ok(new { Message = resultMessage });
+                var result = await _userService.ForgotPasswordAsync(request.Email);
+                return Ok(new
+                {
+                    Message = result.Message,
+                    emailDelivered = result.EmailDelivered,
+                    notificationDelivered = result.NotificationDelivered,
+                    emailDeliveryMode = result.EmailDeliveryMode,
+                    emailDeliveryTarget = result.EmailDeliveryTarget
+                });
             }
             catch (Exception ex)
             {

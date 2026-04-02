@@ -8,6 +8,7 @@ namespace BLL.Interfaces
     public interface IUserService
     {
         Task<User> RegisterAsync(string fullName, string email, string password, string role, string? managerId = null);
+        Task<EmailDispatchStatusResponse> CreateManagedUserAsync(string adminId, string fullName, string email, string role, string? managerId = null);
         Task<(string? accessToken, string? refreshToken)> LoginAsync(string email, string password);
         Task<(string? accessToken, string? refreshToken)> RefreshTokenAsync(string refreshToken);
         Task RevokeRefreshTokenAsync(string userId);
@@ -19,12 +20,13 @@ namespace BLL.Interfaces
         Task<PagedResponse<UserResponse>> GetAllUsersAsync(int page, int pageSize);
         Task UpdateUserAsync(string userId, string actorId, UpdateUserRequest request);
         Task DeleteUserAsync(string userId);
-        Task<string> ForgotPasswordAsync(string email);
-        Task AdminChangeUserPasswordAsync(string adminId, string targetUserId, string newPassword);
+        Task<EmailDispatchStatusResponse> ForgotPasswordAsync(string email);
+        Task<EmailDispatchStatusResponse> AdminChangeUserPasswordAsync(string adminId, string targetUserId);
         Task<List<UserResponse>> GetManagementBoardAsync();
         Task<ToggleUserStatusResponse> ToggleUserStatusAsync(string userId, bool isActive, string? adminId = null);
         Task ResolveGlobalUserBanRequestAsync(int requestId, string managerId, ResolveGlobalUserBanRequest request);
         Task UpdateAvatarAsync(string userId, string avatarUrl);
+        Task<string> UploadAvatarAsync(string userId, Stream content, string originalFileName);
         Task<ImportUserResponse> ImportUsersFromExcelAsync(Stream fileStream, string adminId);
         Task<List<UserResponse>> GetManagedUsersAsync(string managerId);
         Task<List<UserResponse>> GetAllUsersNoPagingAsync();
