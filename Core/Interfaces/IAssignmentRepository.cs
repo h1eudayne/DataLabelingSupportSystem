@@ -16,5 +16,8 @@ namespace Core.Interfaces
         Task<int> CountActiveTasksAsync(int projectId);
         Task<List<Assignment>> GetRelatedAssignmentsForDisputeAsync(int assignmentId, string annotatorId, int dataItemId);
         Task<List<int>> GetProjectIdsByReviewerAsync(string reviewerId);
+        Task<List<Assignment>> GetAssignmentsRelevantToReviewerAsync(string reviewerId);
+        Task<Assignment?> GetAccessibleAssignmentForUserOnDataItemAsync(int projectId, int dataItemId, string userId);
+        Task<List<Assignment>> GetAssignmentsByProjectWithDetailsAsync(int projectId);
     }
 }

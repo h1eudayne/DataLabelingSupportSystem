@@ -34,6 +34,10 @@ namespace BLL.Tests
             _logServiceMock = new Mock<IActivityLogService>();
             _notificationMock = new Mock<IAppNotificationService>();
             _workflowEmailServiceMock = new Mock<IWorkflowEmailService>();
+            _assignmentRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _dataItemRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _annotationRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+            _projectRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
 
             _taskService = new TaskService(
                 _assignmentRepoMock.Object,
@@ -200,7 +204,7 @@ namespace BLL.Tests
                 ProjectId = projectId,
                 TotalQuantity = totalItems,
                 AnnotatorIds = annotators.Select(a => a.Id).ToList(),
-                ReviewerIds = null
+                ReviewerIds = new List<string>()
             };
 
             await _taskService.AssignTeamAsync(managerId, request);
@@ -497,6 +501,88 @@ namespace BLL.Tests
         }
 
         [Fact]
+        public async Task AssignTeamAsync_WhenAnnotatorNotificationFails_StillCreatesAssignmentsAndContinuesOtherSideEffects()
+        {
+            const string managerId = "manager-1";
+            const int projectId = 1;
+
+            var manager = new User
+            {
+                Id = managerId,
+                FullName = "Manager One",
+                Email = "manager@test.com",
+                Role = UserRoles.Manager
+            };
+
+            var project = new Project
+            {
+                Id = projectId,
+                Name = "Resilient Assignment Project",
+                ManagerId = managerId,
+                Status = "InProgress",
+                Deadline = DateTime.UtcNow.AddDays(7)
+            };
+
+            var annotator = new User
+            {
+                Id = "annotator-1",
+                Email = "annotator@test.com",
+                FullName = "Annotator One",
+                Role = UserRoles.Annotator
+            };
+
+            var reviewer = new User
+            {
+                Id = "reviewer-1",
+                Email = "reviewer@test.com",
+                FullName = "Reviewer One",
+                Role = UserRoles.Reviewer
+            };
+
+            var dataItems = new List<DataItem>
+            {
+                new DataItem { Id = 1, ProjectId = projectId, StorageUrl = "image-1.jpg", Status = TaskStatusConstants.New }
+            };
+
+            _projectRepoMock.Setup(r => r.GetByIdAsync(projectId)).ReturnsAsync(project);
+            _userRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<User> { annotator, reviewer, manager });
+            _userRepoMock.Setup(r => r.GetByIdAsync(managerId)).ReturnsAsync(manager);
+            _assignmentRepoMock.Setup(r => r.GetUnassignedDataItemsAsync(projectId, 1)).ReturnsAsync(dataItems);
+            _assignmentRepoMock.Setup(r => r.AddAsync(It.IsAny<Assignment>())).Returns(Task.CompletedTask);
+            _notificationMock
+                .Setup(n => n.SendNotificationAsync(annotator.Id, It.IsAny<string>(), "Success"))
+                .ThrowsAsync(new InvalidOperationException("SignalR is unavailable"));
+
+            await _taskService.AssignTeamAsync(managerId, new AssignTeamRequest
+            {
+                ProjectId = projectId,
+                TotalQuantity = 1,
+                AnnotatorIds = new List<string> { annotator.Id },
+                ReviewerIds = new List<string> { reviewer.Id }
+            });
+
+            _assignmentRepoMock.Verify(r => r.AddAsync(It.IsAny<Assignment>()), Times.Once);
+            _notificationMock.Verify(
+                n => n.SendNotificationAsync(reviewer.Id, It.IsAny<string>(), "Info"),
+                Times.Once);
+            _workflowEmailServiceMock.Verify(
+                w => w.SendAnnotatorAssignmentEmailAsync(project, manager, annotator, 1, 1),
+                Times.Once);
+            _workflowEmailServiceMock.Verify(
+                w => w.SendReviewerAssignmentEmailAsync(project, manager, reviewer, 1, 1),
+                Times.Once);
+            _logServiceMock.Verify(
+                l => l.LogActionAsync(
+                    managerId,
+                    "AssignTeamNotificationError",
+                    "Project",
+                    projectId.ToString(),
+                    It.Is<string>(message => message.Contains(annotator.Id)),
+                    null),
+                Times.Once);
+        }
+
+        [Fact]
         public async Task GetTaskImagesAsync_WithMultipleReviewerCopies_ReturnsDistinctDataItems()
         {
             const string annotatorId = "annotator-1";
@@ -642,6 +728,23 @@ namespace BLL.Tests
             _assignmentRepoMock
                 .Setup(r => r.GetAssignmentsByAnnotatorAsync(annotatorId, 0, null))
                 .ReturnsAsync(assignments);
+            _projectRepoMock
+                .Setup(r => r.GetProjectsByIdsAsync(It.Is<List<int>>(ids => ids.Count == 1 && ids.Contains(projectId))))
+                .ReturnsAsync(new List<Project>
+                {
+                    new Project
+                    {
+                        Id = projectId,
+                        Name = "Matrix Project",
+                        Status = ProjectStatusConstants.Active,
+                        Deadline = deadline,
+                        DataItems = new List<DataItem>
+                        {
+                            new DataItem { Id = 1, Status = TaskStatusConstants.Approved },
+                            new DataItem { Id = 2, Status = TaskStatusConstants.New }
+                        }
+                    }
+                });
 
             var result = await _taskService.GetAssignedProjectsAsync(annotatorId);
 
@@ -649,6 +752,162 @@ namespace BLL.Tests
             Assert.Equal(2, project.TotalImages);
             Assert.Equal(1, project.CompletedImages);
             Assert.Equal("InProgress", project.Status);
+        }
+
+        [Fact]
+        public async Task GetAssignedProjectsAsync_PrioritizesProjectsWithReturnedImages()
+        {
+            const string annotatorId = "annotator-1";
+            var now = DateTime.UtcNow;
+
+            var assignments = new List<Assignment>
+            {
+                new Assignment
+                {
+                    Id = 11,
+                    ProjectId = 100,
+                    DataItemId = 1001,
+                    AnnotatorId = annotatorId,
+                    ReviewerId = "reviewer-1",
+                    Status = TaskStatusConstants.Rejected,
+                    AssignedDate = now.AddHours(-1),
+                    Project = new Project { Id = 100, Name = "Returned Project", Description = "Needs relabel", Deadline = now.AddDays(1) },
+                    DataItem = new DataItem { Id = 1001, StorageUrl = "returned.jpg" }
+                },
+                new Assignment
+                {
+                    Id = 12,
+                    ProjectId = 200,
+                    DataItemId = 2001,
+                    AnnotatorId = annotatorId,
+                    ReviewerId = "reviewer-2",
+                    Status = TaskStatusConstants.InProgress,
+                    AssignedDate = now,
+                    Project = new Project { Id = 200, Name = "Regular Project", Description = "Normal work", Deadline = now.AddHours(6) },
+                    DataItem = new DataItem { Id = 2001, StorageUrl = "regular.jpg" }
+                },
+                new Assignment
+                {
+                    Id = 13,
+                    ProjectId = 300,
+                    DataItemId = 3001,
+                    AnnotatorId = annotatorId,
+                    ReviewerId = "reviewer-3",
+                    Status = TaskStatusConstants.Approved,
+                    AssignedDate = now.AddHours(-2),
+                    Project = new Project { Id = 300, Name = "Completed Project", Description = "Done", Deadline = now.AddDays(2) },
+                    DataItem = new DataItem { Id = 3001, StorageUrl = "done.jpg" }
+                }
+            };
+
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentsByAnnotatorAsync(annotatorId, 0, null))
+                .ReturnsAsync(assignments);
+            _projectRepoMock
+                .Setup(r => r.GetProjectsByIdsAsync(It.Is<List<int>>(ids =>
+                    ids.Count == 3 &&
+                    ids.Contains(100) &&
+                    ids.Contains(200) &&
+                    ids.Contains(300))))
+                .ReturnsAsync(new List<Project>
+                {
+                    new Project
+                    {
+                        Id = 100,
+                        Name = "Returned Project",
+                        Status = ProjectStatusConstants.Active,
+                        Deadline = now.AddDays(1),
+                        DataItems = new List<DataItem>
+                        {
+                            new DataItem { Id = 1001, Status = TaskStatusConstants.Rejected }
+                        }
+                    },
+                    new Project
+                    {
+                        Id = 200,
+                        Name = "Regular Project",
+                        Status = ProjectStatusConstants.Active,
+                        Deadline = now.AddHours(6),
+                        DataItems = new List<DataItem>
+                        {
+                            new DataItem { Id = 2001, Status = TaskStatusConstants.InProgress }
+                        }
+                    },
+                    new Project
+                    {
+                        Id = 300,
+                        Name = "Completed Project",
+                        Status = ProjectStatusConstants.Completed,
+                        Deadline = now.AddDays(2),
+                        DataItems = new List<DataItem>
+                        {
+                            new DataItem { Id = 3001, Status = TaskStatusConstants.Approved }
+                        }
+                    }
+                });
+
+            var result = await _taskService.GetAssignedProjectsAsync(annotatorId);
+
+            Assert.Equal(3, result.Count);
+            Assert.Equal(100, result[0].ProjectId);
+            Assert.Equal("InProgress", result[0].Status);
+            Assert.Equal(200, result[1].ProjectId);
+            Assert.Equal(300, result[2].ProjectId);
+            Assert.Equal("Completed", result[2].Status);
+        }
+
+        [Fact]
+        public async Task GetAssignedProjectsAsync_WhenAllImagesApprovedButManagerNotConfirmed_ReturnsAwaitingManagerConfirmation()
+        {
+            const string annotatorId = "annotator-1";
+            const int projectId = 400;
+            var deadline = DateTime.UtcNow.AddDays(2);
+
+            var assignments = new List<Assignment>
+            {
+                new Assignment
+                {
+                    Id = 21,
+                    ProjectId = projectId,
+                    DataItemId = 4001,
+                    AnnotatorId = annotatorId,
+                    ReviewerId = "reviewer-1",
+                    Status = TaskStatusConstants.Approved,
+                    AssignedDate = DateTime.UtcNow.AddHours(-2),
+                    Project = new Project { Id = projectId, Name = "Awaiting Confirmation Project", Description = "Waiting for manager", Deadline = deadline },
+                    DataItem = new DataItem { Id = 4001, StorageUrl = "approved.jpg" }
+                }
+            };
+
+            var project = new Project
+            {
+                Id = projectId,
+                Name = "Awaiting Confirmation Project",
+                Status = ProjectStatusConstants.Active,
+                Deadline = deadline,
+                DataItems = new List<DataItem>
+                {
+                    new DataItem
+                    {
+                        Id = 4001,
+                        Status = TaskStatusConstants.Approved
+                    }
+                }
+            };
+
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentsByAnnotatorAsync(annotatorId, 0, null))
+                .ReturnsAsync(assignments);
+            _projectRepoMock
+                .Setup(r => r.GetProjectsByIdsAsync(It.Is<List<int>>(ids => ids.Count == 1 && ids.Contains(projectId))))
+                .ReturnsAsync(new List<Project> { project });
+
+            var result = await _taskService.GetAssignedProjectsAsync(annotatorId);
+
+            var assignedProject = Assert.Single(result);
+            Assert.Equal(ProjectStatusConstants.AwaitingManagerConfirmation, assignedProject.Status);
+            Assert.True(assignedProject.IsAwaitingManagerConfirmation);
+            Assert.Equal(1, assignedProject.CompletedImages);
         }
 
         [Fact]
@@ -734,6 +993,8 @@ namespace BLL.Tests
                 AnnotatorId = annotatorId,
                 ReviewerId = "reviewer-1",
                 Status = TaskStatusConstants.Rejected,
+                ManagerDecision = "reject",
+                ManagerComment = "Previous escalation rejected",
                 AssignedDate = DateTime.UtcNow,
                 ReviewLogs = new List<ReviewLog>
                 {
@@ -749,6 +1010,8 @@ namespace BLL.Tests
                 AnnotatorId = annotatorId,
                 ReviewerId = "reviewer-2",
                 Status = TaskStatusConstants.Approved,
+                ManagerDecision = "reject",
+                ManagerComment = "Previous escalation rejected",
                 AssignedDate = DateTime.UtcNow,
                 ReviewLogs = new List<ReviewLog>
                 {
@@ -787,6 +1050,158 @@ namespace BLL.Tests
             Assert.Equal(2, capturedAnnotations.Count);
             Assert.Contains(capturedAnnotations, a => a.AssignmentId == assignmentOne.Id);
             Assert.Contains(capturedAnnotations, a => a.AssignmentId == assignmentTwo.Id);
+            Assert.Null(assignmentOne.ManagerDecision);
+            Assert.Null(assignmentOne.ManagerComment);
+            Assert.Null(assignmentTwo.ManagerDecision);
+            Assert.Null(assignmentTwo.ManagerComment);
+        }
+
+        [Fact]
+        public async Task SubmitMultipleTasksAsync_WithMultipleReviewerCopies_NotifiesManagerAndReviewersAfterCommit()
+        {
+            const string annotatorId = "annotator-1";
+            const int projectId = 18;
+
+            var assignmentOne = new Assignment
+            {
+                Id = 4001,
+                ProjectId = projectId,
+                DataItemId = 1001,
+                AnnotatorId = annotatorId,
+                ReviewerId = "reviewer-1",
+                Status = TaskStatusConstants.InProgress,
+                ManagerDecision = "reject",
+                ManagerComment = "Old manager feedback",
+                AssignedDate = DateTime.UtcNow,
+                Annotations = new List<Annotation>
+                {
+                    new Annotation { AssignmentId = 4001, DataJSON = "[{\"label\":\"cat\"}]", ClassId = 3, CreatedAt = DateTime.UtcNow.AddMinutes(-2) }
+                }
+            };
+
+            var assignmentTwo = new Assignment
+            {
+                Id = 4002,
+                ProjectId = projectId,
+                DataItemId = 1001,
+                AnnotatorId = annotatorId,
+                ReviewerId = "reviewer-2",
+                Status = TaskStatusConstants.Assigned,
+                ManagerDecision = "reject",
+                ManagerComment = "Old manager feedback",
+                AssignedDate = DateTime.UtcNow,
+                Annotations = new List<Annotation>()
+            };
+
+            var groupedAssignments = new List<Assignment> { assignmentOne, assignmentTwo };
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentWithDetailsAsync(assignmentOne.Id))
+                .ReturnsAsync(assignmentOne);
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentsByAnnotatorAsync(annotatorId, projectId, null))
+                .ReturnsAsync(groupedAssignments);
+            _projectRepoMock
+                .Setup(r => r.GetByIdAsync(projectId))
+                .ReturnsAsync(new Project { Id = projectId, Name = "Batch Submit Project", ManagerId = "manager-1" });
+
+            var result = await _taskService.SubmitMultipleTasksAsync(annotatorId, new SubmitMultipleTasksRequest
+            {
+                AssignmentIds = new List<int> { assignmentOne.Id }
+            });
+
+            Assert.Equal(1, result.SuccessCount);
+            Assert.Equal(TaskStatusConstants.Submitted, assignmentOne.Status);
+            Assert.Equal(TaskStatusConstants.Submitted, assignmentTwo.Status);
+            Assert.Null(assignmentOne.ManagerDecision);
+            Assert.Null(assignmentOne.ManagerComment);
+            Assert.Null(assignmentTwo.ManagerDecision);
+            Assert.Null(assignmentTwo.ManagerComment);
+
+            _assignmentRepoMock.Verify(r => r.SaveChangesAsync(), Times.Once);
+            _notificationMock.Verify(
+                n => n.SendNotificationAsync("manager-1", It.Is<string>(m => m.Contains("batch submitted 1 tasks")), "Info"),
+                Times.Once);
+            _notificationMock.Verify(
+                n => n.SendNotificationAsync("reviewer-1", It.Is<string>(m => m.Contains("batch submitted 1 tasks")), "Info"),
+                Times.Once);
+            _notificationMock.Verify(
+                n => n.SendNotificationAsync("reviewer-2", It.Is<string>(m => m.Contains("batch submitted 1 tasks")), "Info"),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task SubmitMultipleTasksAsync_WhenNotificationFails_StillReturnsSuccess()
+        {
+            const string annotatorId = "annotator-1";
+            const int projectId = 19;
+
+            var assignmentOne = new Assignment
+            {
+                Id = 5001,
+                ProjectId = projectId,
+                DataItemId = 1005,
+                AnnotatorId = annotatorId,
+                ReviewerId = "reviewer-1",
+                Status = TaskStatusConstants.InProgress,
+                AssignedDate = DateTime.UtcNow,
+                Annotations = new List<Annotation>
+                {
+                    new Annotation { AssignmentId = 5001, DataJSON = "[{\"label\":\"cat\"}]", ClassId = 3, CreatedAt = DateTime.UtcNow.AddMinutes(-2) }
+                }
+            };
+
+            var assignmentTwo = new Assignment
+            {
+                Id = 5002,
+                ProjectId = projectId,
+                DataItemId = 1005,
+                AnnotatorId = annotatorId,
+                ReviewerId = "reviewer-2",
+                Status = TaskStatusConstants.Assigned,
+                AssignedDate = DateTime.UtcNow,
+                Annotations = new List<Annotation>()
+            };
+
+            var groupedAssignments = new List<Assignment> { assignmentOne, assignmentTwo };
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentWithDetailsAsync(assignmentOne.Id))
+                .ReturnsAsync(assignmentOne);
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentsByAnnotatorAsync(annotatorId, projectId, null))
+                .ReturnsAsync(groupedAssignments);
+            _projectRepoMock
+                .Setup(r => r.GetByIdAsync(projectId))
+                .ReturnsAsync(new Project { Id = projectId, Name = "Batch Resilient Project", ManagerId = "manager-1" });
+            _notificationMock
+                .Setup(n => n.SendNotificationAsync("reviewer-1", It.IsAny<string>(), "Info"))
+                .ThrowsAsync(new InvalidOperationException("SignalR offline"));
+
+            var result = await _taskService.SubmitMultipleTasksAsync(annotatorId, new SubmitMultipleTasksRequest
+            {
+                AssignmentIds = new List<int> { assignmentOne.Id }
+            });
+
+            Assert.Equal(1, result.SuccessCount);
+            Assert.Equal(0, result.FailureCount);
+            Assert.Equal(TaskStatusConstants.Submitted, assignmentOne.Status);
+            Assert.Equal(TaskStatusConstants.Submitted, assignmentTwo.Status);
+
+            _assignmentRepoMock.Verify(r => r.SaveChangesAsync(), Times.Once);
+            _notificationMock.Verify(
+                n => n.SendNotificationAsync("manager-1", It.Is<string>(m => m.Contains("batch submitted 1 tasks")), "Info"),
+                Times.Once);
+            _notificationMock.Verify(
+                n => n.SendNotificationAsync("reviewer-2", It.Is<string>(m => m.Contains("batch submitted 1 tasks")), "Info"),
+                Times.Once);
+            _logServiceMock.Verify(
+                l => l.LogActionAsync(
+                    annotatorId,
+                    "SubmitBatchNotificationError",
+                    "Project",
+                    projectId.ToString(),
+                    It.Is<string>(message => message.Contains("reviewer-1")),
+                    null),
+                Times.Once);
         }
 
         [Fact]
@@ -837,6 +1252,156 @@ namespace BLL.Tests
             Assert.Equal(TaskStatusConstants.Submitted, image.Status);
             Assert.True(string.IsNullOrEmpty(image.RejectionReason));
             Assert.True(string.IsNullOrEmpty(image.ErrorCategory));
+        }
+
+        [Fact]
+        public async Task GetTaskImagesAsync_WhenManagerResolvedRejectedImage_ReturnsManagerFeedback()
+        {
+            const string annotatorId = "annotator-1";
+            const int projectId = 22;
+            var reviewTimestamp = DateTime.UtcNow;
+
+            var assignments = new List<Assignment>
+            {
+                new Assignment
+                {
+                    Id = 701,
+                    ProjectId = projectId,
+                    DataItemId = 1701,
+                    AnnotatorId = annotatorId,
+                    ReviewerId = "reviewer-1",
+                    Status = TaskStatusConstants.Rejected,
+                    ManagerDecision = "reject",
+                    ManagerComment = "Penalty kept after manager review",
+                    AssignedDate = DateTime.UtcNow,
+                    Project = new Project { Id = projectId, Deadline = DateTime.UtcNow.AddDays(1), MaxTaskDurationHours = 24 },
+                    DataItem = new DataItem { Id = 1701, StorageUrl = "image-1701.jpg" },
+                    ReviewLogs = new List<ReviewLog>
+                    {
+                        new ReviewLog
+                        {
+                            AssignmentId = 701,
+                            ReviewerId = "reviewer-1",
+                            Verdict = "Rejected",
+                            Comment = "Need tighter boxes",
+                            ErrorCategory = "bbox",
+                            CreatedAt = reviewTimestamp
+                        }
+                    }
+                }
+            };
+
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentsByAnnotatorAsync(annotatorId, projectId, null))
+                .ReturnsAsync(assignments);
+
+            var result = await _taskService.GetTaskImagesAsync(projectId, annotatorId);
+
+            var image = Assert.Single(result);
+            Assert.Equal(TaskStatusConstants.Rejected, image.Status);
+            Assert.Equal("Need tighter boxes", image.RejectionReason);
+            Assert.Equal("bbox", image.ErrorCategory);
+            Assert.Equal("reject", image.ManagerDecision);
+            Assert.Equal("Penalty kept after manager review", image.ManagerComment);
+            Assert.Equal(reviewTimestamp, image.LatestReviewAt);
+        }
+
+        [Fact]
+        public async Task GetTaskImagesAsync_WhenMultipleReviewersRejectedSameImage_ReturnsAllReviewerFeedbacks()
+        {
+            const string annotatorId = "annotator-1";
+            const int projectId = 23;
+            var firstReviewAt = DateTime.UtcNow.AddMinutes(-2);
+            var secondReviewAt = DateTime.UtcNow.AddMinutes(-1);
+
+            var assignments = new List<Assignment>
+            {
+                new Assignment
+                {
+                    Id = 801,
+                    ProjectId = projectId,
+                    DataItemId = 1801,
+                    AnnotatorId = annotatorId,
+                    ReviewerId = "reviewer-1",
+                    Reviewer = new User { Id = "reviewer-1", FullName = "Reviewer One", Email = "reviewer1@example.com" },
+                    Status = TaskStatusConstants.Rejected,
+                    SubmittedAt = DateTime.UtcNow.AddMinutes(-10),
+                    AssignedDate = DateTime.UtcNow,
+                    Project = new Project { Id = projectId, Deadline = DateTime.UtcNow.AddDays(1), MaxTaskDurationHours = 24 },
+                    DataItem = new DataItem { Id = 1801, StorageUrl = "image-1801.jpg" },
+                    ReviewLogs = new List<ReviewLog>
+                    {
+                        new ReviewLog
+                        {
+                            Id = 9001,
+                            AssignmentId = 801,
+                            ReviewerId = "reviewer-1",
+                            Verdict = "Rejected",
+                            Comment = "Wrong class",
+                            ErrorCategory = "classification",
+                            CreatedAt = firstReviewAt
+                        }
+                    }
+                },
+                new Assignment
+                {
+                    Id = 802,
+                    ProjectId = projectId,
+                    DataItemId = 1801,
+                    AnnotatorId = annotatorId,
+                    ReviewerId = "reviewer-2",
+                    Reviewer = new User { Id = "reviewer-2", FullName = "Reviewer Two", Email = "reviewer2@example.com" },
+                    Status = TaskStatusConstants.Rejected,
+                    SubmittedAt = DateTime.UtcNow.AddMinutes(-10),
+                    AssignedDate = DateTime.UtcNow,
+                    Project = new Project { Id = projectId, Deadline = DateTime.UtcNow.AddDays(1), MaxTaskDurationHours = 24 },
+                    DataItem = new DataItem { Id = 1801, StorageUrl = "image-1801.jpg" },
+                    ReviewLogs = new List<ReviewLog>
+                    {
+                        new ReviewLog
+                        {
+                            Id = 9002,
+                            AssignmentId = 802,
+                            ReviewerId = "reviewer-2",
+                            Verdict = "Rejected",
+                            Comment = "Bounding box too loose",
+                            ErrorCategory = "bbox",
+                            CreatedAt = secondReviewAt
+                        }
+                    }
+                }
+            };
+
+            _assignmentRepoMock
+                .Setup(r => r.GetAssignmentsByAnnotatorAsync(annotatorId, projectId, null))
+                .ReturnsAsync(assignments);
+
+            var result = await _taskService.GetTaskImagesAsync(projectId, annotatorId);
+
+            var image = Assert.Single(result);
+            Assert.Equal(TaskStatusConstants.Rejected, image.Status);
+            Assert.Equal("Bounding box too loose", image.RejectionReason);
+            Assert.Equal("bbox", image.ErrorCategory);
+            Assert.Equal(secondReviewAt, image.LatestReviewAt);
+            Assert.Equal(2, image.ReviewerFeedbacks.Count);
+            Assert.Collection(
+                image.ReviewerFeedbacks,
+                feedback =>
+                {
+                    Assert.Equal(9002, feedback.ReviewLogId);
+                    Assert.Equal("reviewer-2", feedback.ReviewerId);
+                    Assert.Equal("Reviewer Two", feedback.ReviewerName);
+                    Assert.Equal("Bounding box too loose", feedback.Comment);
+                    Assert.Equal("bbox", feedback.ErrorCategories);
+                },
+                feedback =>
+                {
+                    Assert.Equal(9001, feedback.ReviewLogId);
+                    Assert.Equal("reviewer-1", feedback.ReviewerId);
+                    Assert.Equal("Reviewer One", feedback.ReviewerName);
+                    Assert.Equal("Wrong class", feedback.Comment);
+                    Assert.Equal("classification", feedback.ErrorCategories);
+                });
         }
 
         [Fact]

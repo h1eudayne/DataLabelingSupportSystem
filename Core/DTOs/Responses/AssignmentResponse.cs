@@ -11,5 +11,10 @@
         public DateTime? Deadline { get; set; }
         public string? ErrorCategory { get; set; }
         public string? RejectionReason { get; set; }
+        public int RejectCount { get; set; }
+        public string? ManagerDecision { get; set; }
+        public string? ManagerComment { get; set; }
+        public DateTime? LatestReviewAt { get; set; }
+        public List<ReviewerFeedbackResponse> ReviewerFeedbacks { get; set; } = new();
     }
 }

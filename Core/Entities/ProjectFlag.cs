@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Core.Entities
 {
@@ -9,17 +8,14 @@ namespace Core.Entities
         public int Id { get; set; }
 
         public int ProjectId { get; set; }
-
-        [ForeignKey(nameof(ProjectId))]
-        [InverseProperty(nameof(Project.ProjectFlags))]
         public virtual Project? Project { get; set; }
 
         [Required]
         [MaxLength(100)]
-        public string FlagType { get; set; }
+        public string FlagType { get; set; } = string.Empty;
 
         [MaxLength(500)]
-        public string Description { get; set; }
+        public string Description { get; set; } = string.Empty;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
