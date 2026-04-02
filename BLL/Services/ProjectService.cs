@@ -770,7 +770,6 @@ namespace BLL.Services
             var projectUserStats = (await _statsRepo.FindAsync(s => s.ProjectId == projectId)).ToList();
 
             var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
-            var assignmentById = allAssignments.ToDictionary(a => a.Id);
             var allReviewLogs = allAssignments.SelectMany(a => a.ReviewLogs ?? new List<ReviewLog>()).ToList();
             var projectDisputes = await _disputeRepo.GetDisputesByProjectAsync(projectId);
             var assignmentGroups = allAssignments
@@ -924,10 +923,6 @@ namespace BLL.Services
                         correctDecisions++;
                     }
                 }
-
-                double reviewerAccuracy = totalMgrDecisions > 0
-                    ? Math.Round((double)correctDecisions / totalMgrDecisions * 100, 2)
-                    : 0;
 
                 return new ReviewerPerformance
                 {

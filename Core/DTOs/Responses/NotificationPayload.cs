@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Core.DTOs.Responses
 {
     public class NotificationPayload
