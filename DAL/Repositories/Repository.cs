@@ -55,6 +55,27 @@ namespace DAL.Repositories
             var transaction = await _context.Database.BeginTransactionAsync();
             return new TransactionWrapper(transaction);
         }
+
+        public Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken cancellationToken = default)
+        {
+            var executionStrategy = _context.Database.CreateExecutionStrategy();
+
+            return executionStrategy.ExecuteAsync(async () =>
+            {
+                await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+                try
+                {
+                    await operation();
+                    await transaction.CommitAsync(cancellationToken);
+                }
+                catch
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw;
+                }
+            });
+        }
     }
 }
 

@@ -1,0 +1,39 @@
+D:\SWP301\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\BLL.deps.json
+D:\SWP301\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\BLL.dll
+D:\SWP301\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\BLL.pdb
+D:\SWP301\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\Core.dll
+D:\SWP301\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\DAL.dll
+D:\SWP301\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\DAL.pdb
+D:\SWP301\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\Core.pdb
+D:\SWP301\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\Core.xml
+D:\SWP301\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.csproj.AssemblyReference.cache
+D:\SWP301\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.GeneratedMSBuildEditorConfig.editorconfig
+D:\SWP301\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.AssemblyInfoInputs.cache
+D:\SWP301\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.AssemblyInfo.cs
+D:\SWP301\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.csproj.CoreCompileInputs.cache
+D:\SWP301\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.sourcelink.json
+D:\SWP301\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.csproj.Up2Date
+D:\SWP301\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.dll
+D:\SWP301\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\refint\BLL.dll
+D:\SWP301\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.pdb
+D:\SWP301\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\ref\BLL.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\BLL.deps.json
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\BLL.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\BLL.pdb
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\Core.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\Core.pdb
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\bin\Debug\net8.0\Core.xml
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.csproj.AssemblyReference.cache
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.GeneratedMSBuildEditorConfig.editorconfig
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.AssemblyInfoInputs.cache
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.AssemblyInfo.cs
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.csproj.CoreCompileInputs.cache
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.sourcelink.json
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.csproj.Up2Date
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\refint\BLL.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\BLL.pdb
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL\obj\Debug\net8.0\ref\BLL.dll
+d:\SWP301 - Copy\temp-api-build\BLL.deps.json
+d:\SWP301 - Copy\temp-api-build\BLL.dll
+d:\SWP301 - Copy\temp-api-build\BLL.pdb

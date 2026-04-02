@@ -1,0 +1,334 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{4CE9EEE4-5A70-4D71-9200-25112B12AFBC}|DAL\\DAL.csproj|d:\\swp301 - copy\\datalabelingsupportsystem\\dal\\migrations\\20260401111038_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{4CE9EEE4-5A70-4D71-9200-25112B12AFBC}|DAL\\DAL.csproj|solutionrelative:dal\\migrations\\20260401111038_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260401085402_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DAL\\Migrations\\20260401085402_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260331165229_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DAL\\Migrations\\20260331165229_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9D6D5C2B-6A49-44AF-BD35-85D6A0011124}|API\\API.csproj|d:\\swp301 - copy\\datalabelingsupportsystem\\api\\appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{9D6D5C2B-6A49-44AF-BD35-85D6A0011124}|API\\API.csproj|solutionrelative:api\\appsettings.development.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9D6D5C2B-6A49-44AF-BD35-85D6A0011124}|API\\API.csproj|d:\\swp301 - copy\\datalabelingsupportsystem\\api\\dotnet-tools.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{9D6D5C2B-6A49-44AF-BD35-85D6A0011124}|API\\API.csproj|solutionrelative:api\\dotnet-tools.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9D6D5C2B-6A49-44AF-BD35-85D6A0011124}|API\\API.csproj|d:\\swp301 - copy\\datalabelingsupportsystem\\api\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{9D6D5C2B-6A49-44AF-BD35-85D6A0011124}|API\\API.csproj|solutionrelative:api\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329162705_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DAL\\Migrations\\20260329162705_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329154519_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DAL\\Migrations\\20260329154519_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9D6D5C2B-6A49-44AF-BD35-85D6A0011124}|API\\API.csproj|d:\\swp301 - copy\\datalabelingsupportsystem\\api\\hubs\\appnotificationhub.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9D6D5C2B-6A49-44AF-BD35-85D6A0011124}|API\\API.csproj|solutionrelative:api\\hubs\\appnotificationhub.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329142217_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329141912_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329141620_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329075730_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DAL\\Migrations\\20260329075730_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329075119_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DAL\\Migrations\\20260329075119_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329070316_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DAL\\Migrations\\20260329070316_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260328072019_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DAL\\Migrations\\20260328072019_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260328062401_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DAL\\Migrations\\20260328062401_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260322164841_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DAL\\Migrations\\20260322164841_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260322170416_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DAL\\Migrations\\20260322170416_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329181015_InitialCreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "20260401111038_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260401111038_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260401111038_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260401111038_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260401111038_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-04-01T11:10:38.434Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "20260401085402_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260401085402_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260401085402_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260401085402_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260401085402_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-04-01T08:54:03.181Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "20260331165229_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260331165229_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260331165229_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260331165229_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260331165229_InitialCreate.cs",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-31T16:52:29.434Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "dotnet-tools.json",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\API\\dotnet-tools.json",
+              "RelativeDocumentMoniker": "API\\dotnet-tools.json",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\API\\dotnet-tools.json",
+              "RelativeToolTip": "API\\dotnet-tools.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-03-31T09:45:00.217Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 10,
+              "Title": "20260329141912_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329141912_InitialCreate.cs",
+              "RelativeDocumentMoniker": "..\\..\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329141912_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329141912_InitialCreate.cs",
+              "RelativeToolTip": "..\\..\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329141912_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-29T14:19:12.165Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 11,
+              "Title": "20260329141620_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329141620_InitialCreate.cs",
+              "RelativeDocumentMoniker": "..\\..\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329141620_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329141620_InitialCreate.cs",
+              "RelativeToolTip": "..\\..\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329141620_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-29T14:16:20.331Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "appsettings.Development.json",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\API\\appsettings.Development.json",
+              "RelativeDocumentMoniker": "API\\appsettings.Development.json",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\API\\appsettings.Development.json",
+              "RelativeToolTip": "API\\appsettings.Development.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA8AAAAjAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-03-22T17:10:44.127Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 19,
+              "Title": "20260329181015_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329181015_InitialCreate.cs",
+              "RelativeDocumentMoniker": "..\\..\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329181015_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329181015_InitialCreate.cs",
+              "RelativeToolTip": "..\\..\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329181015_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-29T18:10:15.593Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "appsettings.json",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\API\\appsettings.json",
+              "RelativeDocumentMoniker": "API\\appsettings.json",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\API\\appsettings.json",
+              "RelativeToolTip": "API\\appsettings.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAgAAAAbAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-03-22T17:01:32.684Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "AppNotificationHub.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\API\\Hubs\\AppNotificationHub.cs",
+              "RelativeDocumentMoniker": "API\\Hubs\\AppNotificationHub.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\API\\Hubs\\AppNotificationHub.cs",
+              "RelativeToolTip": "API\\Hubs\\AppNotificationHub.cs",
+              "ViewState": "AgIAAEIAAAAAAAAAAAAAABoAAAAJAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-29T14:44:00.611Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "20260329162705_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329162705_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260329162705_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329162705_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260329162705_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-29T16:27:05.279Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "20260329154519_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329154519_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260329154519_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329154519_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260329154519_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-29T15:45:19.802Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 12,
+              "Title": "20260329075730_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329075730_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260329075730_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329075730_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260329075730_InitialCreate.cs",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-29T07:57:30.802Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 9,
+              "Title": "20260329142217_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329142217_InitialCreate.cs",
+              "RelativeDocumentMoniker": "..\\..\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329142217_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329142217_InitialCreate.cs",
+              "RelativeToolTip": "..\\..\\SWP301\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329142217_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-29T14:22:17.693Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 13,
+              "Title": "20260329075119_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329075119_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260329075119_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329075119_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260329075119_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-29T07:51:19.406Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 16,
+              "Title": "20260328062401_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260328062401_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260328062401_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260328062401_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260328062401_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-28T06:24:01.195Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 18,
+              "Title": "20260322170416_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260322170416_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260322170416_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260322170416_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260322170416_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA8AAAAbAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-22T17:04:16.437Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 14,
+              "Title": "20260329070316_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329070316_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260329070316_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260329070316_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260329070316_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-29T07:03:16.578Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 15,
+              "Title": "20260328072019_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260328072019_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260328072019_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260328072019_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260328072019_InitialCreate.cs",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-28T07:20:19.71Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 17,
+              "Title": "20260322164841_InitialCreate.cs",
+              "DocumentMoniker": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260322164841_InitialCreate.cs",
+              "RelativeDocumentMoniker": "DAL\\Migrations\\20260322164841_InitialCreate.cs",
+              "ToolTip": "D:\\SWP301 - Copy\\DataLabelingSupportSystem\\DAL\\Migrations\\20260322164841_InitialCreate.cs",
+              "RelativeToolTip": "DAL\\Migrations\\20260322164841_InitialCreate.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-22T16:48:42.024Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

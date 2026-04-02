@@ -6,6 +6,12 @@ namespace Core.DTOs.Responses
 
         public string ProjectName { get; set; } = string.Empty;
 
+        public string ProjectStatus { get; set; } = string.Empty;
+
+        public bool IsAwaitingManagerConfirmation { get; set; }
+
+        public bool CanManagerConfirmCompletion { get; set; }
+
         public int TotalItems { get; set; }
 
         public int CompletedItems { get; set; }
@@ -34,6 +40,20 @@ namespace Core.DTOs.Responses
 
         public double ProjectAccuracy { get; set; }
 
+        public int FinalCorrect { get; set; }
+
+        public int FirstPassCorrect { get; set; }
+
+        public int TotalReworks { get; set; }
+
+        public int TotalSubmittedTasks { get; set; }
+
+        public double FinalAccuracy { get; set; }
+
+        public double FirstPassAccuracy { get; set; }
+
+        public double ReworkRate { get; set; }
+
         public List<ReviewerPerformance> ReviewerPerformances { get; set; } = new();
     }
 
@@ -51,11 +71,25 @@ namespace Core.DTOs.Responses
 
         public double AverageDurationSeconds { get; set; }
 
-        public double AverageQualityScore { get; set; }
+        public double? AverageQualityScore { get; set; }
 
         public int TotalCriticalErrors { get; set; }
 
         public double AnnotatorAccuracy { get; set; }
+
+        public int ResolvedTasks { get; set; }
+
+        public int FirstPassCorrect { get; set; }
+
+        public int ReworkCount { get; set; }
+
+        public int TotalSubmittedTasks { get; set; }
+
+        public double FinalAccuracy { get; set; }
+
+        public double FirstPassAccuracy { get; set; }
+
+        public double ReworkRate { get; set; }
     }
 
     public class ReviewerPerformance
@@ -66,7 +100,7 @@ namespace Core.DTOs.Responses
         public int CorrectDecisions { get; set; }
         public int TotalManagerDecisions { get; set; }
 
-        public double ReviewerAccuracy { get; set; }
+        public double? ReviewerAccuracy { get; set; }
     }
 
     public class LabelDistribution

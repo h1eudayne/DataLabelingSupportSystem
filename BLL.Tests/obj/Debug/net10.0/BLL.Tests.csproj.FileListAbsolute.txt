@@ -1,0 +1,294 @@
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\.msCoverageSourceRootsMapping_BLL.Tests
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\CoverletSourceRootsMapping_BLL.Tests
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.csproj.AssemblyReference.cache
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.GeneratedMSBuildEditorConfig.editorconfig
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.AssemblyInfoInputs.cache
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.AssemblyInfo.cs
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.csproj.CoreCompileInputs.cache
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.sourcelink.json
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\testhost.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\xunit.abstractions.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\testhost.exe
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\xunit.runner.visualstudio.testadapter.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.Tests.deps.json
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.Tests.runtimeconfig.json
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.Tests.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.Tests.pdb
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BCrypt.Net-Next.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Castle.Core.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ClosedXML.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ClosedXML.Parser.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\DocumentFormat.OpenXml.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\DocumentFormat.OpenXml.Framework.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ExcelNumberFormat.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.VisualStudio.CodeCoverage.Shim.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.Abstractions.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.InMemory.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.Relational.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Caching.Abstractions.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Caching.Memory.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.DependencyInjection.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Logging.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Logging.Abstractions.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Options.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Primitives.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.IdentityModel.Abstractions.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.IdentityModel.JsonWebTokens.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.IdentityModel.Logging.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.IdentityModel.Tokens.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.TestPlatform.CoreUtilities.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.TestPlatform.PlatformAbstractions.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.VisualStudio.TestPlatform.ObjectModel.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.TestPlatform.CommunicationUtilities.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.TestPlatform.CrossPlatEngine.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.TestPlatform.Utilities.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.VisualStudio.TestPlatform.Common.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Moq.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Newtonsoft.Json.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\RBush.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\SixLabors.Fonts.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\System.IdentityModel.Tokens.Jwt.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\System.IO.Packaging.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\xunit.assert.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\xunit.core.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\xunit.execution.dotnet.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\cs\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\cs\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\de\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\de\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\es\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\es\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\fr\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\fr\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\it\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\it\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ja\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ja\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ko\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ko\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pl\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pl\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pt-BR\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pt-BR\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ru\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ru\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\tr\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\tr\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hans\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hans\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hant\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hant\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\cs\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\cs\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\cs\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\de\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\de\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\de\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\es\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\es\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\es\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\fr\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\fr\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\fr\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\it\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\it\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\it\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ja\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ja\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ja\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ko\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ko\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ko\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pl\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pl\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pl\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pt-BR\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pt-BR\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pt-BR\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ru\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ru\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ru\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\tr\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\tr\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\tr\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hans\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hans\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hans\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hant\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hant\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hant\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Core.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\DAL.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.pdb
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\DAL.pdb
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Core.pdb
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Core.xml
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.csproj.Up2Date
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\refint\BLL.Tests.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.pdb
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.genruntimeconfig.cache
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\ref\BLL.Tests.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\.msCoverageSourceRootsMapping_BLL.Tests
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\CoverletSourceRootsMapping_BLL.Tests
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\testhost.exe
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\testhost.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\xunit.abstractions.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\xunit.runner.visualstudio.testadapter.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.Tests.deps.json
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.Tests.runtimeconfig.json
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.Tests.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.Tests.pdb
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BCrypt.Net-Next.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Castle.Core.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ClosedXML.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ClosedXML.Parser.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\DocumentFormat.OpenXml.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\DocumentFormat.OpenXml.Framework.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ExcelNumberFormat.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.VisualStudio.CodeCoverage.Shim.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.Abstractions.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.InMemory.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.EntityFrameworkCore.Relational.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Caching.Abstractions.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Caching.Memory.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.DependencyInjection.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Logging.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Logging.Abstractions.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Options.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.Extensions.Primitives.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.IdentityModel.Abstractions.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.IdentityModel.JsonWebTokens.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.IdentityModel.Logging.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.IdentityModel.Tokens.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.TestPlatform.CoreUtilities.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.TestPlatform.PlatformAbstractions.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.VisualStudio.TestPlatform.ObjectModel.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.TestPlatform.CommunicationUtilities.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.TestPlatform.CrossPlatEngine.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.TestPlatform.Utilities.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.VisualStudio.TestPlatform.Common.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Moq.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Newtonsoft.Json.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\RBush.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\SixLabors.Fonts.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\System.IdentityModel.Tokens.Jwt.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\System.IO.Packaging.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\xunit.assert.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\xunit.core.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\xunit.execution.dotnet.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\cs\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\cs\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\de\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\de\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\es\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\es\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\fr\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\fr\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\it\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\it\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ja\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ja\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ko\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ko\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pl\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pl\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pt-BR\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pt-BR\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ru\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ru\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\tr\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\tr\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hans\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hans\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hant\Microsoft.TestPlatform.CoreUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hant\Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\cs\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\cs\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\cs\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\de\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\de\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\de\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\es\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\es\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\es\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\fr\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\fr\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\fr\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\it\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\it\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\it\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ja\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ja\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ja\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ko\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ko\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ko\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pl\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pl\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pl\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pt-BR\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pt-BR\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\pt-BR\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ru\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ru\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\ru\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\tr\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\tr\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\tr\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hans\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hans\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hans\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hant\Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hant\Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\zh-Hant\Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Core.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\DAL.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\BLL.pdb
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\DAL.pdb
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Core.pdb
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Core.xml
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.csproj.AssemblyReference.cache
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.GeneratedMSBuildEditorConfig.editorconfig
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.AssemblyInfoInputs.cache
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.AssemblyInfo.cs
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.csproj.CoreCompileInputs.cache
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.sourcelink.json
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.csproj.Up2Date
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\refint\BLL.Tests.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.pdb
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\BLL.Tests.genruntimeconfig.cache
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\obj\Debug\net10.0\ref\BLL.Tests.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\MySqlConnector.dll
+D:\SWP301\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Pomelo.EntityFrameworkCore.MySql.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\MySqlConnector.dll
+D:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Pomelo.EntityFrameworkCore.MySql.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\API.deps.json
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\API.runtimeconfig.json
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\appsettings.Development.json
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\appsettings.json
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\dotnet-tools.json
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\API.staticwebassets.runtime.json
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\API.staticwebassets.endpoints.json
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\API.exe
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\MessagePack.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\MessagePack.Annotations.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.AspNetCore.SignalR.Protocols.MessagePack.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.IdentityModel.Protocols.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.NET.StringTools.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Microsoft.OpenApi.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Swashbuckle.AspNetCore.Swagger.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Swashbuckle.AspNetCore.SwaggerGen.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\Swashbuckle.AspNetCore.SwaggerUI.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\API.dll
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\API.pdb
+d:\SWP301 - Copy\DataLabelingSupportSystem\BLL.Tests\bin\Debug\net10.0\API.xml

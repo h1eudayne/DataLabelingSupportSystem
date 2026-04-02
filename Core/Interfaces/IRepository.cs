@@ -13,5 +13,6 @@ namespace Core.Interfaces
         Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate);
 
         Task<ITransaction> BeginTransactionAsync();
+        Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken cancellationToken = default);
     }
 }

@@ -28,6 +28,8 @@ namespace Core.Entities
         public int RejectCount { get; set; } = 0;
         public bool IsEscalated { get; set; } = false;
         public string Status { get; set; } = "Assigned";
+        public string? ManagerDecision { get; set; }
+        public string? ManagerComment { get; set; }
 
         public virtual ICollection<Annotation> Annotations { get; set; } = new List<Annotation>();
         public virtual ICollection<ReviewLog> ReviewLogs { get; set; } = new List<ReviewLog>();

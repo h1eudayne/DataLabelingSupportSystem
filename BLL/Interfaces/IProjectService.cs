@@ -20,6 +20,8 @@ namespace BLL.Interfaces
         Task<List<AnnotatorProjectStatsResponse>> GetAssignedProjectsForUserAsync(string userId);
         Task AssignReviewersAsync(AssignReviewersRequest request);
         Task CompleteProjectAsync(int projectId, string managerId);
+        Task<ProjectCompletionReviewResponse> GetProjectCompletionReviewAsync(int projectId, string managerId);
+        Task ReturnProjectItemForReworkAsync(int projectId, int assignmentId, string managerId, string comment);
         Task ArchiveProjectAsync(int projectId, string managerId);
 
         Task ActivateProjectAsync(int projectId, string managerId);

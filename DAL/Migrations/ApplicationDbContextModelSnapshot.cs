@@ -172,6 +172,12 @@ namespace DAL.Migrations
                     b.Property<bool>("IsEscalated")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("ManagerComment")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ManagerDecision")
+                        .HasColumnType("longtext");
+
                     b.Property<int>("ProjectId")
                         .HasColumnType("int");
 

@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>API</name>
+    </assembly>
+    <members>
+        <member name="T:API.Controllers.AIController">
+            <summary>
+            AI-powered object detection endpoints using GECO2 few-shot counting model.
+            Enables annotators to use AI-assisted labeling by providing 1-3 exemplar
+            bounding boxes, after which the AI detects all similar objects in the image.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.AIController.#ctor(BLL.Interfaces.IAIService)">
+            <summary>
+            Initializes the AI controller with the AI detection service.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.AIController.DetectObjects(Core.DTOs.Requests.AIDetectRequest)">
+            <summary>
+            Detects objects in an image using few-shot AI detection (GECO2).
+            The user provides an image URL and 1-3 exemplar bounding boxes;
+            the AI locates all similar objects and returns the count + annotated image.
+            </summary>
+            <param name="request">Detection request with image URL and exemplar boxes.</param>
+            <returns>Detection result with object count and annotated image URL.</returns>
+            <response code="200">Detection completed successfully.</response>
+            <response code="400">Invalid request parameters.</response>
+            <response code="500">AI service error (HuggingFace Space unavailable).</response>
+        </member>
+        <member name="M:API.Controllers.AIController.GetServiceStatus">
+            <summary>
+            Checks whether the AI detection service (GECO2 HuggingFace Space) is currently available.
+            Useful for showing service status in the UI before the user attempts detection.
+            </summary>
+            <returns>Service availability status.</returns>
+            <response code="200">Service status retrieved.</response>
+        </member>
+    </members>
+</doc>

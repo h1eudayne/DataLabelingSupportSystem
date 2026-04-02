@@ -1,0 +1,353 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>API</name>
+    </assembly>
+    <members>
+        <member name="M:API.Controllers.ActivityLogController.GetSystemLogs">
+            <summary>
+            Retrieves all system-level activity logs.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ActivityLogController.GetProjectLogs(System.Int32)">
+            <summary>
+            Retrieves activity logs for a specific project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.AuthController.Register(Core.DTOs.Requests.RegisterRequest)">
+            <summary>
+            Registers a new user account with the Annotator role.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.AuthController.Login(Core.DTOs.Requests.LoginRequest)">
+            <summary>
+            Authenticates a user and returns access and refresh tokens.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.AuthController.RefreshToken(Core.DTOs.Requests.RefreshTokenRequest)">
+            <summary>
+            Refreshes an expired access token using a valid refresh token.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.AuthController.Logout">
+            <summary>
+            Logs out the current user and revokes all refresh tokens.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.AuthController.ForgotPassword(Core.DTOs.Requests.ForgotPasswordRequest)">
+            <summary>
+            Returns instructions for password reset (contact Admin).
+            </summary>
+        </member>
+        <member name="M:API.Controllers.DisputeController.CreateDispute(Core.DTOs.Requests.CreateDisputeRequest)">
+            <summary>
+            Creates a new dispute for a rejected annotation.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.DisputeController.ResolveDispute(Core.DTOs.Requests.ResolveDisputeRequest)">
+            <summary>
+            Resolves an existing dispute by a Manager.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.DisputeController.GetDisputes(System.Int32)">
+            <summary>
+            Retrieves all disputes for a specific project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.LabelController.CreateLabel(Core.DTOs.Requests.CreateLabelRequest)">
+            <summary>
+            Creates a new label for a project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.LabelController.UpdateLabel(System.Int32,Core.DTOs.Requests.UpdateLabelRequest)">
+            <summary>
+            Updates an existing label by ID.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.LabelController.DeleteLabel(System.Int32)">
+            <summary>
+            Deletes a label by ID.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.LabelController.GetLabelUsageCount(System.Int32)">
+            <summary>
+            Gets the usage count of a specific label.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.LabelController.GetLabels(System.Int32)">
+            <summary>
+            Retrieves all labels for a specific project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.NotificationController.GetMyNotifications">
+            <summary>
+            Retrieves all notifications for the current user.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.NotificationController.MarkAsRead(System.Int32)">
+            <summary>
+            Marks a specific notification as read.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.NotificationController.MarkAllAsRead">
+            <summary>
+            Marks all notifications as read for the current user.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.AssignReviewers(Core.DTOs.Requests.AssignReviewersRequest)">
+            <summary>
+            Assigns reviewers to a project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.GetUserProjectsForAdmin(System.String)">
+            <summary>
+            Retrieves all projects for a specific user (Admin only).
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.CreateProject(Core.DTOs.Requests.CreateProjectRequest)">
+            <summary>
+            Creates a new labeling project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.RemoveUserFromProject(System.Int32,System.String)">
+            <summary>
+            Removes a user from a project and revokes their pending tasks.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.UpdateProject(System.Int32,Core.DTOs.Requests.UpdateProjectRequest)">
+            <summary>
+            Updates project details.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.GetProjectDetails(System.Int32)">
+            <summary>
+            Retrieves detailed information about a specific project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.GetAllProjects">
+            <summary>
+            Retrieves all projects based on the current user's role.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.GetProjectsByManager(System.String)">
+            <summary>
+            Retrieves all projects managed by a specific Manager.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.DeleteProject(System.Int32)">
+            <summary>
+            Deletes a project by ID.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.GetAllProjectsForAdmin">
+            <summary>
+            Retrieves all projects for Admin dashboard overview.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.CompleteProject(System.Int32)">
+            <summary>
+            Marks a project as completed.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectController.ArchiveProject(System.Int32)">
+            <summary>
+            Archives a completed project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectDataController.ImportData(System.Int32,Core.DTOs.Requests.ImportDataRequest)">
+            <summary>
+            Imports data items into a project using storage URLs.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectDataController.UploadDirect(System.Int32,System.Collections.Generic.List{Microsoft.AspNetCore.Http.IFormFile})">
+            <summary>
+            Uploads image files directly to the server and imports them as data items.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectDataController.GetBuckets(System.Int32)">
+            <summary>
+            Retrieves all data buckets for a specific project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectDataController.ExportData(System.Int32)">
+            <summary>
+            Exports all project data as a JSON file.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectDataController.ExportCsv(System.Int32)">
+            <summary>
+            Exports all project data as a CSV file.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectStatsController.GetProjectStatistics(System.Int32)">
+            <summary>
+            Retrieves detailed statistics for a specific project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectStatsController.GetManagerStats(System.String)">
+            <summary>
+            Retrieves aggregated statistics for all projects managed by a specific Manager.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ProjectStatsController.ToggleUserLock(System.Int32,System.String,System.Boolean)">
+            <summary>
+            Locks or unlocks a user within a specific project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ReviewController.GetReviewerProjects">
+            <summary>
+            Retrieves all projects assigned to the current reviewer.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ReviewController.GetTasksForReview(System.Int32)">
+            <summary>
+            Retrieves tasks available for review in a specific project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ReviewController.ReviewTask(Core.DTOs.Requests.ReviewRequest)">
+            <summary>
+            Submits a review (approve/reject) for an assignment.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ReviewController.AuditReview(Core.DTOs.Requests.AuditReviewRequest)">
+            <summary>
+            Submits an audit review by a Manager for quality assurance.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ReviewController.GetReviewerStats">
+            <summary>
+            Retrieves performance statistics for the current reviewer.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ReviewController.GetReviewQueueGroupedByAnnotator(System.Int32)">
+            <summary>
+            Retrieves the review queue grouped by annotator for a project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ReviewController.DeductOverdueReliabilityScores">
+            <summary>
+            Deducts reliability scores for users with overdue tasks.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.ReviewController.GetBatchCompletionStatus(System.Int32)">
+            <summary>
+            Retrieves batch completion status for a project by the reviewer.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.TaskController.AssignTeamTasks(Core.DTOs.Requests.AssignTeamRequest)">
+            <summary>
+            Assigns tasks to annotators and reviewers for a project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.TaskController.GetTasksByBucket(System.Int32,System.Int32)">
+            <summary>
+            Retrieves tasks for a specific bucket in a project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.TaskController.GetMyProjects">
+            <summary>
+            Retrieves all projects assigned to the current user.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.TaskController.SubmitMultipleTasks(Core.DTOs.Requests.SubmitMultipleTasksRequest)">
+            <summary>
+            Submits multiple tasks at once for review.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.TaskController.GetProjectImages(System.Int32)">
+            <summary>
+            Retrieves all annotated images for a project assigned to the current user.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.TaskController.JumpToImage(System.Int32,System.Int32)">
+            <summary>
+            Jumps to a specific data item within a project.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.TaskController.GetSingleAssignment(System.Int32)">
+            <summary>
+            Retrieves a single assignment by ID.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.TaskController.SaveDraft(Core.DTOs.Requests.SubmitAnnotationRequest)">
+            <summary>
+            Saves annotation progress as a draft without submitting.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.TaskController.SubmitTask(Core.DTOs.Requests.SubmitAnnotationRequest)">
+            <summary>
+            Submits a completed annotation task for review.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.GetMyProfile">
+            <summary>
+            Retrieves the profile of the currently authenticated user.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.UpdateProfile(Core.DTOs.Requests.UpdateProfileRequest)">
+            <summary>
+            Updates the profile of the currently authenticated user.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.UploadAvatar(Microsoft.AspNetCore.Http.IFormFile)">
+            <summary>
+            Uploads a new avatar image for the current user.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.ChangePassword(Core.DTOs.Requests.ChangePasswordRequest)">
+            <summary>
+            Changes the password of the currently authenticated user.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.ImportUsers(Microsoft.AspNetCore.Http.IFormFile)">
+            <summary>
+            Imports multiple users from an Excel file.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.GetManagedUsers">
+            <summary>
+            Retrieves all users managed by the current Manager.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.GetAllUsersNoPaging">
+            <summary>
+            Retrieves all users without pagination (Admin only).
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.GetAllUsers(System.Int32,System.Int32)">
+            <summary>
+            Retrieves all users with pagination.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.CreateUser(Core.DTOs.Requests.RegisterRequest)">
+            <summary>
+            Creates a new user account (Admin only).
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.AdminChangePassword(System.String,Core.DTOs.Requests.AdminChangePasswordRequest)">
+            <summary>
+            Resets a user's password by Admin.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.UpdateUser(System.String,Core.DTOs.Requests.UpdateUserRequest)">
+            <summary>
+            Updates user information by Admin.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.ToggleUserStatus(System.String,System.Boolean)">
+            <summary>
+            Activates or deactivates a user account.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.DeleteUser(System.String)">
+            <summary>
+            Soft-deletes a user by deactivating the account.
+            </summary>
+        </member>
+        <member name="M:API.Controllers.UserController.GetManagementBoard">
+            <summary>
+            Retrieves all Managers and Admins for the management board.
+            </summary>
+        </member>
+    </members>
+</doc>
