@@ -11,7 +11,7 @@ namespace Core.DTOs.Responses
         public string? ReferenceType { get; set; }
         public string? ReferenceId { get; set; }
         public string? ActionKey { get; set; }
-        public JsonElement? Metadata { get; set; }
+        public string? MetadataJson { get; set; }
         public bool IsRead { get; set; }
         public DateTime Timestamp { get; set; }
     }

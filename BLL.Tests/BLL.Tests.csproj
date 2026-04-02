@@ -24,6 +24,7 @@
     <ProjectReference Include="..\BLL\BLL.csproj" />
     <ProjectReference Include="..\DAL\DAL.csproj" />
     <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\API\API.csproj" />
   </ItemGroup>
 
 </Project>

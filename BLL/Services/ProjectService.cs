@@ -1,4 +1,5 @@
 using BLL.Interfaces;
+using BLL.Helpers;
 using Core.Interfaces;
 using Core.Constants;
 using Core.Entities;
@@ -37,6 +38,140 @@ namespace BLL.Services
             {
                 return "[]";
             }
+        }
+
+        private static bool TryParseAnnotationJson(string? rawJson, out JsonElement element)
+        {
+            if (string.IsNullOrWhiteSpace(rawJson))
+            {
+                element = JsonSerializer.Deserialize<JsonElement>("[]");
+                return false;
+            }
+
+            try
+            {
+                element = JsonSerializer.Deserialize<JsonElement>(rawJson);
+                return true;
+            }
+            catch
+            {
+                element = JsonSerializer.Deserialize<JsonElement>("[]");
+                return false;
+            }
+        }
+
+        private static Annotation? GetLatestValidAnnotation(IEnumerable<Annotation>? annotations)
+        {
+            if (annotations == null)
+                return null;
+
+            foreach (var annotation in annotations.OrderByDescending(a => a.CreatedAt))
+            {
+                if (TryParseAnnotationJson(annotation.DataJSON, out _))
+                    return annotation;
+            }
+
+            return null;
+        }
+
+        private static Assignment? SelectExportAssignment(IEnumerable<Assignment> assignments)
+        {
+            return assignments
+                .Where(a => string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(a => GetLatestValidAnnotation(a.Annotations)?.CreatedAt ?? DateTime.MinValue)
+                .ThenByDescending(a => a.SubmittedAt ?? DateTime.MinValue)
+                .ThenByDescending(a => a.Id)
+                .FirstOrDefault();
+        }
+
+        private static int CountExportedAnnotations(JsonElement annotationData)
+        {
+            if (annotationData.ValueKind == JsonValueKind.Object &&
+                annotationData.TryGetProperty("annotations", out var annotationsElement) &&
+                annotationsElement.ValueKind == JsonValueKind.Array)
+            {
+                return annotationsElement.GetArrayLength();
+            }
+
+            return annotationData.ValueKind switch
+            {
+                JsonValueKind.Array => annotationData.GetArrayLength(),
+                JsonValueKind.Object => 1,
+                _ => 0
+            };
+        }
+
+        private static string ExtractExportFileName(string storageUrl)
+        {
+            if (string.IsNullOrWhiteSpace(storageUrl))
+                return string.Empty;
+
+            if (Uri.TryCreate(storageUrl, UriKind.Absolute, out var absoluteUri))
+            {
+                return Path.GetFileName(Uri.UnescapeDataString(absoluteUri.LocalPath));
+            }
+
+            var normalizedPath = storageUrl
+                .Split('?', '#')[0]
+                .Replace('\\', '/');
+
+            return Path.GetFileName(normalizedPath);
+        }
+
+        private static List<ProjectExportItemResponse> BuildApprovedExportRecords(Project project)
+        {
+            var exportRecords = new List<ProjectExportItemResponse>();
+
+            foreach (var dataItem in project.DataItems.OrderBy(d => d.Id))
+            {
+                var approvedGroup = dataItem.Assignments
+                    .GroupBy(BuildAssignmentGroupKey)
+                    .Select(group => new
+                    {
+                        Assignments = group.ToList(),
+                        AggregatedStatus = GetAggregatedAnnotatorStatus(group),
+                        LatestApprovedAt = group
+                            .Where(a => string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase))
+                            .Select(a => a.SubmittedAt ?? DateTime.MinValue)
+                            .DefaultIfEmpty(DateTime.MinValue)
+                            .Max()
+                    })
+                    .Where(group => string.Equals(group.AggregatedStatus, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(group => group.LatestApprovedAt)
+                    .FirstOrDefault();
+
+                if (approvedGroup == null)
+                    continue;
+
+                var exportAssignment = SelectExportAssignment(approvedGroup.Assignments);
+                if (exportAssignment == null)
+                    continue;
+
+                var latestAnnotation = GetLatestValidAnnotation(exportAssignment.Annotations)
+                    ?? approvedGroup.Assignments
+                        .SelectMany(a => a.Annotations ?? Enumerable.Empty<Annotation>())
+                        .OrderByDescending(a => a.CreatedAt)
+                        .FirstOrDefault(a => TryParseAnnotationJson(a.DataJSON, out _));
+
+                if (latestAnnotation == null || !TryParseAnnotationJson(latestAnnotation.DataJSON, out var annotationData))
+                    continue;
+
+                exportRecords.Add(new ProjectExportItemResponse
+                {
+                    DataItemId = dataItem.Id,
+                    BucketId = dataItem.BucketId,
+                    FileName = ExtractExportFileName(dataItem.StorageUrl),
+                    StorageUrl = dataItem.StorageUrl,
+                    UploadedAt = dataItem.UploadedDate,
+                    AnnotatorEmail = exportAssignment.Annotator?.Email ?? "Unknown",
+                    ReviewerEmail = exportAssignment.Reviewer?.Email ?? string.Empty,
+                    ApprovedAt = exportAssignment.SubmittedAt,
+                    AnnotationCount = CountExportedAnnotations(annotationData),
+                    AnnotationData = annotationData
+                });
+            }
+
+            return exportRecords;
         }
 
         public ProjectService(
@@ -117,6 +252,110 @@ namespace BLL.Services
                    string.Equals(verdict, "Reject", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static IEnumerable<ReviewLog> GetCurrentSubmissionReviewLogs(
+            IEnumerable<ReviewLog>? reviewLogs,
+            DateTime? submittedAt)
+        {
+            if (reviewLogs == null)
+            {
+                return Enumerable.Empty<ReviewLog>();
+            }
+
+            if (!submittedAt.HasValue)
+            {
+                return reviewLogs;
+            }
+
+            return reviewLogs.Where(log => log.CreatedAt >= submittedAt.Value);
+        }
+
+        private static ReviewLog? GetLatestCurrentSubmissionReviewLog(Assignment assignment)
+        {
+            return GetCurrentSubmissionReviewLogs(assignment.ReviewLogs, assignment.SubmittedAt)
+                .OrderByDescending(log => log.CreatedAt)
+                .FirstOrDefault();
+        }
+
+        private static bool IsResolvedAnnotatorStatus(string? status)
+        {
+            return string.Equals(status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool WasAssignmentGroupSubmitted(IEnumerable<Assignment> assignments)
+        {
+            return assignments.Any(a =>
+                a.SubmittedAt.HasValue ||
+                string.Equals(a.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(a.Status, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(a.Status, "Escalated", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private sealed class ReviewerDecisionSnapshot
+        {
+            public string ReviewerId { get; init; } = string.Empty;
+            public string ReviewerName { get; init; } = string.Empty;
+            public string Verdict { get; init; } = string.Empty;
+        }
+
+        private sealed class AssignmentGroupAccuracySnapshot
+        {
+            public string GroupKey { get; init; } = string.Empty;
+            public int ProjectId { get; init; }
+            public string AnnotatorId { get; init; } = string.Empty;
+            public string AnnotatorName { get; init; } = string.Empty;
+            public string FinalStatus { get; init; } = TaskStatusConstants.Assigned;
+            public int RejectCount { get; init; }
+            public bool HasPendingDispute { get; init; }
+            public bool WasSubmitted { get; init; }
+            public List<ReviewerDecisionSnapshot> LatestCycleReviewerDecisions { get; init; } = new();
+        }
+
+        private static List<AssignmentGroupAccuracySnapshot> BuildAssignmentGroupAccuracySnapshots(
+            IEnumerable<Assignment> assignments,
+            IEnumerable<Dispute> projectDisputes)
+        {
+            return assignments
+                .GroupBy(BuildAssignmentGroupKey)
+                .Select(group =>
+                {
+                    var groupedAssignments = group.ToList();
+                    var latestCycleReviewerDecisions = groupedAssignments
+                        .Select(assignment => new
+                        {
+                            Assignment = assignment,
+                            LatestLog = GetLatestCurrentSubmissionReviewLog(assignment)
+                        })
+                        .Where(item => item.LatestLog != null && !string.IsNullOrWhiteSpace(item.LatestLog.ReviewerId))
+                        .Select(item => new ReviewerDecisionSnapshot
+                        {
+                            ReviewerId = item.LatestLog!.ReviewerId,
+                            ReviewerName = item.Assignment.Reviewer?.FullName
+                                ?? item.Assignment.Reviewer?.Email
+                                ?? item.LatestLog.ReviewerId,
+                            Verdict = item.LatestLog.Verdict
+                        })
+                        .ToList();
+
+                    return new AssignmentGroupAccuracySnapshot
+                    {
+                        GroupKey = group.Key,
+                        ProjectId = groupedAssignments.First().ProjectId,
+                        AnnotatorId = groupedAssignments.First().AnnotatorId,
+                        AnnotatorName = groupedAssignments.First().Annotator?.FullName
+                            ?? groupedAssignments.First().Annotator?.Email
+                            ?? groupedAssignments.First().AnnotatorId,
+                        FinalStatus = GetAggregatedAnnotatorStatus(groupedAssignments),
+                        RejectCount = groupedAssignments.Select(a => a.RejectCount).DefaultIfEmpty(0).Max(),
+                        HasPendingDispute = HasPendingDisputeForGroup(groupedAssignments, projectDisputes),
+                        WasSubmitted = WasAssignmentGroupSubmitted(groupedAssignments),
+                        LatestCycleReviewerDecisions = latestCycleReviewerDecisions
+                    };
+                })
+                .ToList();
+        }
+
         private static string GetAggregatedAnnotatorStatus(IEnumerable<Assignment> assignments)
         {
             var groupedAssignments = assignments.ToList();
@@ -186,6 +425,101 @@ namespace BLL.Services
             return disputes.Any(d =>
                 assignmentIds.Contains(d.AssignmentId) &&
                 string.Equals(d.Status, "Pending", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static ReviewerFeedbackResponse MapReviewerFeedback(Assignment assignment, ReviewLog reviewLog)
+        {
+            return new ReviewerFeedbackResponse
+            {
+                ReviewLogId = reviewLog.Id,
+                ReviewerId = reviewLog.ReviewerId,
+                ReviewerName = reviewLog.Reviewer?.FullName
+                    ?? reviewLog.Reviewer?.Email
+                    ?? assignment.Reviewer?.FullName
+                    ?? assignment.Reviewer?.Email
+                    ?? reviewLog.ReviewerId,
+                Decision = reviewLog.Decision,
+                Verdict = reviewLog.Verdict,
+                Comment = reviewLog.Comment,
+                ErrorCategories = reviewLog.ErrorCategory,
+                ReviewedAt = reviewLog.CreatedAt,
+                ScorePenalty = reviewLog.ScorePenalty,
+                IsApproved = reviewLog.IsApproved,
+                IsAudited = reviewLog.IsAudited,
+                AuditResult = reviewLog.AuditResult
+            };
+        }
+
+        private static List<ReviewerFeedbackResponse> BuildLatestReviewerFeedbacks(IEnumerable<Assignment> assignments)
+        {
+            return assignments
+                .Select(assignment => new
+                {
+                    Assignment = assignment,
+                    LatestLog = GetCurrentSubmissionReviewLogs(assignment.ReviewLogs, assignment.SubmittedAt)
+                        .OrderByDescending(log => log.CreatedAt)
+                        .FirstOrDefault()
+                })
+                .Where(item => item.LatestLog != null)
+                .Select(item => MapReviewerFeedback(item.Assignment, item.LatestLog!))
+                .OrderByDescending(item => item.ReviewedAt)
+                .ToList();
+        }
+
+        private static List<ReviewerFeedbackResponse> BuildReviewerFeedbackHistory(IEnumerable<Assignment> assignments)
+        {
+            return assignments
+                .SelectMany(
+                    assignment => assignment.ReviewLogs ?? Enumerable.Empty<ReviewLog>(),
+                    (assignment, reviewLog) => new { Assignment = assignment, ReviewLog = reviewLog })
+                .OrderByDescending(item => item.ReviewLog.CreatedAt)
+                .Select(item => MapReviewerFeedback(item.Assignment, item.ReviewLog))
+                .ToList();
+        }
+
+        private static ProjectCompletionReviewItemResponse BuildCompletionReviewItem(
+            DataItem dataItem,
+            IEnumerable<Assignment> groupedAssignments)
+        {
+            var assignments = groupedAssignments.ToList();
+            var representativeAssignment = SelectRepresentativeAnnotatorAssignment(assignments);
+            var latestAnnotation = GetLatestValidAnnotation(
+                assignments.SelectMany(a => a.Annotations ?? Enumerable.Empty<Annotation>()).ToList());
+            var latestFeedbacks = BuildLatestReviewerFeedbacks(assignments);
+            var reviewHistory = BuildReviewerFeedbackHistory(assignments);
+
+            return new ProjectCompletionReviewItemResponse
+            {
+                AssignmentId = representativeAssignment.Id,
+                DataItemId = dataItem.Id,
+                DataItemUrl = dataItem.StorageUrl,
+                AnnotatorId = representativeAssignment.AnnotatorId,
+                AnnotatorName = representativeAssignment.Annotator?.FullName
+                    ?? representativeAssignment.Annotator?.Email
+                    ?? representativeAssignment.AnnotatorId,
+                Status = GetAggregatedAnnotatorStatus(assignments),
+                RejectCount = assignments.Select(a => a.RejectCount).DefaultIfEmpty(0).Max(),
+                ReviewEventCount = reviewHistory.Count,
+                ReviewerCount = assignments
+                    .Select(a => a.ReviewerId)
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count(),
+                SubmittedAt = assignments
+                    .Where(a => a.SubmittedAt.HasValue)
+                    .OrderByDescending(a => a.SubmittedAt)
+                    .FirstOrDefault()
+                    ?.SubmittedAt,
+                AnnotationData = latestAnnotation?.DataJSON,
+                ManagerDecision = assignments
+                    .Select(a => a.ManagerDecision)
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+                ManagerComment = assignments
+                    .Select(a => a.ManagerComment)
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+                ReviewerFeedbacks = latestFeedbacks,
+                ReviewHistory = reviewHistory
+            };
         }
 
         public async Task<int> UploadDirectDataItemsAsync(int projectId, List<(Stream Content, string Extension)> files, string webRootPath)
@@ -333,7 +667,10 @@ namespace BLL.Services
                 }).ToList(),
                 TotalDataItems = 0,
                 UnassignedDataItemCount = 0,
-                ProcessedItems = 0
+                ProcessedItems = 0,
+                Status = ProjectStatusConstants.NewDisplay,
+                IsAwaitingManagerConfirmation = false,
+                CanManagerConfirmCompletion = false
             };
         }
 
@@ -437,10 +774,24 @@ namespace BLL.Services
                     .ThenBy(g => g.Representative.Id)
                     .Select(g => g.Representative)
                     .FirstOrDefault();
+                int approvedProjectItems = ProjectWorkflowStatusHelper.CountApprovedDataItems(p);
+                bool allAnnotatorWorkApproved = total > 0 && total == completed;
+                bool isAwaitingManagerConfirmation = allAnnotatorWorkApproved &&
+                    ProjectWorkflowStatusHelper.IsAwaitingManagerConfirmation(p, p.DataItems.Count, approvedProjectItems);
 
-                string status = "Active";
-                if (DateTime.UtcNow > p.Deadline) status = "Expired";
-                else if (total > 0 && total == completed) status = "Completed";
+                string status = ProjectStatusConstants.Active;
+                if (string.Equals(p.Status, ProjectStatusConstants.Completed, StringComparison.OrdinalIgnoreCase))
+                {
+                    status = ProjectStatusConstants.Completed;
+                }
+                else if (DateTime.UtcNow > p.Deadline)
+                {
+                    status = ProjectStatusConstants.ExpiredDisplay;
+                }
+                else if (isAwaitingManagerConfirmation)
+                {
+                    status = ProjectStatusConstants.AwaitingManagerConfirmation;
+                }
 
                 result.Add(new AnnotatorProjectStatsResponse
                 {
@@ -449,6 +800,7 @@ namespace BLL.Services
                     TotalImages = total,
                     CompletedImages = completed,
                     Status = status,
+                    IsAwaitingManagerConfirmation = isAwaitingManagerConfirmation,
                     Deadline = p.Deadline,
                     AssignmentId = nextTask?.Id
                 });
@@ -487,6 +839,13 @@ namespace BLL.Services
             await _projectRepository.AddDataItemsAsync(newDataItems);
             await _projectRepository.SaveChangesAsync();
 
+            if (string.Equals(project.Status, ProjectStatusConstants.Draft, StringComparison.OrdinalIgnoreCase))
+            {
+                project.Status = ProjectStatusConstants.Active;
+                _projectRepository.Update(project);
+                await _projectRepository.SaveChangesAsync();
+            }
+
             await _activityLogRepo.AddAsync(new ActivityLog
             {
                 UserId = project.ManagerId,
@@ -507,8 +866,12 @@ namespace BLL.Services
             var allAssignments = project.DataItems.SelectMany(d => d.Assignments).ToList();
             int total = project.DataItems.Count;
             int unassignedCount = project.DataItems.Count(d => d.Status == TaskStatusConstants.New);
-            int done = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
+            int done = ProjectWorkflowStatusHelper.CountApprovedDataItems(project);
             int progressPercent = (total > 0) ? (int)((double)done / total * 100) : 0;
+            bool hasStarted = total > 0 && project.DataItems.Any(d => d.Status != TaskStatusConstants.New);
+            string currentStatus = ProjectWorkflowStatusHelper.ResolveManagerFacingStatus(project, total, done, hasStarted);
+            bool isAwaitingManagerConfirmation = ProjectWorkflowStatusHelper.IsAwaitingManagerConfirmation(project, total, done);
+            bool canManagerConfirmCompletion = ProjectWorkflowStatusHelper.CanManagerConfirmCompletion(project, total, done);
 
             var annotators = allAssignments
                 .Where(a => a.Annotator != null)
@@ -516,13 +879,24 @@ namespace BLL.Services
                 .Select(g => new MemberResponse
                 {
                     Id = g.Key,
-                    FullName = g.First().Annotator.FullName ?? g.First().Annotator.Email,
-                    Email = g.First().Annotator.Email,
-                    Role = g.First().Annotator.Role,
-                    TasksAssigned = g.Count(),
-                    TasksCompleted = g.Count(a => a.Status == TaskStatusConstants.Approved),
-                    Progress = g.Count() > 0
-                        ? Math.Round((decimal)g.Count(a => a.Status == TaskStatusConstants.Approved) / g.Count() * 100, 2)
+                    FullName = g.First().Annotator!.FullName ?? g.First().Annotator!.Email,
+                    Email = g.First().Annotator!.Email,
+                    Role = g.First().Annotator!.Role,
+                    TasksAssigned = g.GroupBy(a => a.DataItemId).Count(),
+                    TasksCompleted = g.GroupBy(a => a.DataItemId)
+                        .Count(group => string.Equals(
+                            GetAggregatedAnnotatorStatus(group),
+                            TaskStatusConstants.Approved,
+                            StringComparison.OrdinalIgnoreCase)),
+                    Progress = g.GroupBy(a => a.DataItemId).Any()
+                        ? Math.Round(
+                            (decimal)g.GroupBy(a => a.DataItemId)
+                                .Count(group => string.Equals(
+                                    GetAggregatedAnnotatorStatus(group),
+                                    TaskStatusConstants.Approved,
+                                    StringComparison.OrdinalIgnoreCase)) /
+                            g.GroupBy(a => a.DataItemId).Count() * 100,
+                            2)
                         : 0
                 }).ToList();
 
@@ -573,6 +947,9 @@ namespace BLL.Services
                 UnassignedDataItemCount = unassignedCount,
                 ProcessedItems = done,
                 Progress = progressPercent,
+                Status = currentStatus,
+                IsAwaitingManagerConfirmation = isAwaitingManagerConfirmation,
+                CanManagerConfirmCompletion = canManagerConfirmCompletion,
                 Members = members
             };
         }
@@ -585,26 +962,13 @@ namespace BLL.Services
             foreach (var project in projects)
             {
                 int totalItems = project.DataItems.Count;
-                int approvedCount = project.DataItems.Count(d =>
-                    d.Status == TaskStatusConstants.Approved ||
-                    (d.Assignments != null && d.Assignments.Any(a => a.Status == TaskStatusConstants.Approved))
-                );
+                int approvedCount = ProjectWorkflowStatusHelper.CountApprovedDataItems(project);
 
                 decimal progress = totalItems > 0 ? (decimal)approvedCount / totalItems * 100 : 0;
-
-                string currentStatus = "New";
-                if (totalItems > 0 && approvedCount == totalItems)
-                {
-                    currentStatus = "Completed";
-                }
-                else if (DateTime.UtcNow > project.Deadline)
-                {
-                    currentStatus = "Expired";
-                }
-                else if (totalItems > 0 && project.DataItems.Any(d => d.Status != TaskStatusConstants.New))
-                {
-                    currentStatus = "InProgress";
-                }
+                bool hasStarted = totalItems > 0 && project.DataItems.Any(d => d.Status != TaskStatusConstants.New);
+                string currentStatus = ProjectWorkflowStatusHelper.ResolveManagerFacingStatus(project, totalItems, approvedCount, hasStarted);
+                bool isAwaitingManagerConfirmation = ProjectWorkflowStatusHelper.IsAwaitingManagerConfirmation(project, totalItems, approvedCount);
+                bool canManagerConfirmCompletion = ProjectWorkflowStatusHelper.CanManagerConfirmCompletion(project, totalItems, approvedCount);
 
                 int pendingPenaltyCount = project.DataItems
                     .SelectMany(dataItem => dataItem.Assignments
@@ -645,7 +1009,9 @@ namespace BLL.Services
                     HasPriorityIssue = priorityIssueCount > 0,
                     DefaultActionTab = pendingDisputeCount > 0 || pendingPenaltyCount > 0
                         ? "disputes"
-                        : "datasets"
+                        : "datasets",
+                    IsAwaitingManagerConfirmation = isAwaitingManagerConfirmation,
+                    CanManagerConfirmCompletion = canManagerConfirmCompletion
                 });
             }
 
@@ -691,59 +1057,44 @@ namespace BLL.Services
                 throw new Exception("Unauthorized to export this project.");
 
             var totalItems = project.DataItems.Count;
+            if (totalItems == 0)
+                throw new InvalidOperationException("No data items available in this project to export.");
+
             var completedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
-            if (totalItems > 0 && completedItems < totalItems)
+            if (completedItems < totalItems)
             {
                 double currentProgress = Math.Round((double)completedItems / totalItems * 100, 2);
                 throw new InvalidOperationException($"BR-MNG-12: Export is only allowed when all assignments are Approved. Current progress: {currentProgress}% ({completedItems}/{totalItems} items).");
             }
 
-            var dataItems = project.DataItems
-                    .Select(d => new
-                    {
-                        DataItemId = d.Id,
-                        StorageUrl = d.StorageUrl,
-                        ItemStatus = d.Status,
-                        Assignments = d.Assignments.Select(a => new
-                        {
-                            AssignmentId = a.Id,
-                            Annotator = a.Annotator?.Email ?? "Unknown",
-                            Reviewer = a.Reviewer?.Email ?? "None",
-                            TaskStatus = a.Status,
-                            AssignedDate = a.AssignedDate,
-                            SubmittedAt = a.SubmittedAt,
-                            ReviewComment = a.ReviewLogs?
-                                .OrderByDescending(r => r.CreatedAt)
-                                .FirstOrDefault()?.Comment,
-                            Annotation = SafeSerializeAnnotations(a.Annotations)
-                        }).ToList()
-                    })
-                    .ToList();
+            var exportRecords = BuildApprovedExportRecords(project);
+            if (!exportRecords.Any())
+                throw new InvalidOperationException("No approved annotation data available for export.");
 
-            double progressPercent = totalItems > 0 ? Math.Round((double)completedItems / totalItems * 100, 2) : 0;
-            string currentStatus = DateTime.UtcNow > project.Deadline ? "Expired" : (totalItems > 0 && totalItems == completedItems ? "Completed" : "Active");
+            var exportedAt = DateTime.UtcNow;
 
-            var projectMembers = project.DataItems
-                .SelectMany(d => d.Assignments)
-                .Where(a => a.Annotator != null)
-                .Select(a => new { UserId = a.AnnotatorId, Role = a.Annotator.Role, Email = a.Annotator.Email })
-                .Distinct()
-                .ToList();
-
-            var exportData = new
+            var exportData = new ProjectExportResponse
             {
-                ProjectId = project.Id,
-                ProjectName = project.Name,
-                ExportedAt = DateTime.UtcNow,
-                Description = project.Description,
-                Status = currentStatus,
-                Deadline = project.Deadline,
-                Progress = progressPercent,
-                TotalDataItems = totalItems,
-                Labels = project.LabelClasses.Select(l => new { l.Id, l.Name, l.Color }),
-                Members = projectMembers,
-                TotalImages = dataItems.Count,
-                Data = dataItems
+                Project = new ProjectExportProjectInfoResponse
+                {
+                    Id = project.Id,
+                    Name = project.Name,
+                    Description = project.Description,
+                    GuidelineVersion = project.GuidelineVersion,
+                    Deadline = project.Deadline,
+                    ExportedAt = exportedAt,
+                    TotalDataItems = totalItems,
+                    ExportedItems = exportRecords.Count,
+                    Labels = project.LabelClasses
+                        .Select(l => new ProjectExportLabelResponse
+                        {
+                            Id = l.Id,
+                            Name = l.Name,
+                            Color = l.Color
+                        })
+                        .ToList()
+                },
+                Items = exportRecords
             };
 
             var json = JsonSerializer.Serialize(exportData, new JsonSerializerOptions { WriteIndented = true });
@@ -773,46 +1124,44 @@ namespace BLL.Services
             var assignmentById = allAssignments.ToDictionary(a => a.Id);
             var allReviewLogs = allAssignments.SelectMany(a => a.ReviewLogs ?? new List<ReviewLog>()).ToList();
             var projectDisputes = await _disputeRepo.GetDisputesByProjectAsync(projectId);
-            var assignmentGroups = allAssignments
-                .GroupBy(BuildAssignmentGroupKey)
-                .ToList();
-            var finalStatusByAssignmentId = new Dictionary<int, string>();
-            var pendingDisputeGroupKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var group in assignmentGroups)
-            {
-                var groupedAssignments = group.ToList();
-                var aggregatedStatus = GetAggregatedAnnotatorStatus(groupedAssignments);
-
-                foreach (var groupedAssignment in groupedAssignments)
-                {
-                    finalStatusByAssignmentId[groupedAssignment.Id] = aggregatedStatus;
-                }
-
-                if (HasPendingDisputeForGroup(groupedAssignments, projectDisputes))
-                {
-                    pendingDisputeGroupKeys.Add(group.Key);
-                }
-            }
-
-            var disputedAssignmentIds = projectDisputes
-                .Select(d => d.AssignmentId)
-                .ToHashSet();
+            var assignmentGroups = BuildAssignmentGroupAccuracySnapshots(allAssignments, projectDisputes);
             var totalReviewed = allReviewLogs.Count;
             var totalRejectedLogs = allReviewLogs.Count(l => IsRejectedVerdict(l.Verdict));
-
-            var totalFirstPassCorrect = projectUserStats
-                .Where(s => s.TotalFirstPassCorrect > 0)
-                .Sum(s => s.TotalFirstPassCorrect);
             var totalItems = project.DataItems.Count;
+            int finalCorrect = assignmentGroups.Count(group =>
+                string.Equals(group.FinalStatus, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase));
+            int firstPassCorrect = assignmentGroups.Count(group =>
+                string.Equals(group.FinalStatus, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase) &&
+                group.RejectCount == 0);
+            int totalSubmittedTasks = assignmentGroups.Count(group => group.WasSubmitted);
+            int totalReworks = assignmentGroups.Count(group => group.RejectCount > 0);
             double projectAccuracy = totalItems > 0
-                ? Math.Round((double)totalFirstPassCorrect / totalItems * 100, 2)
+                ? Math.Round((double)firstPassCorrect / totalItems * 100, 2)
+                : 0;
+            double finalAccuracy = totalItems > 0
+                ? Math.Round((double)finalCorrect / totalItems * 100, 2)
+                : 0;
+            double reworkRate = totalSubmittedTasks > 0
+                ? Math.Round((double)totalReworks / totalSubmittedTasks * 100, 2)
                 : 0;
 
             var stats = new ProjectStatisticsResponse
             {
                 ProjectId = project.Id,
                 ProjectName = project.Name,
+                ProjectStatus = ProjectWorkflowStatusHelper.ResolveManagerFacingStatus(
+                    project,
+                    project.DataItems.Count,
+                    ProjectWorkflowStatusHelper.CountApprovedDataItems(project),
+                    project.DataItems.Any(d => d.Status != TaskStatusConstants.New)),
+                IsAwaitingManagerConfirmation = ProjectWorkflowStatusHelper.IsAwaitingManagerConfirmation(
+                    project,
+                    project.DataItems.Count,
+                    ProjectWorkflowStatusHelper.CountApprovedDataItems(project)),
+                CanManagerConfirmCompletion = ProjectWorkflowStatusHelper.CanManagerConfirmCompletion(
+                    project,
+                    project.DataItems.Count,
+                    ProjectWorkflowStatusHelper.CountApprovedDataItems(project)),
                 TotalItems = project.DataItems.Count,
                 CompletedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved),
                 TotalAssignments = allAssignments.Count,
@@ -828,7 +1177,14 @@ namespace BLL.Services
                     .Where(l => IsRejectedVerdict(l.Verdict) && !string.IsNullOrEmpty(l.ErrorCategory))
                     .GroupBy(l => l.ErrorCategory!)
                     .ToDictionary(g => g.Key, g => g.Count()),
-                ProjectAccuracy = projectAccuracy
+                ProjectAccuracy = projectAccuracy,
+                FinalCorrect = finalCorrect,
+                FirstPassCorrect = firstPassCorrect,
+                TotalReworks = totalReworks,
+                TotalSubmittedTasks = totalSubmittedTasks,
+                FinalAccuracy = finalAccuracy,
+                FirstPassAccuracy = projectAccuracy,
+                ReworkRate = reworkRate
             };
 
             if (stats.TotalItems > 0)
@@ -836,41 +1192,63 @@ namespace BLL.Services
                 stats.ProgressPercentage = Math.Round((decimal)stats.CompletedItems / stats.TotalItems * 100, 2);
             }
 
-            stats.AnnotatorPerformances = allAssignments
-                .GroupBy(a => a.AnnotatorId)
+            stats.AnnotatorPerformances = assignmentGroups
+                .GroupBy(group => group.AnnotatorId)
                 .Select(g =>
                 {
                     var annotatorId = g.Key;
                     var userStat = projectUserStats.FirstOrDefault(s => s.UserId == annotatorId);
-                    var groupedTasks = g
-                        .GroupBy(BuildAssignmentGroupKey)
-                        .ToList();
+                    var groupedTasks = g.ToList();
                     int approvedTasks = groupedTasks.Count(group =>
-                        string.Equals(GetAggregatedAnnotatorStatus(group), TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase));
+                        string.Equals(group.FinalStatus, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase));
                     int rejectedTasks = groupedTasks.Count(group =>
-                        string.Equals(GetAggregatedAnnotatorStatus(group), TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase));
+                        string.Equals(group.FinalStatus, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase));
                     int resolvedTasks = approvedTasks + rejectedTasks;
-                    double annotatorAccuracy = resolvedTasks > 0
+                    int firstPassApproved = groupedTasks.Count(group =>
+                        string.Equals(group.FinalStatus, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase) &&
+                        group.RejectCount == 0);
+                    int annotatorSubmittedTasks = groupedTasks.Count(group => group.WasSubmitted);
+                    int reworkCount = groupedTasks.Count(group => group.RejectCount > 0);
+                    double finalAnnotatorAccuracy = resolvedTasks > 0
                         ? Math.Round((double)approvedTasks / resolvedTasks * 100, 2)
                         : 0;
+                    double firstPassAccuracy = groupedTasks.Count > 0
+                        ? Math.Round((double)firstPassApproved / groupedTasks.Count * 100, 2)
+                        : 0;
+                    double annotatorReworkRate = annotatorSubmittedTasks > 0
+                        ? Math.Round((double)reworkCount / annotatorSubmittedTasks * 100, 2)
+                        : 0;
+                    double? averageQualityScore = userStat != null && userStat.TotalReviewedTasks > 0
+                        ? userStat.AverageQualityScore
+                        : null;
 
                     return new AnnotatorPerformance
                     {
                         AnnotatorId = annotatorId,
-                        AnnotatorName = g.FirstOrDefault()?.Annotator?.FullName ?? "Unknown",
+                        AnnotatorName = g.FirstOrDefault()?.AnnotatorName ?? "Unknown",
                         TasksAssigned = groupedTasks.Count,
                         TasksCompleted = approvedTasks,
                         TasksRejected = rejectedTasks,
                         AverageDurationSeconds = 0,
-                        AverageQualityScore = userStat?.AverageQualityScore ?? 100,
+                        AverageQualityScore = averageQualityScore,
                         TotalCriticalErrors = userStat?.TotalCriticalErrors ?? 0,
-                        AnnotatorAccuracy = annotatorAccuracy
+                        AnnotatorAccuracy = finalAnnotatorAccuracy,
+                        ResolvedTasks = resolvedTasks,
+                        FirstPassCorrect = firstPassApproved,
+                        ReworkCount = reworkCount,
+                        TotalSubmittedTasks = annotatorSubmittedTasks,
+                        FinalAccuracy = finalAnnotatorAccuracy,
+                        FirstPassAccuracy = firstPassAccuracy,
+                        ReworkRate = annotatorReworkRate
                     };
                 }).ToList();
 
             var reviewerIds = allAssignments
                 .Where(a => !string.IsNullOrEmpty(a.ReviewerId))
                 .Select(a => a.ReviewerId!)
+                .Concat(allReviewLogs
+                    .Where(log => !string.IsNullOrWhiteSpace(log.ReviewerId))
+                    .Select(log => log.ReviewerId!))
                 .Distinct()
                 .ToList();
 
@@ -879,6 +1257,31 @@ namespace BLL.Services
                 .GroupBy(rl => rl.ReviewerId!)
                 .ToDictionary(g => g.Key, g => g.Count());
 
+            var reviewerDecisionStats = assignmentGroups
+                .Where(group => !group.HasPendingDispute && IsResolvedAnnotatorStatus(group.FinalStatus))
+                .SelectMany(group => group.LatestCycleReviewerDecisions.Select(decision => new
+                {
+                    decision.ReviewerId,
+                    decision.ReviewerName,
+                    decision.Verdict,
+                    group.FinalStatus
+                }))
+                .Where(item => !string.IsNullOrWhiteSpace(item.ReviewerId))
+                .GroupBy(item => item.ReviewerId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => new
+                    {
+                        ReviewerName = group.Select(item => item.ReviewerName)
+                            .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)) ?? group.Key,
+                        TotalManagerDecisions = group.Count(),
+                        CorrectDecisions = group.Count(item =>
+                            (IsApprovedVerdict(item.Verdict) &&
+                             string.Equals(item.FinalStatus, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase)) ||
+                            (IsRejectedVerdict(item.Verdict) &&
+                             string.Equals(item.FinalStatus, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase)))
+                    });
+
             stats.ReviewerPerformances = reviewerIds.Select(reviewerId =>
             {
                 var reviewer = allAssignments.FirstOrDefault(a => a.ReviewerId == reviewerId)?.Reviewer;
@@ -886,44 +1289,15 @@ namespace BLL.Services
                 int statReviewsDone = reviewerStat?.TotalReviewsDone ?? 0;
                 int logReviewsDone = reviewLogsByReviewer.ContainsKey(reviewerId) ? reviewLogsByReviewer[reviewerId] : 0;
                 int totalReviewsDone = Math.Max(statReviewsDone, logReviewsDone);
-                var logsForReviewer = allReviewLogs
-                    .Where(rl => rl.ReviewerId == reviewerId)
-                    .ToList();
-                int correctDecisions = 0;
-                int totalMgrDecisions = 0;
+                var decisionStats = reviewerDecisionStats.TryGetValue(reviewerId, out var reviewerDecision)
+                    ? reviewerDecision
+                    : null;
+                int correctDecisions = decisionStats?.CorrectDecisions ?? 0;
+                int totalMgrDecisions = decisionStats?.TotalManagerDecisions ?? 0;
 
-                foreach (var reviewLog in logsForReviewer)
-                {
-                    if (!assignmentById.TryGetValue(reviewLog.AssignmentId, out var relatedAssignment))
-                    {
-                        continue;
-                    }
-
-                    var groupKey = BuildAssignmentGroupKey(relatedAssignment);
-                    if (pendingDisputeGroupKeys.Contains(groupKey))
-                    {
-                        continue;
-                    }
-
-                    if (!finalStatusByAssignmentId.TryGetValue(reviewLog.AssignmentId, out var finalStatus))
-                    {
-                        continue;
-                    }
-
-                    if (!string.Equals(finalStatus, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase) &&
-                        !string.Equals(finalStatus, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    totalMgrDecisions++;
-
-                    if ((IsApprovedVerdict(reviewLog.Verdict) && string.Equals(finalStatus, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase)) ||
-                        (IsRejectedVerdict(reviewLog.Verdict) && string.Equals(finalStatus, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        correctDecisions++;
-                    }
-                }
+                double? reviewerAccuracy = totalMgrDecisions > 0
+                    ? Math.Round((double)correctDecisions / totalMgrDecisions * 100, 2)
+                    : null;
 
                 double reviewerAccuracy = totalMgrDecisions > 0
                     ? Math.Round((double)correctDecisions / totalMgrDecisions * 100, 2)
@@ -932,7 +1306,7 @@ namespace BLL.Services
                 return new ReviewerPerformance
                 {
                     ReviewerId = reviewerId,
-                    ReviewerName = reviewer?.FullName ?? reviewer?.Email ?? "Unknown",
+                    ReviewerName = decisionStats?.ReviewerName ?? reviewer?.FullName ?? reviewer?.Email ?? "Unknown",
                     TotalReviews = totalReviewsDone,
                     CorrectDecisions = correctDecisions,
                     TotalManagerDecisions = totalMgrDecisions,
@@ -1021,10 +1395,24 @@ namespace BLL.Services
                 var total = myAssignments.Count;
                 var completed = myAssignments.Count(a => a.Status == TaskStatusConstants.Approved || a.Status == TaskStatusConstants.Rejected);
                 var pending = myAssignments.Count(a => a.Status == TaskStatusConstants.Submitted);
+                int approvedProjectItems = ProjectWorkflowStatusHelper.CountApprovedDataItems(p);
+                bool allReviewerWorkResolved = total > 0 && total == completed;
+                bool isAwaitingManagerConfirmation = allReviewerWorkResolved &&
+                    ProjectWorkflowStatusHelper.IsAwaitingManagerConfirmation(p, p.DataItems.Count, approvedProjectItems);
 
-                string status = "Active";
-                if (DateTime.UtcNow > p.Deadline) status = "Expired";
-                else if (total > 0 && total == completed) status = "Completed";
+                string status = ProjectStatusConstants.Active;
+                if (string.Equals(p.Status, ProjectStatusConstants.Completed, StringComparison.OrdinalIgnoreCase))
+                {
+                    status = ProjectStatusConstants.Completed;
+                }
+                else if (DateTime.UtcNow > p.Deadline)
+                {
+                    status = ProjectStatusConstants.ExpiredDisplay;
+                }
+                else if (isAwaitingManagerConfirmation)
+                {
+                    status = ProjectStatusConstants.AwaitingManagerConfirmation;
+                }
 
                 result.Add(new AnnotatorProjectStatsResponse
                 {
@@ -1033,6 +1421,7 @@ namespace BLL.Services
                     TotalImages = total,
                     CompletedImages = completed,
                     Status = status,
+                    IsAwaitingManagerConfirmation = isAwaitingManagerConfirmation,
                     Deadline = p.Deadline,
                     PendingReview = pending
                 });
@@ -1048,27 +1437,11 @@ namespace BLL.Services
             return projects.Select(p =>
             {
                 int totalItems = p.DataItems.Count;
-                int approvedCount = p.DataItems.Count(d =>
-                    d.Status == TaskStatusConstants.Approved ||
-                    (d.Assignments != null && d.Assignments.Any(a => a.Status == TaskStatusConstants.Approved))
-                );
+                int approvedCount = ProjectWorkflowStatusHelper.CountApprovedDataItems(p);
 
                 decimal progress = totalItems > 0 ? (decimal)approvedCount / totalItems * 100 : 0;
-
-                string currentStatus = "New";
-
-                if (totalItems > 0 && approvedCount == totalItems)
-                {
-                    currentStatus = "Completed";
-                }
-                else if (DateTime.UtcNow > p.Deadline)
-                {
-                    currentStatus = "Expired";
-                }
-                else if (totalItems > 0 && p.DataItems.Any(d => d.Status != TaskStatusConstants.New))
-                {
-                    currentStatus = "InProgress";
-                }
+                bool hasStarted = totalItems > 0 && p.DataItems.Any(d => d.Status != TaskStatusConstants.New);
+                string currentStatus = ProjectWorkflowStatusHelper.ResolveManagerFacingStatus(p, totalItems, approvedCount, hasStarted);
 
                 return new ProjectSummaryResponse
                 {
@@ -1083,7 +1456,9 @@ namespace BLL.Services
                                     .SelectMany(a => new[] { a.AnnotatorId, a.ReviewerId })
                                     .Where(id => !string.IsNullOrEmpty(id))
                                     .Distinct()
-                                    .Count()
+                                    .Count(),
+                    IsAwaitingManagerConfirmation = ProjectWorkflowStatusHelper.IsAwaitingManagerConfirmation(p, totalItems, approvedCount),
+                    CanManagerConfirmCompletion = ProjectWorkflowStatusHelper.CanManagerConfirmCompletion(p, totalItems, approvedCount)
                 };
             }).ToList();
         }
@@ -1183,6 +1558,42 @@ namespace BLL.Services
             });
 
             await _activityLogRepo.SaveChangesAsync();
+
+            var manager = await _userRepository.GetByIdAsync(project.ManagerId);
+            var totalTasksPerReviewer = createdAssignments + updatedAssignments;
+            var annotatorCount = groupedAssignments
+                .Select(g => g.Key.AnnotatorId)
+                .Distinct()
+                .Count();
+
+            foreach (var reviewer in validReviewers)
+            {
+                await RunProjectSideEffectSafelyAsync(
+                    project.ManagerId,
+                    "AssignReviewersNotificationError",
+                    project.Id.ToString(),
+                    $"Reviewer assignment notification failed for reviewer {reviewer.Id} in project {project.Name}.",
+                    () => _notification.SendNotificationAsync(
+                        reviewer.Id,
+                        $"You have been assigned as a Reviewer in project \"{project.Name}\". " +
+                        $"You have tasks from {annotatorCount} annotator(s) waiting for your review.",
+                        "Info"));
+
+                if (manager != null)
+                {
+                    await RunProjectSideEffectSafelyAsync(
+                        project.ManagerId,
+                        "AssignReviewersEmailError",
+                        project.Id.ToString(),
+                        $"Reviewer assignment email failed for reviewer {reviewer.Id} in project {project.Name}.",
+                        () => _workflowEmailService.SendReviewerAssignmentEmailAsync(
+                            project,
+                            manager,
+                            reviewer,
+                            totalTasksPerReviewer,
+                            annotatorCount));
+                }
+            }
         }
 
         public async Task CompleteProjectAsync(int projectId, string managerId)
@@ -1241,12 +1652,210 @@ namespace BLL.Services
                 .Where(stat => stat.ProjectId == projectId)
                 .ToList();
 
-            await _workflowEmailService.SendProjectCompletedEmailsAsync(
-                project,
-                manager,
-                participants,
-                allAssignments,
-                projectStats);
+            await RunProjectSideEffectSafelyAsync(
+                managerId,
+                "CompleteProjectEmailError",
+                project.Id.ToString(),
+                $"Project completion emails failed for project {project.Name}.",
+                () => _workflowEmailService.SendProjectCompletedEmailsAsync(
+                    project,
+                    manager,
+                    participants,
+                    allAssignments,
+                    projectStats));
+        }
+
+        public async Task<ProjectCompletionReviewResponse> GetProjectCompletionReviewAsync(int projectId, string managerId)
+        {
+            var project = await _projectRepository.GetProjectWithStatsDataAsync(projectId);
+            if (project == null) throw new Exception("Project not found.");
+            if (project.ManagerId != managerId) throw new UnauthorizedAccessException("You are not the manager of this project.");
+
+            int totalItems = project.DataItems.Count;
+            int approvedItems = ProjectWorkflowStatusHelper.CountApprovedDataItems(project);
+            bool hasStarted = totalItems > 0 && project.DataItems.Any(d => d.Status != TaskStatusConstants.New);
+            string currentStatus = ProjectWorkflowStatusHelper.ResolveManagerFacingStatus(project, totalItems, approvedItems, hasStarted);
+            bool isAwaitingManagerConfirmation = ProjectWorkflowStatusHelper.IsAwaitingManagerConfirmation(project, totalItems, approvedItems);
+            bool isCompleted = string.Equals(project.Status, ProjectStatusConstants.Completed, StringComparison.OrdinalIgnoreCase);
+
+            if (!isAwaitingManagerConfirmation && !isCompleted)
+            {
+                throw new InvalidOperationException("Completion review is only available when the project is waiting for manager confirmation or has already been completed.");
+            }
+
+            var items = project.DataItems
+                .OrderBy(dataItem => dataItem.Id)
+                .SelectMany(dataItem => dataItem.Assignments
+                    .GroupBy(BuildAssignmentGroupKey)
+                    .Where(group => string.Equals(
+                        GetAggregatedAnnotatorStatus(group),
+                        TaskStatusConstants.Approved,
+                        StringComparison.OrdinalIgnoreCase))
+                    .Select(group => BuildCompletionReviewItem(dataItem, group)))
+                .OrderByDescending(item => item.RejectCount)
+                .ThenByDescending(item => item.ReviewEventCount)
+                .ThenBy(item => item.DataItemId)
+                .ToList();
+
+            return new ProjectCompletionReviewResponse
+            {
+                ProjectId = project.Id,
+                ProjectName = project.Name,
+                Status = currentStatus,
+                IsAwaitingManagerConfirmation = isAwaitingManagerConfirmation,
+                CanManagerConfirmCompletion = ProjectWorkflowStatusHelper.CanManagerConfirmCompletion(project, totalItems, approvedItems),
+                TotalDataItems = totalItems,
+                ApprovedItems = approvedItems,
+                ReturnedItems = items.Count(item => item.RejectCount > 0),
+                Items = items
+            };
+        }
+
+        public async Task ReturnProjectItemForReworkAsync(int projectId, int assignmentId, string managerId, string comment)
+        {
+            var normalizedComment = comment?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedComment))
+            {
+                throw new InvalidOperationException("Please provide a clear reason before returning this image for rework.");
+            }
+
+            var project = await _projectRepository.GetProjectWithStatsDataAsync(projectId);
+            if (project == null) throw new Exception("Project not found.");
+            if (project.ManagerId != managerId) throw new UnauthorizedAccessException("You are not the manager of this project.");
+
+            int totalItems = project.DataItems.Count;
+            int approvedItems = ProjectWorkflowStatusHelper.CountApprovedDataItems(project);
+            bool isAwaitingManagerConfirmation = ProjectWorkflowStatusHelper.IsAwaitingManagerConfirmation(project, totalItems, approvedItems);
+            bool isCompleted = string.Equals(project.Status, ProjectStatusConstants.Completed, StringComparison.OrdinalIgnoreCase);
+
+            if (!isAwaitingManagerConfirmation && !isCompleted)
+            {
+                throw new InvalidOperationException("This project is not currently in the manager completion-review phase.");
+            }
+
+            var targetDataItem = project.DataItems.FirstOrDefault(dataItem =>
+                dataItem.Assignments.Any(assignment => assignment.Id == assignmentId));
+
+            if (targetDataItem == null)
+            {
+                throw new InvalidOperationException("The selected image could not be found in this project.");
+            }
+
+            var targetGroup = targetDataItem.Assignments
+                .GroupBy(BuildAssignmentGroupKey)
+                .FirstOrDefault(group => group.Any(assignment => assignment.Id == assignmentId));
+
+            if (targetGroup == null)
+            {
+                throw new InvalidOperationException("The selected image group could not be resolved.");
+            }
+
+            var groupedAssignments = targetGroup.ToList();
+            if (!string.Equals(GetAggregatedAnnotatorStatus(groupedAssignments), TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("This image is no longer in a manager-confirmable state.");
+            }
+
+            int nextRejectCount = groupedAssignments.Select(a => a.RejectCount).DefaultIfEmpty(0).Max() + 1;
+            string annotatorId = groupedAssignments.First().AnnotatorId;
+            var reviewerIds = groupedAssignments
+                .Select(a => a.ReviewerId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            await _projectRepository.ExecuteInTransactionAsync(async () =>
+            {
+                project.Status = ProjectStatusConstants.Active;
+                project.EndDate = null;
+                _projectRepository.Update(project);
+
+                targetDataItem.Status = TaskStatusConstants.Rejected;
+
+                foreach (var assignment in groupedAssignments)
+                {
+                    assignment.Status = TaskStatusConstants.Rejected;
+                    assignment.IsEscalated = false;
+                    assignment.RejectCount = nextRejectCount;
+                    assignment.ManagerDecision = "Reject";
+                    assignment.ManagerComment = normalizedComment;
+                    _assignmentRepo.Update(assignment);
+                }
+
+                await _activityLogRepo.AddAsync(new ActivityLog
+                {
+                    UserId = managerId,
+                    ActionType = "ReturnProjectItemForRework",
+                    EntityName = "Project",
+                    EntityId = project.Id.ToString(),
+                    Description = $"Manager returned data item #{targetDataItem.Id} in project {project.Name} for rework during completion review. Reason: {normalizedComment}",
+                    Timestamp = DateTime.UtcNow
+                });
+
+                await _projectRepository.SaveChangesAsync();
+                await _assignmentRepo.SaveChangesAsync();
+                await _activityLogRepo.SaveChangesAsync();
+            });
+
+            await RunProjectSideEffectSafelyAsync(
+                managerId,
+                "CompletionReviewReturnAnnotatorNotificationError",
+                project.Id.ToString(),
+                $"Failed to notify annotator {annotatorId} about a completion-review return in project {project.Name}.",
+                () => _notification.SendNotificationAsync(
+                    annotatorId,
+                    $"Manager returned image #{targetDataItem.Id} in project \"{project.Name}\" for rework during final confirmation. Reason: {normalizedComment}",
+                    "Warning"));
+
+            foreach (var reviewerId in reviewerIds)
+            {
+                await RunProjectSideEffectSafelyAsync(
+                    managerId,
+                    "CompletionReviewReturnReviewerNotificationError",
+                    project.Id.ToString(),
+                    $"Failed to notify reviewer {reviewerId} about a completion-review return in project {project.Name}.",
+                    () => _notification.SendNotificationAsync(
+                        reviewerId!,
+                        $"Manager reopened image #{targetDataItem.Id} in project \"{project.Name}\" during final confirmation. The item will return to review after the annotator resubmits it.",
+                        "Info"));
+            }
+        }
+
+        private async Task RunProjectSideEffectSafelyAsync(
+            string actorUserId,
+            string actionType,
+            string entityId,
+            string description,
+            Func<Task> operation)
+        {
+            try
+            {
+                await operation();
+            }
+            catch (Exception ex)
+            {
+                await TryAddActivityLogAsync(new ActivityLog
+                {
+                    UserId = actorUserId,
+                    ActionType = actionType,
+                    EntityName = "Project",
+                    EntityId = entityId,
+                    Description = $"{description} {ex.Message}",
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+        }
+
+        private async Task TryAddActivityLogAsync(ActivityLog activityLog)
+        {
+            try
+            {
+                await _activityLogRepo.AddAsync(activityLog);
+                await _activityLogRepo.SaveChangesAsync();
+            }
+            catch
+            {
+            }
         }
 
         public async Task ActivateProjectAsync(int projectId, string managerId)
@@ -1312,7 +1921,7 @@ namespace BLL.Services
 
         public async Task<byte[]> ExportProjectCsvAsync(int projectId, string userId)
         {
-            var project = await _projectRepository.GetProjectWithDetailsAsync(projectId);
+            var project = await _projectRepository.GetProjectForExportAsync(projectId);
             if (project == null) throw new Exception("Project not found.");
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null) throw new Exception("User not found");
@@ -1320,32 +1929,52 @@ namespace BLL.Services
                 throw new Exception("Unauthorized to export this project.");
 
             var totalItems = project.DataItems.Count;
+            if (totalItems == 0)
+                throw new InvalidOperationException("No data items available in this project to export.");
+
             var completedItems = project.DataItems.Count(d => d.Status == TaskStatusConstants.Approved);
-            if (totalItems > 0 && completedItems < totalItems)
+            if (completedItems < totalItems)
             {
                 double progressPercent = Math.Round((double)completedItems / totalItems * 100, 2);
                 throw new InvalidOperationException($"BR-MNG-12: Export is only allowed when all assignments are Approved. Current progress: {progressPercent}% ({completedItems}/{totalItems} items).");
             }
 
-            var approvedTasks = project.DataItems
-                .SelectMany(d => d.Assignments)
-                .Where(a => a.Status == TaskStatusConstants.Approved)
-                .ToList();
-
-            if (!approvedTasks.Any())
-                throw new Exception("No approved data available for export.");
+            var exportRecords = BuildApprovedExportRecords(project);
+            if (!exportRecords.Any())
+                throw new InvalidOperationException("No approved annotation data available for export.");
 
             var builder = new System.Text.StringBuilder();
-            builder.AppendLine("AssignmentId,DataItemId,AnnotatorId,AnnotationData,ApprovedDate");
+            builder.AppendLine("ProjectId,ProjectName,DataItemId,FileName,StorageUrl,BucketId,UploadedAt,AnnotatorEmail,ReviewerEmail,ApprovedAt,AnnotationCount,AnnotationData");
 
-            foreach (var task in approvedTasks)
+            foreach (var record in exportRecords)
             {
-                var annotationJson = System.Text.Json.JsonSerializer.Serialize(task.Annotations);
-
-                var safeJson = annotationJson.Replace("\"", "\"\"");
-
-                builder.AppendLine($"{task.Id},{task.DataItemId},{task.AnnotatorId},\"{safeJson}\",{task.SubmittedAt}");
+                var annotationJson = JsonSerializer.Serialize(record.AnnotationData).Replace("\"", "\"\"");
+                var approvedAt = record.ApprovedAt?.ToString("O") ?? string.Empty;
+                builder.AppendLine(
+                    $"{project.Id}," +
+                    $"\"{project.Name.Replace("\"", "\"\"")}\"," +
+                    $"{record.DataItemId}," +
+                    $"\"{record.FileName.Replace("\"", "\"\"")}\"," +
+                    $"\"{record.StorageUrl.Replace("\"", "\"\"")}\"," +
+                    $"{record.BucketId}," +
+                    $"{record.UploadedAt:O}," +
+                    $"\"{record.AnnotatorEmail.Replace("\"", "\"\"")}\"," +
+                    $"\"{record.ReviewerEmail.Replace("\"", "\"\"")}\"," +
+                    $"{approvedAt}," +
+                    $"{record.AnnotationCount}," +
+                    $"\"{annotationJson}\"");
             }
+
+            await _activityLogRepo.AddAsync(new ActivityLog
+            {
+                UserId = userId,
+                ActionType = "ExportProjectCsv",
+                EntityName = "Project",
+                EntityId = projectId.ToString(),
+                Description = $"Exported CSV data for project: {project.Name}",
+                Timestamp = DateTime.UtcNow
+            });
+            await _activityLogRepo.SaveChangesAsync();
 
             return System.Text.Encoding.UTF8.GetBytes(builder.ToString());
         }

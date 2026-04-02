@@ -14,5 +14,6 @@
         public int CompletedImages { get; set; }
         public int ProgressPercent => TotalImages == 0 ? 0 : CompletedImages * 100 / TotalImages;
         public string Status { get; set; } = "Assigned";
+        public bool IsAwaitingManagerConfirmation { get; set; }
     }
 }

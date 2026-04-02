@@ -20,6 +20,16 @@ namespace BLL.Services
 {
     public class UserService : IUserService
     {
+        private static readonly char[] UppercasePasswordChars = "ABCDEFGHJKLMNPQRSTUVWXYZ".ToCharArray();
+        private static readonly char[] LowercasePasswordChars = "abcdefghijkmnopqrstuvwxyz".ToCharArray();
+        private static readonly char[] DigitPasswordChars = "23456789".ToCharArray();
+        private static readonly char[] SpecialPasswordChars = "!@#$%^&*".ToCharArray();
+        private static readonly char[] AllPasswordChars = UppercasePasswordChars
+            .Concat(LowercasePasswordChars)
+            .Concat(DigitPasswordChars)
+            .Concat(SpecialPasswordChars)
+            .ToArray();
+
         private readonly IUserRepository _userRepository;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IConfiguration _configuration;
@@ -56,6 +66,75 @@ namespace BLL.Services
 
         public async Task<User> RegisterAsync(string fullName, string email, string password, string role, string? managerId = null)
         {
+            var (user, manager) = await CreateUserRecordAsync(fullName, email, password, role, managerId);
+
+            await RunUserSideEffectSafelyAsync(
+                user.Id,
+                "WelcomeEmailError",
+                user.Id,
+                $"Failed to send welcome email to {user.Email}.",
+                () => _workflowEmailService.SendWelcomeEmailAsync(user, manager));
+
+            return user;
+        }
+
+        public async Task<EmailDispatchStatusResponse> CreateManagedUserAsync(string adminId, string fullName, string email, string role, string? managerId = null)
+        {
+            var temporaryPassword = GenerateTemporaryPassword();
+            var (user, manager) = await CreateUserRecordAsync(
+                fullName,
+                email,
+                temporaryPassword,
+                role,
+                managerId,
+                adminId,
+                $"Admin created account for {email} with role {role}.");
+
+            try
+            {
+                await _workflowEmailService.SendWelcomeEmailAsync(user, manager, temporaryPassword);
+
+                var emailDeliveryMode = GetEmailDeliveryMode();
+                var emailDeliveryTarget = GetEmailDeliveryTarget();
+                return new EmailDispatchStatusResponse
+                {
+                    Message = IsPickupDirectoryDelivery(emailDeliveryMode)
+                        ? $"User created successfully. In this Development environment, the welcome email containing the temporary password was written to the local mail-drop folder ({emailDeliveryTarget}) instead of being sent to the user's real inbox."
+                        : "User created successfully and a temporary password was delivered by email.",
+                    EmailDelivered = true,
+                    NotificationDelivered = true,
+                    EmailDeliveryMode = emailDeliveryMode,
+                    EmailDeliveryTarget = emailDeliveryTarget
+                };
+            }
+            catch (Exception ex)
+            {
+                await SafeLogUserSideEffectFailureAsync(
+                    adminId,
+                    "WelcomeEmailError",
+                    user.Id,
+                    $"User {user.Email} was created, but the temporary password email could not be delivered. {ex.Message}");
+
+                return new EmailDispatchStatusResponse
+                {
+                    Message = "User was created, but the temporary password email could not be delivered. Please verify SMTP settings and use Admin reset password to generate a new temporary password.",
+                    EmailDelivered = false,
+                    NotificationDelivered = true,
+                    EmailDeliveryMode = GetEmailDeliveryMode(),
+                    EmailDeliveryTarget = GetEmailDeliveryTarget()
+                };
+            }
+        }
+
+        private async Task<(User User, User? Manager)> CreateUserRecordAsync(
+            string fullName,
+            string email,
+            string password,
+            string role,
+            string? managerId = null,
+            string? actorUserId = null,
+            string? logDescription = null)
+        {
             if (!UserRoles.IsValid(role))
                 throw new Exception("Invalid role.");
 
@@ -85,20 +164,18 @@ namespace BLL.Services
             await _userRepository.SaveChangesAsync();
 
             await _logService.LogActionAsync(
-                user.Id,
+                actorUserId ?? user.Id,
                 "CreateUser",
                 "User",
                 user.Id,
-                $"Account created with role {role}."
+                logDescription ?? $"Account created with role {role}."
             );
 
             var manager = string.IsNullOrWhiteSpace(user.ManagerId)
                 ? null
                 : await _userRepository.GetByIdAsync(user.ManagerId);
 
-            await _workflowEmailService.SendWelcomeEmailAsync(user, manager);
-
-            return user;
+            return (user, manager);
         }
         public async Task UpdateAvatarAsync(string userId, string avatarUrl)
         {
@@ -109,6 +186,31 @@ namespace BLL.Services
             _userRepository.Update(user);
             await _userRepository.SaveChangesAsync();
             await _logService.LogActionAsync(userId, "UpdateAvatar", "User", userId, "User updated their avatar.");
+        }
+
+        public async Task<string> UploadAvatarAsync(string userId, Stream content, string originalFileName)
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null) throw new Exception("User not found");
+
+            var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "avatars");
+            if (!Directory.Exists(uploadsFolder))
+            {
+                Directory.CreateDirectory(uploadsFolder);
+            }
+
+            var fileExtension = Path.GetExtension(originalFileName);
+            var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
+            var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+            using (var fileStream = new FileStream(filePath, FileMode.Create))
+            {
+                await content.CopyToAsync(fileStream);
+            }
+
+            var avatarUrl = $"/avatars/{uniqueFileName}";
+            await UpdateAvatarAsync(userId, avatarUrl);
+            return avatarUrl;
         }
 
         public async Task<(string? accessToken, string? refreshToken)> LoginAsync(string email, string password)
@@ -281,8 +383,22 @@ namespace BLL.Services
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
+        private static List<UserProjectSummaryResponse> BuildProjectSummaries(IEnumerable<Project> projects)
+        {
+            return projects
+                .OrderBy(project => project.Name)
+                .Select(project => new UserProjectSummaryResponse
+                {
+                    Id = project.Id,
+                    Name = project.Name ?? string.Empty,
+                    Status = project.Status ?? string.Empty
+                })
+                .ToList();
+        }
+
         private static UserResponse MapUserResponse(
             User user,
+            IReadOnlyDictionary<string, User> userLookup,
             IReadOnlyDictionary<string, HashSet<int>> annotatorProjectMap,
             IReadOnlyDictionary<string, HashSet<int>> reviewerProjectMap,
             IReadOnlyCollection<Project> allProjects,
@@ -290,6 +406,36 @@ namespace BLL.Services
             IReadOnlySet<string> pendingGlobalBanUserIds)
         {
             var projectIds = GetProjectIdsForUser(user, annotatorProjectMap, reviewerProjectMap, allProjects);
+            var unfinishedProjects = BuildProjectSummaries(
+                allProjects.Where(project =>
+                    projectIds.Contains(project.Id) &&
+                    unfinishedProjectIds.Contains(project.Id)));
+
+            var unfinishedProjectManagerIds = allProjects
+                .Where(project =>
+                    projectIds.Contains(project.Id) &&
+                    unfinishedProjectIds.Contains(project.Id) &&
+                    !string.IsNullOrWhiteSpace(project.ManagerId))
+                .Select(project => project.ManagerId!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            User? manager = null;
+            string? managerId = user.ManagerId;
+
+            if (unfinishedProjectManagerIds.Count == 1)
+            {
+                managerId = unfinishedProjectManagerIds[0];
+                userLookup.TryGetValue(managerId, out manager);
+            }
+            else if (unfinishedProjectManagerIds.Count == 0)
+            {
+                userLookup.TryGetValue(user.ManagerId ?? string.Empty, out manager);
+            }
+            else
+            {
+                managerId = null;
+            }
 
             return new UserResponse
             {
@@ -299,9 +445,12 @@ namespace BLL.Services
                 Role = user.Role ?? "",
                 AvatarUrl = user.AvatarUrl ?? "",
                 IsActive = user.IsActive,
-                ManagerId = user.ManagerId,
+                ManagerId = managerId,
+                ManagerName = manager?.FullName,
+                ManagerEmail = manager?.Email,
                 TotalProjects = projectIds.Count,
-                UnfinishedProjectCount = projectIds.Count(unfinishedProjectIds.Contains),
+                UnfinishedProjectCount = unfinishedProjects.Count,
+                UnfinishedProjects = unfinishedProjects,
                 HasPendingGlobalBanRequest = pendingGlobalBanUserIds.Contains(user.Id)
             };
         }
@@ -338,6 +487,61 @@ namespace BLL.Services
                 .ToList();
         }
 
+        private async Task<(User Manager, List<Project> Projects)> ResolveResponsibleManagerForGlobalBanAsync(
+            User user,
+            IEnumerable<Project> unfinishedProjects)
+        {
+            var projectList = unfinishedProjects
+                .Where(project => project != null)
+                .OrderBy(project => project.Name)
+                .ToList();
+
+            if (!projectList.Any())
+            {
+                throw new Exception("This user no longer participates in unfinished projects that require manager approval.");
+            }
+
+            var responsibleManagerIds = projectList
+                .Where(project => !string.IsNullOrWhiteSpace(project.ManagerId))
+                .Select(project => project.ManagerId!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!responsibleManagerIds.Any())
+            {
+                throw new Exception(
+                    $"Cannot create the global ban request because {user.FullName} is still assigned to unfinished project(s) without a responsible manager. " +
+                    "A manager can only ban a user within their own project. Please assign the correct project manager or remove the user from those projects first.");
+            }
+
+            if (responsibleManagerIds.Count > 1)
+            {
+                var managerNames = new List<string>();
+                foreach (var responsibleManagerId in responsibleManagerIds)
+                {
+                    var responsibleManager = await _userRepository.GetByIdAsync(responsibleManagerId);
+                    managerNames.Add(responsibleManager?.FullName ?? responsibleManagerId);
+                }
+
+                throw new Exception(
+                    $"{user.FullName} is still participating in unfinished projects owned by multiple managers ({string.Join(", ", managerNames)}). " +
+                    "Managers can only remove users from their own projects. Please let the relevant project managers handle those project memberships first, then submit the global ban again.");
+            }
+
+            var managerId = responsibleManagerIds[0];
+            var manager = await _userRepository.GetByIdAsync(managerId);
+            if (manager == null || !string.Equals(manager.Role, UserRoles.Manager, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new Exception("Cannot create the global ban request because the responsible project manager could not be found.");
+            }
+
+            return (
+                manager,
+                projectList
+                    .Where(project => string.Equals(project.ManagerId, manager.Id, StringComparison.OrdinalIgnoreCase))
+                    .ToList());
+        }
+
         private static string BuildGlobalBanRequestMetadata(
             GlobalUserBanRequest banRequest,
             User targetUser,
@@ -348,27 +552,36 @@ namespace BLL.Services
             string? decisionNote = null,
             DateTime? resolvedAt = null)
         {
+            var projectSummaries = BuildProjectSummaries(unfinishedProjects);
+            var normalizedProjectSummaries = projectSummaries
+                .Select(project => new
+                {
+                    id = project.Id,
+                    name = project.Name,
+                    status = project.Status
+                })
+                .ToList();
+
             return JsonSerializer.Serialize(new
             {
                 banRequestId = banRequest.Id,
                 targetUserId = targetUser.Id,
                 targetUserName = targetUser.FullName,
                 targetUserEmail = targetUser.Email,
+                targetUserRole = targetUser.Role,
                 requestedByAdminId = admin.Id,
                 requestedByAdminName = admin.FullName,
+                requestedByAdminEmail = admin.Email,
                 managerId = manager.Id,
                 managerName = manager.FullName,
-                unfinishedProjects = unfinishedProjects
-                    .Select(project => new
-                    {
-                        id = project.Id,
-                        name = project.Name,
-                        status = project.Status
-                    })
-                    .ToList(),
+                managerEmail = manager.Email,
+                unfinishedProjectCount = projectSummaries.Count,
+                unfinishedProjects = normalizedProjectSummaries,
                 requestStatus,
-                requestedAt = banRequest.RequestedAt,
-                resolvedAt,
+                requestedAt = NormalizeUtcDateTime(banRequest.RequestedAt).ToString("O"),
+                resolvedAt = resolvedAt.HasValue
+                    ? NormalizeUtcDateTime(resolvedAt.Value).ToString("O")
+                    : null,
                 decisionNote
             });
         }
@@ -392,9 +605,26 @@ namespace BLL.Services
 
             metadata["requestStatus"] = requestStatus;
             metadata["decisionNote"] = decisionNote;
-            metadata["resolvedAt"] = resolvedAt?.ToString("O");
+            metadata["resolvedAt"] = resolvedAt.HasValue
+                ? NormalizeUtcDateTime(resolvedAt.Value).ToString("O")
+                : null;
 
             return metadata.ToJsonString();
+        }
+
+        private static DateTime NormalizeUtcDateTime(DateTime value)
+        {
+            if (value == default)
+            {
+                return DateTime.SpecifyKind(value, DateTimeKind.Utc);
+            }
+
+            return value.Kind switch
+            {
+                DateTimeKind.Utc => value,
+                DateTimeKind.Local => value.ToUniversalTime(),
+                _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+            };
         }
 
         private async Task SyncGlobalBanRequestNotificationsAsync(
@@ -429,6 +659,48 @@ namespace BLL.Services
             }
 
             await _appNotificationRepo.SaveChangesAsync();
+        }
+
+        private async Task CloseObsoletePendingGlobalBanRequestsAsync(
+            IEnumerable<GlobalUserBanRequest> obsoleteRequests,
+            string actorUserId,
+            string targetUserEmail,
+            string responsibleManagerName)
+        {
+            var obsoleteRequestList = obsoleteRequests.ToList();
+            if (!obsoleteRequestList.Any())
+            {
+                return;
+            }
+
+            var resolvedAt = DateTime.UtcNow;
+            var decisionNote =
+                $"Automatically closed because the affected unfinished projects are now owned by manager {responsibleManagerName}.";
+
+            foreach (var obsoleteRequest in obsoleteRequestList)
+            {
+                obsoleteRequest.Status = GlobalUserBanRequestStatusConstants.Rejected;
+                obsoleteRequest.DecisionNote = decisionNote;
+                obsoleteRequest.ResolvedAt = resolvedAt;
+                _globalBanRequestRepo.Update(obsoleteRequest);
+            }
+
+            await _globalBanRequestRepo.SaveChangesAsync();
+
+            foreach (var obsoleteRequest in obsoleteRequestList)
+            {
+                await SyncGlobalBanRequestNotificationsAsync(
+                    obsoleteRequest,
+                    obsoleteRequest.Status,
+                    obsoleteRequest.DecisionNote);
+            }
+
+            await _logService.LogActionAsync(
+                actorUserId,
+                "CloseObsoleteGlobalBanRequest",
+                "GlobalUserBanRequest",
+                string.Join(",", obsoleteRequestList.Select(request => request.Id)),
+                $"Closed {obsoleteRequestList.Count} obsolete pending global ban request(s) for user {targetUserEmail} before creating the updated request.");
         }
 
         private static string ComputeDataItemStatus(IEnumerable<Assignment> remainingAssignments)
@@ -541,6 +813,9 @@ namespace BLL.Services
             var allUsers = (await _userRepository.GetAllAsync()).ToList();
             var allProjects = (await _projectRepo.GetAllAsync()).ToList();
             var allAssignments = (await _assignmentRepo.GetAllAsync()).ToList();
+            var userLookup = allUsers
+                .Where(user => !string.IsNullOrWhiteSpace(user.Id))
+                .ToDictionary(user => user.Id, StringComparer.OrdinalIgnoreCase);
             var pendingGlobalBanUserIds = await GetPendingGlobalBanUserIdsAsync(allUsers.Select(user => user.Id));
             var unfinishedProjectIds = allProjects
                 .Where(IsUnfinishedProject)
@@ -562,6 +837,7 @@ namespace BLL.Services
                 .Take(pageSize)
                 .Select(user => MapUserResponse(
                     user,
+                    userLookup,
                     annotatorProjectMap,
                     reviewerProjectMap,
                     allProjects,
@@ -584,6 +860,9 @@ namespace BLL.Services
             var allUsers = (await _userRepository.GetAllAsync()).ToList();
             var allProjects = (await _projectRepo.GetAllAsync()).ToList();
             var allAssignments = (await _assignmentRepo.GetAllAsync()).ToList();
+            var userLookup = allUsers
+                .Where(user => !string.IsNullOrWhiteSpace(user.Id))
+                .ToDictionary(user => user.Id, StringComparer.OrdinalIgnoreCase);
             var unfinishedProjectIds = allProjects
                 .Where(IsUnfinishedProject)
                 .Select(project => project.Id)
@@ -595,6 +874,7 @@ namespace BLL.Services
                 .Where(u => u.ManagerId == managerId && u.IsActive)
                 .Select(user => MapUserResponse(
                     user,
+                    userLookup,
                     annotatorProjectMap,
                     reviewerProjectMap,
                     allProjects,
@@ -610,6 +890,9 @@ namespace BLL.Services
             var allUsers = (await _userRepository.GetAllAsync()).ToList();
             var allProjects = (await _projectRepo.GetAllAsync()).ToList();
             var allAssignments = (await _assignmentRepo.GetAllAsync()).ToList();
+            var userLookup = allUsers
+                .Where(user => !string.IsNullOrWhiteSpace(user.Id))
+                .ToDictionary(user => user.Id, StringComparer.OrdinalIgnoreCase);
             var unfinishedProjectIds = allProjects
                 .Where(IsUnfinishedProject)
                 .Select(project => project.Id)
@@ -621,6 +904,7 @@ namespace BLL.Services
             return allUsers
                 .Select(user => MapUserResponse(
                     user,
+                    userLookup,
                     annotatorProjectMap,
                     reviewerProjectMap,
                     allProjects,
@@ -750,21 +1034,24 @@ namespace BLL.Services
             if (!isActive)
             {
                 var unfinishedProjects = await GetUnfinishedProjectsForUserAsync(user);
-                var existingPendingRequest = (await _globalBanRequestRepo.FindAsync(request =>
+                var existingPendingRequests = (await _globalBanRequestRepo.FindAsync(request =>
                     request.TargetUserId == user.Id &&
                     request.Status == GlobalUserBanRequestStatusConstants.Pending))
-                    .FirstOrDefault();
+                    .ToList();
 
                 var requiresManagerApproval =
                     admin != null &&
                     string.Equals(admin.Role, UserRoles.Admin, StringComparison.OrdinalIgnoreCase) &&
-                    !string.IsNullOrWhiteSpace(user.ManagerId) &&
                     (string.Equals(user.Role, UserRoles.Annotator, StringComparison.OrdinalIgnoreCase) ||
                      string.Equals(user.Role, UserRoles.Reviewer, StringComparison.OrdinalIgnoreCase)) &&
                     unfinishedProjects.Any();
 
                 if (requiresManagerApproval)
                 {
+                    var (manager, managerProjects) = await ResolveResponsibleManagerForGlobalBanAsync(user, unfinishedProjects);
+                    var existingPendingRequest = existingPendingRequests
+                        .FirstOrDefault(request => string.Equals(request.ManagerId, manager.Id, StringComparison.OrdinalIgnoreCase));
+
                     if (existingPendingRequest != null)
                     {
                         return new ToggleUserStatusResponse
@@ -776,10 +1063,13 @@ namespace BLL.Services
                         };
                     }
 
-                    var manager = await _userRepository.GetByIdAsync(user.ManagerId!);
-                    if (manager == null || !string.Equals(manager.Role, UserRoles.Manager, StringComparison.OrdinalIgnoreCase))
+                    if (existingPendingRequests.Any())
                     {
-                        throw new Exception("Cannot create the global ban request because the responsible manager could not be found.");
+                        await CloseObsoletePendingGlobalBanRequestsAsync(
+                            existingPendingRequests,
+                            admin!.Id,
+                            user.Email,
+                            manager.FullName);
                     }
 
                     var banRequest = new GlobalUserBanRequest
@@ -799,14 +1089,14 @@ namespace BLL.Services
                         user,
                         admin,
                         manager,
-                        unfinishedProjects,
+                        managerProjects,
                         GlobalUserBanRequestStatusConstants.Pending);
 
-                    var projectSummary = string.Join(", ", unfinishedProjects.Select(project => $"\"{project.Name}\""));
+                    var projectSummary = string.Join(", ", managerProjects.Select(project => $"\"{project.Name}\""));
 
                     await _notification.SendNotificationAsync(
                         manager.Id,
-                        $"Admin requested a global ban for {user.Role} \"{user.FullName}\" ({user.Email}). This user is still participating in {unfinishedProjects.Count} unfinished project(s): {projectSummary}. Please approve or reject the request.",
+                        $"Admin requested a global ban for {user.Role} \"{user.FullName}\" ({user.Email}). This user is still participating in {managerProjects.Count} unfinished project(s) that you manage: {projectSummary}. Please approve or reject the request.",
                         "GlobalUserBanApproval",
                         "GlobalUserBanRequest",
                         banRequest.Id.ToString(),
@@ -818,11 +1108,11 @@ namespace BLL.Services
                         "CreateGlobalUserBanRequest",
                         "GlobalUserBanRequest",
                         banRequest.Id.ToString(),
-                        $"Admin requested manager approval to globally ban user {user.Email} while they still participate in {unfinishedProjects.Count} unfinished project(s).");
+                        $"Admin requested manager approval to globally ban user {user.Email} while they still participate in {managerProjects.Count} unfinished project(s) owned by manager {manager.FullName}.");
 
                     return new ToggleUserStatusResponse
                     {
-                        Message = $"The global ban request for {user.FullName} has been sent to manager {manager.FullName} for approval.",
+                        Message = $"The global ban request for {user.FullName} has been sent to project manager {manager.FullName} for approval.",
                         IsActive = user.IsActive,
                         RequiresManagerApproval = true,
                         GlobalBanRequestId = banRequest.Id
@@ -875,46 +1165,49 @@ namespace BLL.Services
 
         public async Task ResolveGlobalUserBanRequestAsync(int requestId, string managerId, ResolveGlobalUserBanRequest request)
         {
-            var banRequest = await _globalBanRequestRepo.GetByIdAsync(requestId);
-            if (banRequest == null)
-            {
-                throw new Exception("Global ban request not found.");
-            }
+            List<(string UserId, string Message, string Type, string? ReferenceType, string? ReferenceId, string? ActionKey, string? MetadataJson)> pendingNotifications = new();
+            var logEntries = new List<(string ActionType, string EntityName, string EntityId, string Description)>();
 
-            if (!string.Equals(banRequest.ManagerId, managerId, StringComparison.OrdinalIgnoreCase))
+            await _globalBanRequestRepo.ExecuteInTransactionAsync(async () =>
             {
-                throw new UnauthorizedAccessException("Only the responsible manager can resolve this global ban request.");
-            }
+                var banRequest = await _globalBanRequestRepo.GetByIdAsync(requestId);
+                if (banRequest == null)
+                {
+                    throw new Exception("Global ban request not found.");
+                }
 
-            if (!string.Equals(banRequest.Status, GlobalUserBanRequestStatusConstants.Pending, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new Exception("This global ban request has already been resolved.");
-            }
+                if (!string.Equals(banRequest.ManagerId, managerId, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new UnauthorizedAccessException("Only the responsible manager can resolve this global ban request.");
+                }
 
-            var manager = await _userRepository.GetByIdAsync(managerId) ?? new User
-            {
-                Id = managerId,
-                FullName = "Manager",
-                Email = string.Empty,
-                Role = UserRoles.Manager
-            };
-            var targetUser = await _userRepository.GetByIdAsync(banRequest.TargetUserId)
-                ?? throw new Exception("Target user not found.");
-            var admin = await _userRepository.GetByIdAsync(banRequest.RequestedByAdminId) ?? new User
-            {
-                Id = banRequest.RequestedByAdminId,
-                FullName = "Administrator",
-                Email = string.Empty,
-                Role = UserRoles.Admin
-            };
+                if (!string.Equals(banRequest.Status, GlobalUserBanRequestStatusConstants.Pending, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new Exception("This global ban request has already been resolved.");
+                }
 
-            await using var transaction = await _globalBanRequestRepo.BeginTransactionAsync();
+                var manager = await _userRepository.GetByIdAsync(managerId) ?? new User
+                {
+                    Id = managerId,
+                    FullName = "Manager",
+                    Email = string.Empty,
+                    Role = UserRoles.Manager
+                };
+                var targetUser = await _userRepository.GetByIdAsync(banRequest.TargetUserId)
+                    ?? throw new Exception("Target user not found.");
+                var admin = await _userRepository.GetByIdAsync(banRequest.RequestedByAdminId) ?? new User
+                {
+                    Id = banRequest.RequestedByAdminId,
+                    FullName = "Administrator",
+                    Email = string.Empty,
+                    Role = UserRoles.Admin
+                };
 
-            try
-            {
                 var normalizedDecisionNote = string.IsNullOrWhiteSpace(request.DecisionNote)
                     ? null
                     : request.DecisionNote.Trim();
+                var attemptNotifications = new List<(string UserId, string Message, string Type, string? ReferenceType, string? ReferenceId, string? ActionKey, string? MetadataJson)>();
+                var attemptLogEntries = new List<(string ActionType, string EntityName, string EntityId, string Description)>();
 
                 banRequest.Status = request.Approve
                     ? GlobalUserBanRequestStatusConstants.Approved
@@ -937,19 +1230,23 @@ namespace BLL.Services
                         ? string.Join(", ", removalResults.Select(result => $"\"{result.Project.Name}\""))
                         : "no unfinished projects";
 
-                    await _notification.SendNotificationAsync(
+                    attemptNotifications.Add((
                         admin.Id,
                         $"Manager {manager.FullName} approved the global ban for {targetUser.Role} \"{targetUser.FullName}\" ({targetUser.Email}). The account is now blocked from the system and removed from unfinished projects: {impactedProjectSummary}.",
                         "GlobalUserBanApproved",
                         "GlobalUserBanRequest",
-                        banRequest.Id.ToString());
+                        banRequest.Id.ToString(),
+                        null,
+                        null));
 
-                    await _notification.SendNotificationAsync(
+                    attemptNotifications.Add((
                         targetUser.Id,
                         "Your account has been globally banned after manager approval. You have been removed from all unfinished projects and can no longer access the system.",
                         "AccountDeactivated",
                         "GlobalUserBanRequest",
-                        banRequest.Id.ToString());
+                        banRequest.Id.ToString(),
+                        null,
+                        null));
 
                     foreach (var managerGroup in removalResults
                                  .Where(result => !string.IsNullOrWhiteSpace(result.Project.ManagerId) &&
@@ -959,49 +1256,82 @@ namespace BLL.Services
                         var groupedProjectNames = string.Join(", ", managerGroup.Select(result => $"\"{result.Project.Name}\""));
                         var groupedAssignmentCount = managerGroup.Sum(result => result.ChangedAssignments);
 
-                        await _notification.SendNotificationAsync(
+                        attemptNotifications.Add((
                             managerGroup.Key,
                             $"User \"{targetUser.FullName}\" ({targetUser.Email}) was globally banned after manager approval and removed from your unfinished project(s) {groupedProjectNames}. {groupedAssignmentCount} pending assignment(s) were affected and may need reassignment.",
-                            "UserRemoved");
+                            "UserRemoved",
+                            null,
+                            null,
+                            null,
+                            null));
                     }
 
-                    await _logService.LogActionAsync(
-                        managerId,
+                    attemptLogEntries.Add((
                         "ApproveGlobalUserBanRequest",
                         "GlobalUserBanRequest",
                         requestId.ToString(),
-                        $"Manager approved the global ban for user {targetUser.Email}.");
+                        $"Manager approved the global ban for user {targetUser.Email}."));
                 }
                 else
                 {
-                    await _notification.SendNotificationAsync(
+                    attemptNotifications.Add((
                         admin.Id,
                         $"Manager {manager.FullName} rejected the global ban request for {targetUser.Role} \"{targetUser.FullName}\" ({targetUser.Email}). The account remains active.",
                         "GlobalUserBanRejected",
                         "GlobalUserBanRequest",
-                        banRequest.Id.ToString());
+                        banRequest.Id.ToString(),
+                        null,
+                        null));
 
-                    await _logService.LogActionAsync(
-                        managerId,
+                    attemptLogEntries.Add((
                         "RejectGlobalUserBanRequest",
                         "GlobalUserBanRequest",
                         requestId.ToString(),
-                        $"Manager rejected the global ban for user {targetUser.Email}.");
+                        $"Manager rejected the global ban for user {targetUser.Email}."));
                 }
 
-                await transaction.CommitAsync();
-            }
-            catch
+                pendingNotifications = attemptNotifications;
+                logEntries = attemptLogEntries;
+            });
+
+            foreach (var notification in pendingNotifications)
             {
-                await transaction.RollbackAsync();
-                throw;
+                await RunSideEffectSafelyAsync(
+                    managerId,
+                    "GlobalBanResolutionNotificationError",
+                    "GlobalUserBanRequest",
+                    requestId.ToString(),
+                    $"Resolved global ban request {requestId}, but a notification for user {notification.UserId} could not be delivered.",
+                    () => _notification.SendNotificationAsync(
+                        notification.UserId,
+                        notification.Message,
+                        notification.Type,
+                        notification.ReferenceType,
+                        notification.ReferenceId,
+                        notification.ActionKey,
+                        notification.MetadataJson));
+            }
+
+            foreach (var logEntry in logEntries)
+            {
+                try
+                {
+                    await _logService.LogActionAsync(
+                        managerId,
+                        logEntry.ActionType,
+                        logEntry.EntityName,
+                        logEntry.EntityId,
+                        logEntry.Description);
+                }
+                catch
+                {
+                }
             }
         }
 
         public async Task<ImportUserResponse> ImportUsersFromExcelAsync(Stream fileStream, string adminId)
         {
             var response = new ImportUserResponse();
-            var defaultPassword = BCrypt.Net.BCrypt.HashPassword("Password@123");
 
             const int maxRowCount = 1000;
 
@@ -1015,7 +1345,7 @@ namespace BLL.Services
             }
 
             int rowNumber = 1;
-            var createdUsers = new List<(User User, User? Manager)>();
+            var createdUsers = new List<(User User, User? Manager, string TemporaryPassword)>();
 
             foreach (var row in rows)
             {
@@ -1060,17 +1390,19 @@ namespace BLL.Services
                     managerIdToAssign = manager.Id;
                 }
 
+                var temporaryPassword = GenerateTemporaryPassword();
                 var user = new User
                 {
                     Email = email,
                     FullName = fullName,
                     Role = role,
                     ManagerId = managerIdToAssign,
-                    PasswordHash = defaultPassword
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
+                    IsEmailVerified = true
                 };
 
                 await _userRepository.AddAsync(user);
-                createdUsers.Add((user, string.IsNullOrEmpty(managerIdToAssign) ? null : await _userRepository.GetByIdAsync(managerIdToAssign)));
+                createdUsers.Add((user, string.IsNullOrEmpty(managerIdToAssign) ? null : await _userRepository.GetByIdAsync(managerIdToAssign), temporaryPassword));
                 response.SuccessCount++;
             }
 
@@ -1078,9 +1410,14 @@ namespace BLL.Services
             {
                 await _userRepository.SaveChangesAsync();
 
-                foreach (var (user, manager) in createdUsers)
+                foreach (var (user, manager, temporaryPassword) in createdUsers)
                 {
-                    await _workflowEmailService.SendWelcomeEmailAsync(user, manager);
+                    await RunUserSideEffectSafelyAsync(
+                        adminId,
+                        "ImportUsersWelcomeEmailError",
+                        user.Id,
+                        $"Imported user {user.Email}, but the welcome email could not be delivered.",
+                        () => _workflowEmailService.SendWelcomeEmailAsync(user, manager, temporaryPassword));
                 }
             }
 
@@ -1154,27 +1491,71 @@ namespace BLL.Services
                 .ToList();
         }
 
-        public async Task<string> ForgotPasswordAsync(string email)
+        public async Task<EmailDispatchStatusResponse> ForgotPasswordAsync(string email)
         {
             const string responseMessage = "If your email is registered in our system, administrators have been notified and will review your password reset request.";
+            const string emailFailureMessage = "If your email is registered in our system, the reset request was recorded, but SMTP email delivery to administrators is currently unavailable.";
+            const string deliveryFailureMessage = "If your email is registered in our system, the reset request was recorded, but automated delivery to administrators failed. Please contact an administrator directly.";
             var user = await _userRepository.GetUserByEmailAsync(email);
 
             if (user == null)
             {
-                return responseMessage;
+                return new EmailDispatchStatusResponse
+                {
+                    Message = responseMessage,
+                    EmailDelivered = true,
+                    NotificationDelivered = true
+                };
             }
 
+            bool emailDelivered = true;
+            bool notificationDelivered = true;
             var admins = (await _userRepository.FindAsync(u => u.Role == UserRoles.Admin && u.IsActive)).ToList();
-            if (admins.Any())
+
+            if (!admins.Any())
             {
-                await _workflowEmailService.SendForgotPasswordRequestEmailsAsync(user, admins);
+                notificationDelivered = false;
+                await _logService.LogActionAsync(
+                    user.Id,
+                    "ForgotPasswordNotificationError",
+                    "User",
+                    user.Id,
+                    "No active administrators are available to review this password reset request.");
+            }
+            else
+            {
+                try
+                {
+                    await _workflowEmailService.SendForgotPasswordRequestEmailsAsync(user, admins);
+                }
+                catch (Exception ex)
+                {
+                    emailDelivered = false;
+                    await SafeLogUserSideEffectFailureAsync(
+                        user.Id,
+                        "ForgotPasswordEmailError",
+                        user.Id,
+                        $"Failed to send forgot password request emails for user {user.Email}. {ex.Message}");
+                }
 
                 foreach (var admin in admins)
                 {
-                    await _notification.SendNotificationAsync(
-                        admin.Id,
-                        $"User \"{user.FullName}\" ({user.Email}) has requested a manual password reset. Please review it in User Management.",
-                        "PasswordResetRequest");
+                    try
+                    {
+                        await _notification.SendNotificationAsync(
+                            admin.Id,
+                            $"User \"{user.FullName}\" ({user.Email}) has requested a manual password reset. Please review it in User Management.",
+                            "PasswordResetRequest");
+                    }
+                    catch (Exception ex)
+                    {
+                        notificationDelivered = false;
+                        await SafeLogUserSideEffectFailureAsync(
+                            user.Id,
+                            "ForgotPasswordNotificationError",
+                            user.Id,
+                            $"Failed to send forgot password notification to admin {admin.Id}. {ex.Message}");
+                    }
                 }
             }
 
@@ -1186,27 +1567,219 @@ namespace BLL.Services
                 "User requested a password reset. Admin approval is required before the password is changed."
             );
 
-            return responseMessage;
+            var emailDeliveryMode = GetEmailDeliveryMode();
+            var emailDeliveryTarget = GetEmailDeliveryTarget();
+            var effectiveMessage = !notificationDelivered && !emailDelivered
+                ? deliveryFailureMessage
+                : !emailDelivered
+                    ? emailFailureMessage
+                    : IsPickupDirectoryDelivery(emailDeliveryMode)
+                        ? $"If your email is registered in our system, administrators have been notified. In this Development environment, the email was written to the local mail-drop folder ({emailDeliveryTarget}) instead of being sent to a real inbox."
+                        : responseMessage;
+
+            return new EmailDispatchStatusResponse
+            {
+                Message = effectiveMessage,
+                EmailDelivered = emailDelivered,
+                NotificationDelivered = notificationDelivered,
+                EmailDeliveryMode = emailDeliveryMode,
+                EmailDeliveryTarget = emailDeliveryTarget
+            };
         }
-        public async Task AdminChangeUserPasswordAsync(string adminId, string targetUserId, string newPassword)
+        public async Task<EmailDispatchStatusResponse> AdminChangeUserPasswordAsync(string adminId, string targetUserId)
         {
             var user = await _userRepository.GetByIdAsync(targetUserId);
             if (user == null) throw new Exception("User not found.");
 
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+            var previousPasswordHash = user.PasswordHash;
+            var temporaryPassword = GenerateTemporaryPassword();
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
 
             _userRepository.Update(user);
             await _userRepository.SaveChangesAsync();
 
-            await _logService.LogActionAsync(
-                adminId,
-                "AdminChangePassword",
-                "User",
-                targetUserId,
-                $"Admin explicitly changed the password for user {user.Email}."
-            );
+            try
+            {
+                await _workflowEmailService.SendAdminPasswordResetEmailAsync(user, temporaryPassword);
 
-            await _workflowEmailService.SendAdminPasswordResetEmailAsync(user, newPassword);
+                await _logService.LogActionAsync(
+                    adminId,
+                    "AdminChangePassword",
+                    "User",
+                    targetUserId,
+                    $"Admin generated a new temporary password for user {user.Email}."
+                );
+
+                var emailDeliveryMode = GetEmailDeliveryMode();
+                var emailDeliveryTarget = GetEmailDeliveryTarget();
+                return new EmailDispatchStatusResponse
+                {
+                    Message = IsPickupDirectoryDelivery(emailDeliveryMode)
+                        ? $"A new temporary password has been generated. In this Development environment, the reset email was written to the local mail-drop folder ({emailDeliveryTarget}) instead of being sent to the user's real inbox."
+                        : "A new temporary password has been generated and the reset email was delivered.",
+                    EmailDelivered = true,
+                    NotificationDelivered = true,
+                    EmailDeliveryMode = emailDeliveryMode,
+                    EmailDeliveryTarget = emailDeliveryTarget
+                };
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    user.PasswordHash = previousPasswordHash;
+                    _userRepository.Update(user);
+                    await _userRepository.SaveChangesAsync();
+                }
+                catch (Exception rollbackEx)
+                {
+                    await SafeLogUserSideEffectFailureAsync(
+                        adminId,
+                        "AdminChangePasswordRollbackError",
+                        targetUserId,
+                        $"Temporary password delivery failed for user {user.Email}, and restoring the previous password also failed. {rollbackEx.Message}");
+
+                    throw new Exception("Temporary password delivery failed and the previous password could not be restored. Please verify SMTP settings and reset the account again.");
+                }
+
+                await SafeLogUserSideEffectFailureAsync(
+                    adminId,
+                    "AdminChangePasswordEmailError",
+                    targetUserId,
+                    $"Temporary password generation for user {user.Email} was cancelled because the reset email could not be delivered. {ex.Message}");
+
+                return new EmailDispatchStatusResponse
+                {
+                    Message = "Temporary password delivery failed, so the old password remains active. Please verify SMTP settings and try again.",
+                    EmailDelivered = false,
+                    NotificationDelivered = true,
+                    EmailDeliveryMode = GetEmailDeliveryMode(),
+                    EmailDeliveryTarget = GetEmailDeliveryTarget()
+                };
+            }
+        }
+
+        private string GetEmailDeliveryMode()
+        {
+            return _configuration["EmailSettings:DeliveryMode"]?.Trim() ?? "Network";
+        }
+
+        private string? GetEmailDeliveryTarget()
+        {
+            if (!IsPickupDirectoryDelivery(GetEmailDeliveryMode()))
+            {
+                return null;
+            }
+
+            var configuredPickupDirectory = _configuration["EmailSettings:PickupDirectory"]?.Trim();
+            var effectivePickupDirectory = string.IsNullOrWhiteSpace(configuredPickupDirectory)
+                ? "mail-drop"
+                : configuredPickupDirectory;
+
+            return Path.GetFullPath(
+                Path.IsPathRooted(effectivePickupDirectory)
+                    ? effectivePickupDirectory
+                    : Path.Combine(Directory.GetCurrentDirectory(), effectivePickupDirectory));
+        }
+
+        private static bool IsPickupDirectoryDelivery(string? deliveryMode)
+        {
+            return string.Equals(deliveryMode, "PickupDirectory", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string GenerateTemporaryPassword(int length = 12)
+        {
+            if (length < 10)
+            {
+                throw new ArgumentOutOfRangeException(nameof(length), "Temporary passwords must be at least 10 characters long.");
+            }
+
+            var passwordChars = new List<char>(length)
+            {
+                UppercasePasswordChars[RandomNumberGenerator.GetInt32(UppercasePasswordChars.Length)],
+                LowercasePasswordChars[RandomNumberGenerator.GetInt32(LowercasePasswordChars.Length)],
+                DigitPasswordChars[RandomNumberGenerator.GetInt32(DigitPasswordChars.Length)],
+                SpecialPasswordChars[RandomNumberGenerator.GetInt32(SpecialPasswordChars.Length)]
+            };
+
+            while (passwordChars.Count < length)
+            {
+                passwordChars.Add(AllPasswordChars[RandomNumberGenerator.GetInt32(AllPasswordChars.Length)]);
+            }
+
+            for (var index = passwordChars.Count - 1; index > 0; index--)
+            {
+                var swapIndex = RandomNumberGenerator.GetInt32(index + 1);
+                (passwordChars[index], passwordChars[swapIndex]) = (passwordChars[swapIndex], passwordChars[index]);
+            }
+
+            return new string(passwordChars.ToArray());
+        }
+
+        private async Task RunSideEffectSafelyAsync(
+            string actorUserId,
+            string actionType,
+            string entityName,
+            string entityId,
+            string description,
+            Func<Task> operation)
+        {
+            try
+            {
+                await operation();
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    await _logService.LogActionAsync(
+                        actorUserId,
+                        actionType,
+                        entityName,
+                        entityId,
+                        $"{description} {ex.Message}");
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private Task RunUserSideEffectSafelyAsync(
+            string actorUserId,
+            string actionType,
+            string entityId,
+            string description,
+            Func<Task> operation)
+        {
+            return RunSideEffectSafelyAsync(
+                actorUserId,
+                actionType,
+                "User",
+                entityId,
+                description,
+                operation);
+        }
+
+        private async Task SafeLogUserSideEffectFailureAsync(
+            string actorUserId,
+            string actionType,
+            string entityId,
+            string description)
+        {
+            try
+            {
+                await _logService.LogActionAsync(
+                    actorUserId,
+                    actionType,
+                    "User",
+                    entityId,
+                    description);
+            }
+            catch
+            {
+            }
         }
     }
 }

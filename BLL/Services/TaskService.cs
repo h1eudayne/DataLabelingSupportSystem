@@ -1,4 +1,5 @@
 using BLL.Interfaces;
+using BLL.Helpers;
 using Core.DTOs.Requests;
 using Core.DTOs.Responses;
 using Core.Interfaces;
@@ -158,8 +159,15 @@ namespace BLL.Services
                 await _assignmentRepo.AddAsync(assignment);
             }
 
+            if (string.Equals(project.Status, ProjectStatusConstants.Draft, StringComparison.OrdinalIgnoreCase))
+            {
+                project.Status = ProjectStatusConstants.Active;
+                _projectRepo.Update(project);
+            }
+
             await _assignmentRepo.SaveChangesAsync();
             await _dataItemRepo.SaveChangesAsync();
+            await _projectRepo.SaveChangesAsync();
 
             await _logService.LogActionAsync(
                 managerId,
@@ -184,36 +192,84 @@ namespace BLL.Services
             foreach (var annotator in validAnnotators)
             {
                 await _statisticService.TrackNewAssignmentAsync(annotator.Id, request.ProjectId, totalItems);
-                await _notification.SendNotificationAsync(
-                    annotator.Id,
-                    $"Manager has assigned you {totalItems} tasks in project {project.Name}! " +
-                    $"(Each of your tasks will be reviewed by {totalRev} reviewers.)",
-                    "Success");
+                await RunAssignmentSideEffectSafelyAsync(
+                    managerId,
+                    "AssignTeamNotificationError",
+                    project.Id.ToString(),
+                    $"Assignment notification failed for annotator {annotator.Id} in project {project.Name}.",
+                    () => _notification.SendNotificationAsync(
+                        annotator.Id,
+                        $"Manager has assigned you {totalItems} tasks in project {project.Name}! " +
+                        $"(Each of your tasks will be reviewed by {totalRev} reviewers.)",
+                        "Success"));
 
-                await _workflowEmailService.SendAnnotatorAssignmentEmailAsync(
-                    project,
-                    manager,
-                    annotator,
-                    totalItems,
-                    totalRev);
+                await RunAssignmentSideEffectSafelyAsync(
+                    managerId,
+                    "AssignTeamEmailError",
+                    project.Id.ToString(),
+                    $"Assignment email failed for annotator {annotator.Id} in project {project.Name}.",
+                    () => _workflowEmailService.SendAnnotatorAssignmentEmailAsync(
+                        project,
+                        manager,
+                        annotator,
+                        totalItems,
+                        totalRev));
             }
 
             if (totalRev > 0)
             {
                 foreach (var reviewer in validReviewers)
                 {
-                    await _notification.SendNotificationAsync(
-                        reviewer.Id,
-                        $"You have been assigned to review ALL {baseAssignments} tasks " +
-                        $"(from {totalAnn} annotators, {totalItems} items each) in project {project.Name}!",
-                        "Info");
+                    await RunAssignmentSideEffectSafelyAsync(
+                        managerId,
+                        "AssignTeamNotificationError",
+                        project.Id.ToString(),
+                        $"Assignment notification failed for reviewer {reviewer.Id} in project {project.Name}.",
+                        () => _notification.SendNotificationAsync(
+                            reviewer.Id,
+                            $"You have been assigned to review ALL {baseAssignments} tasks " +
+                            $"(from {totalAnn} annotators, {totalItems} items each) in project {project.Name}!",
+                            "Info"));
 
-                    await _workflowEmailService.SendReviewerAssignmentEmailAsync(
-                        project,
-                        manager,
-                        reviewer,
-                        baseAssignments,
-                        totalAnn);
+                    await RunAssignmentSideEffectSafelyAsync(
+                        managerId,
+                        "AssignTeamEmailError",
+                        project.Id.ToString(),
+                        $"Assignment email failed for reviewer {reviewer.Id} in project {project.Name}.",
+                        () => _workflowEmailService.SendReviewerAssignmentEmailAsync(
+                            project,
+                            manager,
+                            reviewer,
+                            baseAssignments,
+                            totalAnn));
+                }
+            }
+        }
+
+        private async Task RunAssignmentSideEffectSafelyAsync(
+            string managerId,
+            string actionType,
+            string entityId,
+            string description,
+            Func<Task> operation)
+        {
+            try
+            {
+                await operation();
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    await _logService.LogActionAsync(
+                        managerId,
+                        actionType,
+                        "Project",
+                        entityId,
+                        $"{description} {ex.Message}");
+                }
+                catch
+                {
                 }
             }
         }
@@ -318,6 +374,22 @@ namespace BLL.Services
                 .First();
         }
 
+        private static int GetAssignedProjectSortPriority(bool hasRejectedImages, string status)
+        {
+            if (hasRejectedImages)
+            {
+                return 0;
+            }
+
+            return status switch
+            {
+                "InProgress" => 1,
+                "Assigned" => 2,
+                "Completed" => 3,
+                _ => 4
+            };
+        }
+
         private static Annotation? GetLatestAnnotation(IEnumerable<Assignment> assignments)
         {
             return assignments
@@ -326,12 +398,78 @@ namespace BLL.Services
                 .FirstOrDefault();
         }
 
-        private static ReviewLog? GetLatestReviewLog(IEnumerable<Assignment> assignments)
+        private static IEnumerable<ReviewLog> GetCurrentSubmissionReviewLogs(
+            IEnumerable<ReviewLog>? reviewLogs,
+            DateTime? submittedAt)
+        {
+            if (reviewLogs == null)
+            {
+                return Enumerable.Empty<ReviewLog>();
+            }
+
+            if (!submittedAt.HasValue)
+            {
+                return reviewLogs;
+            }
+
+            return reviewLogs.Where(log => log.CreatedAt >= submittedAt.Value);
+        }
+
+        private static List<ReviewerFeedbackResponse> BuildReviewerFeedbacks(IEnumerable<Assignment> assignments)
         {
             return assignments
-                .SelectMany(a => a.ReviewLogs ?? Enumerable.Empty<ReviewLog>())
-                .OrderByDescending(r => r.CreatedAt)
-                .FirstOrDefault();
+                .Select(assignment => new
+                {
+                    Assignment = assignment,
+                    LatestLog = GetCurrentSubmissionReviewLogs(assignment.ReviewLogs, assignment.SubmittedAt)
+                        .OrderByDescending(log => log.CreatedAt)
+                        .FirstOrDefault()
+                })
+                .Where(item => item.LatestLog != null)
+                .Select(item => new ReviewerFeedbackResponse
+                {
+                    ReviewLogId = item.LatestLog!.Id,
+                    ReviewerId = item.LatestLog.ReviewerId,
+                    ReviewerName = item.Assignment.Reviewer?.FullName
+                        ?? item.Assignment.Reviewer?.Email
+                        ?? item.LatestLog.ReviewerId,
+                    Decision = item.LatestLog.Decision,
+                    Verdict = item.LatestLog.Verdict,
+                    Comment = item.LatestLog.Comment,
+                    ErrorCategories = item.LatestLog.ErrorCategory,
+                    ReviewedAt = item.LatestLog.CreatedAt,
+                    ScorePenalty = item.LatestLog.ScorePenalty,
+                    IsApproved = item.LatestLog.IsApproved,
+                    IsAudited = item.LatestLog.IsAudited,
+                    AuditResult = item.LatestLog.AuditResult
+                })
+                .OrderByDescending(feedback => feedback.ReviewedAt)
+                .ToList();
+        }
+
+        private static void ClearManagerFeedback(Assignment assignment)
+        {
+            assignment.ManagerDecision = null;
+            assignment.ManagerComment = null;
+        }
+
+        private static string PrepareAnnotationDataForSubmission(string dataJson)
+        {
+            var parsedPayload = AnnotationPayloadHelper.Parse(dataJson);
+            bool hasRelabelMetadata = parsedPayload.RestrictedLabelIds.Count > 0 ||
+                                      parsedPayload.LockedAnnotations.Count > 0 ||
+                                      parsedPayload.LockedDefaultFlags.Count > 0;
+            bool hasFlagMarker = parsedPayload.DefaultFlags.Any(AnnotationPayloadHelper.IsFlagEnabledMarker);
+
+            if (!hasRelabelMetadata &&
+                !hasFlagMarker &&
+                dataJson.TrimStart().StartsWith("[", StringComparison.Ordinal))
+            {
+                return dataJson;
+            }
+
+            var sanitizedPayload = AnnotationPayloadHelper.PrepareForSubmission(parsedPayload);
+            return AnnotationPayloadHelper.Serialize(sanitizedPayload);
         }
 
         private static DateTime CalculateEffectiveDeadline(Assignment assignment)
@@ -373,6 +511,43 @@ namespace BLL.Services
                 .Where(a => a.DataItemId == assignment.DataItemId)
                 .OrderBy(a => a.Id)
                 .ToList();
+        }
+
+        private async Task NotifyBatchSubmissionAsync(
+            string actorUserId,
+            IDictionary<int, (int Count, HashSet<string> ReviewerIds)> submittedProjects)
+        {
+            foreach (var (projectId, summary) in submittedProjects)
+            {
+                var project = await _projectRepo.GetByIdAsync(projectId);
+                var projectName = project?.Name ?? $"Project #{projectId}";
+
+                if (!string.IsNullOrWhiteSpace(project?.ManagerId))
+                {
+                    await RunAssignmentSideEffectSafelyAsync(
+                        actorUserId,
+                        "SubmitBatchNotificationError",
+                        projectId.ToString(),
+                        $"Batch submission notification failed for manager {project.ManagerId} in project {projectName}.",
+                        () => _notification.SendNotificationAsync(
+                            project.ManagerId!,
+                            $"Annotator batch submitted {summary.Count} tasks in project \"{projectName}\" and they are awaiting review.",
+                            "Info"));
+                }
+
+                foreach (var reviewerId in summary.ReviewerIds)
+                {
+                    await RunAssignmentSideEffectSafelyAsync(
+                        actorUserId,
+                        "SubmitBatchNotificationError",
+                        projectId.ToString(),
+                        $"Batch submission notification failed for reviewer {reviewerId} in project {projectName}.",
+                        () => _notification.SendNotificationAsync(
+                            reviewerId,
+                            $"Annotator batch submitted {summary.Count} tasks in project \"{projectName}\" and they are waiting for your review.",
+                            "Info"));
+                }
+            }
         }
 
         public async Task<List<AssignmentResponse>> GetTasksByBucketAsync(int projectId, int bucketId, string userId)
@@ -506,35 +681,55 @@ namespace BLL.Services
                 Role = UserRoles.Manager
             };
 
-            await _notification.SendNotificationAsync(
-                request.AnnotatorId,
-                $"Manager has assigned you {dataItems.Count} new tasks in the project!",
-                "Success");
+            await RunAssignmentSideEffectSafelyAsync(
+                managerId,
+                "AssignTaskNotificationError",
+                project.Id.ToString(),
+                $"Assignment notification failed for annotator {annotator.Id} in project {project.Name}.",
+                () => _notification.SendNotificationAsync(
+                    request.AnnotatorId,
+                    $"Manager has assigned you {dataItems.Count} new tasks in the project!",
+                    "Success"));
 
-            await _workflowEmailService.SendAnnotatorAssignmentEmailAsync(
-                project,
-                manager,
-                annotator,
-                dataItems.Count,
-                string.IsNullOrEmpty(request.ReviewerId) ? 0 : 1);
+            await RunAssignmentSideEffectSafelyAsync(
+                managerId,
+                "AssignTaskEmailError",
+                project.Id.ToString(),
+                $"Assignment email failed for annotator {annotator.Id} in project {project.Name}.",
+                () => _workflowEmailService.SendAnnotatorAssignmentEmailAsync(
+                    project,
+                    manager,
+                    annotator,
+                    dataItems.Count,
+                    string.IsNullOrEmpty(request.ReviewerId) ? 0 : 1));
 
             if (!string.IsNullOrEmpty(request.ReviewerId))
             {
                 var reviewer = await _userRepo.GetByIdAsync(request.ReviewerId);
 
-                await _notification.SendNotificationAsync(
-                    request.ReviewerId,
-                    $"You have been assigned as a Reviewer for {dataItems.Count} new tasks!",
-                    "Info");
+                await RunAssignmentSideEffectSafelyAsync(
+                    managerId,
+                    "AssignTaskNotificationError",
+                    project.Id.ToString(),
+                    $"Assignment notification failed for reviewer {request.ReviewerId} in project {project.Name}.",
+                    () => _notification.SendNotificationAsync(
+                        request.ReviewerId,
+                        $"You have been assigned as a Reviewer for {dataItems.Count} new tasks!",
+                        "Info"));
 
                 if (reviewer != null)
                 {
-                    await _workflowEmailService.SendReviewerAssignmentEmailAsync(
-                        project,
-                        manager,
-                        reviewer,
-                        dataItems.Count,
-                        1);
+                    await RunAssignmentSideEffectSafelyAsync(
+                        managerId,
+                        "AssignTaskEmailError",
+                        project.Id.ToString(),
+                        $"Assignment email failed for reviewer {reviewer.Id} in project {project.Name}.",
+                        () => _workflowEmailService.SendReviewerAssignmentEmailAsync(
+                            project,
+                            manager,
+                            reviewer,
+                            dataItems.Count,
+                            1));
                 }
             }
         }
@@ -554,6 +749,8 @@ namespace BLL.Services
             var effectiveDeadline = taskDeadline < (assignment.Project?.Deadline ?? DateTime.UtcNow)
                 ? taskDeadline
                 : (assignment.Project?.Deadline ?? DateTime.UtcNow);
+            var reviewerFeedbacks = BuildReviewerFeedbacks(new[] { assignment });
+            var latestReviewerFeedback = reviewerFeedbacks.FirstOrDefault();
 
             return new AssignmentResponse
             {
@@ -568,11 +765,16 @@ namespace BLL.Services
                 AssignedDate = assignment.AssignedDate,
                 Deadline = effectiveDeadline,
                 RejectionReason = assignment.Status == TaskStatusConstants.Rejected
-                    ? (assignment.ReviewLogs?.OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.Comment ?? "")
+                    ? (latestReviewerFeedback?.Comment ?? "")
                     : "",
                 ErrorCategory = assignment.Status == TaskStatusConstants.Rejected
-                    ? (assignment.ReviewLogs?.OrderByDescending(r => r.CreatedAt).FirstOrDefault()?.ErrorCategory ?? "")
-                    : ""
+                    ? (latestReviewerFeedback?.ErrorCategories ?? "")
+                    : "",
+                RejectCount = assignment.RejectCount,
+                ManagerDecision = assignment.ManagerDecision,
+                ManagerComment = assignment.ManagerComment,
+                LatestReviewAt = latestReviewerFeedback?.ReviewedAt,
+                ReviewerFeedbacks = reviewerFeedbacks
             };
         }
 
@@ -584,37 +786,67 @@ namespace BLL.Services
         public async Task<List<AssignedProjectResponse>> GetAssignedProjectsAsync(string annotatorId)
         {
             var allAssignments = await _assignmentRepo.GetAssignmentsByAnnotatorAsync(annotatorId);
+            var projectIds = allAssignments
+                .Select(assignment => assignment.ProjectId)
+                .Distinct()
+                .ToList();
+            var projectsById = ((await _projectRepo.GetProjectsByIdsAsync(projectIds)) ?? new List<Project>())
+                .ToDictionary(project => project.Id);
 
             return allAssignments
                 .GroupBy(a => a.ProjectId)
-                .Select(g => new AssignedProjectResponse
+                .Select(g =>
                 {
-                    ProjectId = g.Key,
-                    ProjectName = g.First().Project?.Name ?? "Unknown Project",
-                    Description = g.First().Project?.Description ?? "",
-                    ThumbnailUrl = g.First().DataItem?.StorageUrl ?? "",
-                    AssignedDate = g.Min(a => a.AssignedDate),
-                    Deadline = g.First().Project?.Deadline ?? DateTime.UtcNow,
-                    TotalImages = g.Select(a => a.DataItemId).Distinct().Count(),
-                    CompletedImages = g.GroupBy(a => a.DataItemId)
+                    projectsById.TryGetValue(g.Key, out var project);
+                    var imageGroups = g.GroupBy(a => a.DataItemId).ToList();
+                    var completedImages = imageGroups
                         .Count(imageGroup => string.Equals(
                             GetAggregatedAnnotatorStatus(imageGroup),
                             TaskStatusConstants.Approved,
-                            StringComparison.OrdinalIgnoreCase)),
-                    Status = g.GroupBy(a => a.DataItemId)
-                        .All(imageGroup => string.Equals(
-                            GetAggregatedAnnotatorStatus(imageGroup),
-                            TaskStatusConstants.Approved,
-                            StringComparison.OrdinalIgnoreCase))
-                        ? "Completed"
-                        : g.GroupBy(a => a.DataItemId)
-                            .Any(imageGroup => !string.Equals(
-                                GetAggregatedAnnotatorStatus(imageGroup),
-                                TaskStatusConstants.Assigned,
-                                StringComparison.OrdinalIgnoreCase))
-                            ? "InProgress"
-                            : "Assigned"
+                            StringComparison.OrdinalIgnoreCase));
+                    var hasRejectedImages = imageGroups.Any(imageGroup => string.Equals(
+                        GetAggregatedAnnotatorStatus(imageGroup),
+                        TaskStatusConstants.Rejected,
+                        StringComparison.OrdinalIgnoreCase));
+                    var allUserImagesApproved = imageGroups.Count > 0 && imageGroups.Count == completedImages;
+                    var approvedProjectItems = ProjectWorkflowStatusHelper.CountApprovedDataItems(project);
+                    var awaitingManagerConfirmation = allUserImagesApproved &&
+                        ProjectWorkflowStatusHelper.IsAwaitingManagerConfirmation(project, project?.DataItems?.Count ?? 0, approvedProjectItems);
+                    var status = string.Equals(project?.Status, ProjectStatusConstants.Completed, StringComparison.OrdinalIgnoreCase)
+                        ? ProjectStatusConstants.Completed
+                        : awaitingManagerConfirmation
+                            ? ProjectStatusConstants.AwaitingManagerConfirmation
+                            : imageGroups
+                                .Any(imageGroup => !string.Equals(
+                                    GetAggregatedAnnotatorStatus(imageGroup),
+                                    TaskStatusConstants.Assigned,
+                                    StringComparison.OrdinalIgnoreCase))
+                                ? ProjectStatusConstants.InProgressDisplay
+                                : "Assigned";
+
+                    return new
+                    {
+                        Response = new AssignedProjectResponse
+                        {
+                            ProjectId = g.Key,
+                            ProjectName = g.First().Project?.Name ?? "Unknown Project",
+                            Description = g.First().Project?.Description ?? "",
+                            ThumbnailUrl = g.First().DataItem?.StorageUrl ?? "",
+                            AssignedDate = g.Min(a => a.AssignedDate),
+                            Deadline = project?.Deadline ?? g.First().Project?.Deadline ?? DateTime.UtcNow,
+                            TotalImages = g.Select(a => a.DataItemId).Distinct().Count(),
+                            CompletedImages = completedImages,
+                            Status = status,
+                            IsAwaitingManagerConfirmation = awaitingManagerConfirmation
+                        },
+                        SortPriority = GetAssignedProjectSortPriority(hasRejectedImages, status),
+                        LatestAssignedDate = g.Max(a => a.AssignedDate)
+                    };
                 })
+                .OrderBy(project => project.SortPriority)
+                .ThenBy(project => project.Response.Deadline ?? DateTime.MaxValue)
+                .ThenByDescending(project => project.LatestAssignedDate)
+                .Select(project => project.Response)
                 .ToList();
         }
 
@@ -630,7 +862,8 @@ namespace BLL.Services
                     var representative = SelectRepresentativeAnnotatorAssignment(groupedAssignments);
                     var aggregatedStatus = GetAggregatedAnnotatorStatus(groupedAssignments);
                     var latestAnnotation = GetLatestAnnotation(groupedAssignments);
-                    var latestReviewLog = GetLatestReviewLog(groupedAssignments);
+                    var reviewerFeedbacks = BuildReviewerFeedbacks(groupedAssignments);
+                    var latestReviewerFeedback = reviewerFeedbacks.FirstOrDefault();
 
                     return new AssignmentResponse
                     {
@@ -642,11 +875,18 @@ namespace BLL.Services
                         AssignedDate = groupedAssignments.Min(a => a.AssignedDate),
                         Deadline = CalculateEffectiveDeadline(representative),
                         RejectionReason = string.Equals(aggregatedStatus, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase)
-                            ? (latestReviewLog?.Comment ?? "")
+                            ? (latestReviewerFeedback?.Comment ?? "")
                             : "",
                         ErrorCategory = string.Equals(aggregatedStatus, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase)
-                            ? (latestReviewLog?.ErrorCategory ?? "")
-                            : ""
+                            ? (latestReviewerFeedback?.ErrorCategories ?? "")
+                            : "",
+                        RejectCount = groupedAssignments.Select(a => a.RejectCount).DefaultIfEmpty(0).Max(),
+                        ManagerDecision = representative.ManagerDecision,
+                        ManagerComment = representative.ManagerComment,
+                        LatestReviewAt = latestReviewerFeedback?.ReviewedAt,
+                        ReviewerFeedbacks = string.Equals(aggregatedStatus, TaskStatusConstants.Rejected, StringComparison.OrdinalIgnoreCase)
+                            ? reviewerFeedbacks
+                            : new List<ReviewerFeedbackResponse>()
                     };
                 })
                 .OrderBy(a => a.DataItemId)
@@ -749,19 +989,21 @@ namespace BLL.Services
 
             var assignmentGroup = await GetAssignmentGroupAsync(assignment);
             var syncTargets = assignmentGroup.ToList();
+            var sanitizedDataJson = PrepareAnnotationDataForSubmission(request.DataJSON);
 
             foreach (var target in syncTargets)
             {
                 await _annotationRepo.AddAsync(new Annotation
                 {
                     AssignmentId = target.Id,
-                    DataJSON = request.DataJSON,
+                    DataJSON = sanitizedDataJson,
                     CreatedAt = DateTime.UtcNow,
                     ClassId = request.ClassId
                 });
 
                 target.Status = TaskStatusConstants.Submitted;
                 target.SubmittedAt = DateTime.UtcNow;
+                ClearManagerFeedback(target);
                 _assignmentRepo.Update(target);
             }
 
@@ -804,106 +1046,120 @@ namespace BLL.Services
             var response = new SubmitMultipleTasksResponse();
             int? lastProjectId = null;
             var processedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var submittedProjects = new Dictionary<int, (int Count, HashSet<string> ReviewerIds)>();
 
-            using var transaction = await _assignmentRepo.BeginTransactionAsync();
-            try
+            foreach (var id in request.AssignmentIds)
             {
-                foreach (var id in request.AssignmentIds)
+                var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(id);
+
+                if (assignment == null)
                 {
-                    var assignment = await _assignmentRepo.GetAssignmentWithDetailsAsync(id);
+                    response.FailureCount++;
+                    response.Errors.Add($"Task ID {id}: Not found.");
+                    continue;
+                }
 
-                    if (assignment == null)
+                if (assignment.AnnotatorId != userId)
+                {
+                    response.FailureCount++;
+                    response.Errors.Add($"Task ID {id}: Unauthorized access.");
+                    continue;
+                }
+
+                var assignmentGroup = await GetAssignmentGroupAsync(assignment);
+                var groupKey = BuildAssignmentGroupKey(assignment);
+
+                if (!processedGroups.Add(groupKey))
+                {
+                    continue;
+                }
+
+                if (assignmentGroup.All(a =>
+                    string.Equals(a.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase)))
+                {
+                    response.FailureCount++;
+                    response.Errors.Add($"Task ID {id}: Task has already been submitted or approved.");
+                    continue;
+                }
+
+                var latestAnnotation = GetLatestAnnotation(assignmentGroup);
+
+                if (latestAnnotation == null || string.IsNullOrEmpty(latestAnnotation.DataJSON) || latestAnnotation.DataJSON == "[]")
+                {
+                    response.FailureCount++;
+                    response.Errors.Add($"Task ID {id}: Missing annotation data. Please save draft before submitting.");
+                    continue;
+                }
+
+                var sanitizedDataJson = PrepareAnnotationDataForSubmission(latestAnnotation.DataJSON);
+
+                var syncTargets = assignmentGroup.ToList();
+
+                foreach (var target in syncTargets)
+                {
+                    if (NeedsAnnotationClone(target, sanitizedDataJson, latestAnnotation.ClassId))
                     {
-                        response.FailureCount++;
-                        response.Errors.Add($"Task ID {id}: Not found.");
-                        continue;
-                    }
-
-                    if (assignment.AnnotatorId != userId)
-                    {
-                        response.FailureCount++;
-                        response.Errors.Add($"Task ID {id}: Unauthorized access.");
-                        continue;
-                    }
-
-                    var assignmentGroup = await GetAssignmentGroupAsync(assignment);
-                    var groupKey = BuildAssignmentGroupKey(assignment);
-
-                    if (!processedGroups.Add(groupKey))
-                    {
-                        continue;
-                    }
-
-                    if (assignmentGroup.All(a =>
-                        string.Equals(a.Status, TaskStatusConstants.Submitted, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(a.Status, TaskStatusConstants.Approved, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        response.FailureCount++;
-                        response.Errors.Add($"Task ID {id}: Task has already been submitted or approved.");
-                        continue;
-                    }
-
-                    var latestAnnotation = GetLatestAnnotation(assignmentGroup);
-
-                    if (latestAnnotation == null || string.IsNullOrEmpty(latestAnnotation.DataJSON) || latestAnnotation.DataJSON == "[]")
-                    {
-                        response.FailureCount++;
-                        response.Errors.Add($"Task ID {id}: Missing annotation data. Please save draft before submitting.");
-                        continue;
-                    }
-
-                    var syncTargets = assignmentGroup.ToList();
-
-                    foreach (var target in syncTargets)
-                    {
-                        if (NeedsAnnotationClone(target, latestAnnotation.DataJSON, latestAnnotation.ClassId))
+                        await _annotationRepo.AddAsync(new Annotation
                         {
-                            await _annotationRepo.AddAsync(new Annotation
-                            {
-                                AssignmentId = target.Id,
-                                DataJSON = latestAnnotation.DataJSON,
-                                CreatedAt = DateTime.UtcNow,
-                                ClassId = latestAnnotation.ClassId
-                            });
-                        }
-
-                        target.Status = TaskStatusConstants.Submitted;
-                        target.SubmittedAt = DateTime.UtcNow;
-                        _assignmentRepo.Update(target);
+                            AssignmentId = target.Id,
+                            DataJSON = sanitizedDataJson,
+                            CreatedAt = DateTime.UtcNow,
+                            ClassId = latestAnnotation.ClassId
+                        });
                     }
 
-                    response.SuccessCount++;
-                    lastProjectId = assignment.ProjectId;
+                    target.Status = TaskStatusConstants.Submitted;
+                    target.SubmittedAt = DateTime.UtcNow;
+                    ClearManagerFeedback(target);
+                    _assignmentRepo.Update(target);
                 }
 
-                if (response.SuccessCount > 0)
+                response.SuccessCount++;
+                lastProjectId = assignment.ProjectId;
+
+                if (!submittedProjects.TryGetValue(assignment.ProjectId, out var summary))
                 {
-                    if (lastProjectId.HasValue)
-                    {
-                        await _logService.LogActionAsync(
-                            userId,
-                            "SubmitBatchTasks",
-                            "Project",
-                            lastProjectId.Value.ToString(),
-                            $"Annotator batch submitted {response.SuccessCount} tasks for review."
-                        );
-                    }
-
-                    await _assignmentRepo.SaveChangesAsync();
-                    await transaction.CommitAsync();
+                    summary = (0, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
                 }
-                else
+
+                summary.Count++;
+                foreach (var reviewerId in syncTargets
+                    .Select(a => a.ReviewerId)
+                    .Where(id => !string.IsNullOrWhiteSpace(id)))
                 {
-                    await transaction.RollbackAsync();
+                    summary.ReviewerIds.Add(reviewerId!);
                 }
 
+                submittedProjects[assignment.ProjectId] = summary;
+            }
+
+            if (response.SuccessCount == 0)
+            {
                 return response;
             }
-            catch (Exception)
+
+            await _assignmentRepo.SaveChangesAsync();
+
+            if (lastProjectId.HasValue)
             {
-                await transaction.RollbackAsync();
-                throw;
+                try
+                {
+                    await _logService.LogActionAsync(
+                        userId,
+                        "SubmitBatchTasks",
+                        "Project",
+                        lastProjectId.Value.ToString(),
+                        $"Annotator batch submitted {response.SuccessCount} tasks for review."
+                    );
+                }
+                catch
+                {
+                }
             }
+
+            await NotifyBatchSubmissionAsync(userId, submittedProjects);
+            return response;
         }
     }
 }

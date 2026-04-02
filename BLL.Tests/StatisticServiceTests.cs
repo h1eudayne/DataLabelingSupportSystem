@@ -1,5 +1,6 @@
 using BLL.Interfaces;
 using BLL.Services;
+using Core.Constants;
 using Core.Entities;
 using Core.DTOs.Responses;
 using Core.Interfaces;
@@ -263,6 +264,62 @@ namespace BLL.Tests
             Assert.Equal(4, annotatorStat.TotalRejected);
         }
 
+        [Fact]
+        public async Task GetReviewerStatsAsync_UsesLatestSubmissionCycleForManagerAccuracy()
+        {
+            const string reviewerId = "reviewer-1";
+            var latestSubmittedAt = new DateTime(2026, 4, 1, 9, 0, 0, DateTimeKind.Utc);
+            var assignment = new Assignment
+            {
+                Id = 55,
+                ProjectId = 9,
+                ReviewerId = reviewerId,
+                Status = TaskStatusConstants.Approved,
+                SubmittedAt = latestSubmittedAt
+            };
+
+            _statsRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<UserProjectStat>
+            {
+                new UserProjectStat
+                {
+                    UserId = reviewerId,
+                    ProjectId = 9,
+                    ReviewerQualityScore = 80
+                }
+            });
+            _reviewLogRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<ReviewLog>
+            {
+                new ReviewLog
+                {
+                    Id = 1,
+                    AssignmentId = 55,
+                    ReviewerId = reviewerId,
+                    Verdict = "Rejected",
+                    CreatedAt = latestSubmittedAt.AddHours(-1)
+                },
+                new ReviewLog
+                {
+                    Id = 2,
+                    AssignmentId = 55,
+                    ReviewerId = reviewerId,
+                    Verdict = "Approved",
+                    CreatedAt = latestSubmittedAt.AddMinutes(2)
+                }
+            });
+            _assignmentRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Assignment> { assignment });
+            _disputeRepoMock.Setup(r => r.GetDisputesByReviewerAsync(reviewerId)).ReturnsAsync(new List<Dispute>());
+            _projectRepoMock.Setup(r => r.GetByIdAsync(9)).ReturnsAsync(new Project { Id = 9, Name = "Latest Submission Project" });
+
+            var result = await _statisticService.GetReviewerStatsAsync(reviewerId);
+
+            Assert.Equal(2, result.TotalReviews);
+            Assert.Equal(1, result.TotalManagerDecisions);
+            Assert.Equal(100, result.KQSScore);
+            var summary = Assert.Single(result.ProjectSummaries);
+            Assert.Equal(1, summary.TotalManagerDecisions);
+            Assert.Equal(100, summary.KQSScore);
+        }
+
         #endregion
 
         #region TrackFirstPassCorrectAsync Tests
@@ -348,7 +405,7 @@ namespace BLL.Tests
             _statsRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<UserProjectStat> { reviewerStat });
             _reviewLogRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(reviewLogs);
             _disputeRepoMock.Setup(r => r.GetDisputesByReviewerAsync("reviewer-1", 0)).ReturnsAsync(new List<Dispute>());
-            _assignmentRepoMock.Setup(r => r.GetByIdAsync(It.IsAny<int>())).ReturnsAsync((int id) => assignments.FirstOrDefault(a => a.Id == id));
+            _assignmentRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(assignments);
             _projectRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(project);
 
             var result = await _statisticService.GetReviewerStatsAsync("reviewer-1");
@@ -358,6 +415,8 @@ namespace BLL.Tests
             Assert.Equal(2, result.TotalApproved);
             Assert.Equal(1, result.TotalRejected);
             Assert.Equal(66.67, result.ApprovalRate, 0.01);
+            Assert.Equal(80, result.KQSScore);
+            Assert.Equal(80, result.AuditAccuracy);
         }
 
         [Fact]
@@ -366,12 +425,14 @@ namespace BLL.Tests
             _statsRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<UserProjectStat>());
             _reviewLogRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<ReviewLog>());
             _disputeRepoMock.Setup(r => r.GetDisputesByReviewerAsync("reviewer-1", 0)).ReturnsAsync(new List<Dispute>());
+            _assignmentRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Assignment>());
 
             var result = await _statisticService.GetReviewerStatsAsync("reviewer-1");
 
             Assert.Equal(0, result.TotalReviews);
             Assert.Equal(0, result.TotalApproved);
-            Assert.Equal(100, result.KQSScore);
+            Assert.Null(result.KQSScore);
+            Assert.Null(result.AuditAccuracy);
         }
 
         [Fact]
@@ -410,7 +471,10 @@ namespace BLL.Tests
             _reviewLogRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(reviewLogs);
             _disputeRepoMock.Setup(r => r.GetDisputesByReviewerAsync("reviewer-1", 0)).ReturnsAsync(disputes);
             _projectRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(project);
-            _assignmentRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(new Assignment { Id = 1, ProjectId = 1 });
+            _assignmentRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Assignment>
+            {
+                new Assignment { Id = 1, ProjectId = 1, ReviewerId = "reviewer-1" }
+            });
 
             var result = await _statisticService.GetReviewerStatsAsync("reviewer-1");
 
