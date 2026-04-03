@@ -176,7 +176,7 @@ namespace API.Controllers
         [Authorize(Roles = "Admin,Manager")]
         [ProducesResponseType(typeof(PagedResponse<UserResponse>), 200)]
         [ProducesResponseType(typeof(ErrorResponse), 401)]
-        public async Task<IActionResult> GetAllUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        public async Task<IActionResult> GetAllUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 30)
         {
             var result = await _userService.GetAllUsersAsync(page, pageSize);
             return Ok(result);

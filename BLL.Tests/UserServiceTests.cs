@@ -244,6 +244,7 @@ namespace BLL.Tests
             var result = await _userService.AdminChangeUserPasswordAsync("admin-1", user.Id);
 
             Assert.True(result.EmailDelivered);
+            Assert.Contains("queued for delivery", result.Message);
             Assert.NotNull(temporaryPassword);
             Assert.InRange(temporaryPassword!.Length, 10, 12);
             Assert.True(BCrypt.Net.BCrypt.Verify(temporaryPassword, user.PasswordHash));
@@ -251,10 +252,10 @@ namespace BLL.Tests
         }
 
         [Fact]
-        public async Task CreateManagedUserAsync_GeneratesTemporaryPasswordAndEmailsUser()
+        public async Task CreateManagedUserAsync_UsesFixedDefaultPasswordAndEmailsUser()
         {
             User? createdUser = null;
-            string? temporaryPassword = null;
+            string? initialPassword = null;
 
             _userRepoMock.Setup(r => r.IsEmailExistsAsync(It.IsAny<string>())).ReturnsAsync(false);
             _userRepoMock.Setup(r => r.HasAdminRoleAsync()).ReturnsAsync(false);
@@ -269,16 +270,16 @@ namespace BLL.Tests
             _userRepoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
             _workflowEmailServiceMock
                 .Setup(w => w.SendWelcomeEmailAsync(It.IsAny<User>(), It.IsAny<User?>(), It.IsAny<string?>()))
-                .Callback<User, User?, string?>((_, _, password) => temporaryPassword = password)
+                .Callback<User, User?, string?>((_, _, password) => initialPassword = password)
                 .Returns(Task.CompletedTask);
 
             var result = await _userService.CreateManagedUserAsync("admin-1", "Jane Doe", "jane@test.com", UserRoles.Reviewer);
 
             Assert.True(result.EmailDelivered);
+            Assert.Contains("queued for delivery", result.Message);
             Assert.NotNull(createdUser);
-            Assert.NotNull(temporaryPassword);
-            Assert.InRange(temporaryPassword!.Length, 10, 12);
-            Assert.True(BCrypt.Net.BCrypt.Verify(temporaryPassword, createdUser!.PasswordHash));
+            Assert.Equal("Password@123", initialPassword);
+            Assert.True(BCrypt.Net.BCrypt.Verify("Password@123", createdUser!.PasswordHash));
             _workflowEmailServiceMock.Verify(
                 w => w.SendWelcomeEmailAsync(
                     It.Is<User>(user => user.Email == "jane@test.com"),
@@ -438,14 +439,15 @@ namespace BLL.Tests
             Assert.True(result.EmailDelivered);
             Assert.Equal("PickupDirectory", result.EmailDeliveryMode);
             Assert.Equal(expectedPickupPath, result.EmailDeliveryTarget);
+            Assert.Contains("queued for the local mail-drop folder", result.Message);
             Assert.Contains(expectedPickupPath, result.Message);
         }
 
         [Fact]
-        public async Task ImportUsersFromExcelAsync_GeneratesUniqueTemporaryPasswordsPerUser()
+        public async Task ImportUsersFromExcelAsync_UsesFixedDefaultPasswordForEveryImportedUser()
         {
             var createdUsers = new List<User>();
-            var temporaryPasswords = new List<string>();
+            var initialPasswords = new List<string>();
 
             _userRepoMock.Setup(r => r.IsEmailExistsAsync(It.IsAny<string>())).ReturnsAsync(false);
             _userRepoMock
@@ -463,7 +465,7 @@ namespace BLL.Tests
                 {
                     if (!string.IsNullOrWhiteSpace(password))
                     {
-                        temporaryPasswords.Add(password);
+                        initialPasswords.Add(password);
                     }
                 })
                 .Returns(Task.CompletedTask);
@@ -489,11 +491,37 @@ namespace BLL.Tests
 
             Assert.Equal(2, result.SuccessCount);
             Assert.Equal(2, createdUsers.Count);
-            Assert.Equal(2, temporaryPasswords.Count);
-            Assert.Equal(2, temporaryPasswords.Distinct().Count());
-            Assert.All(temporaryPasswords, password => Assert.InRange(password.Length, 10, 12));
-            Assert.All(createdUsers.Zip(temporaryPasswords), pair =>
-                Assert.True(BCrypt.Net.BCrypt.Verify(pair.Second, pair.First.PasswordHash)));
+            Assert.Equal(2, initialPasswords.Count);
+            Assert.All(initialPasswords, password => Assert.Equal("Password@123", password));
+            Assert.All(createdUsers, user =>
+                Assert.True(BCrypt.Net.BCrypt.Verify("Password@123", user.PasswordHash)));
+        }
+
+        [Fact]
+        public async Task ImportUsersFromExcelAsync_WhenRowsExceedConfiguredLimit_ThrowsException()
+        {
+            _configMock.Setup(c => c["UserImport:MaxRows"]).Returns("1");
+
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.AddWorksheet("Users");
+            worksheet.Cell(1, 1).Value = "Email";
+            worksheet.Cell(1, 2).Value = "FullName";
+            worksheet.Cell(1, 3).Value = "Role";
+            worksheet.Cell(2, 1).Value = "annotator1@test.com";
+            worksheet.Cell(2, 2).Value = "Annotator 1";
+            worksheet.Cell(2, 3).Value = UserRoles.Annotator;
+            worksheet.Cell(3, 1).Value = "reviewer1@test.com";
+            worksheet.Cell(3, 2).Value = "Reviewer 1";
+            worksheet.Cell(3, 3).Value = UserRoles.Reviewer;
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            stream.Position = 0;
+
+            var ex = await Assert.ThrowsAsync<Exception>(() =>
+                _userService.ImportUsersFromExcelAsync(stream, "admin-1"));
+
+            Assert.Contains("configured limit of 1 rows", ex.Message);
         }
 
         #endregion
@@ -1445,6 +1473,51 @@ namespace BLL.Tests
             Assert.Equal(9, unfinishedProject.Id);
             Assert.Equal("Active Project", unfinishedProject.Name);
             Assert.Equal(ProjectStatusConstants.Active, unfinishedProject.Status);
+        }
+
+        [Fact]
+        public async Task GetAllUsersAsync_ExcludesAdminsAndOrdersWorkersByLastActivity()
+        {
+            var now = DateTime.UtcNow;
+            var users = new List<User>
+            {
+                new User
+                {
+                    Id = "admin-1",
+                    FullName = "Admin User",
+                    Email = "admin@test.com",
+                    Role = UserRoles.Admin,
+                    LastActivityAt = now.AddMinutes(5)
+                },
+                new User
+                {
+                    Id = "worker-old",
+                    FullName = "Older Worker",
+                    Email = "older@test.com",
+                    Role = UserRoles.Annotator,
+                    LastActivityAt = now.AddMinutes(-10)
+                },
+                new User
+                {
+                    Id = "worker-new",
+                    FullName = "Newest Worker",
+                    Email = "newer@test.com",
+                    Role = UserRoles.Reviewer,
+                    LastActivityAt = now
+                }
+            };
+
+            _userRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(users);
+            _projectRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Project>());
+            _assignmentRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Assignment>());
+
+            var result = await _userService.GetAllUsersAsync(1, 30);
+
+            Assert.Equal(2, result.TotalCount);
+            Assert.Equal(2, result.Items.Count);
+            Assert.DoesNotContain(result.Items, item => item.Role == UserRoles.Admin);
+            Assert.Equal("worker-new", result.Items[0].Id);
+            Assert.Equal("worker-old", result.Items[1].Id);
         }
 
         #endregion

@@ -20,6 +20,7 @@ namespace BLL.Services
 {
     public class UserService : IUserService
     {
+        private const string DefaultManagedUserPassword = "Password@123";
         private static readonly char[] UppercasePasswordChars = "ABCDEFGHJKLMNPQRSTUVWXYZ".ToCharArray();
         private static readonly char[] LowercasePasswordChars = "abcdefghijkmnopqrstuvwxyz".ToCharArray();
         private static readonly char[] DigitPasswordChars = "23456789".ToCharArray();
@@ -80,11 +81,11 @@ namespace BLL.Services
 
         public async Task<EmailDispatchStatusResponse> CreateManagedUserAsync(string adminId, string fullName, string email, string role, string? managerId = null)
         {
-            var temporaryPassword = GenerateTemporaryPassword();
+            var initialPassword = DefaultManagedUserPassword;
             var (user, manager) = await CreateUserRecordAsync(
                 fullName,
                 email,
-                temporaryPassword,
+                initialPassword,
                 role,
                 managerId,
                 adminId,
@@ -92,15 +93,15 @@ namespace BLL.Services
 
             try
             {
-                await _workflowEmailService.SendWelcomeEmailAsync(user, manager, temporaryPassword);
+                await _workflowEmailService.SendWelcomeEmailAsync(user, manager, initialPassword);
 
                 var emailDeliveryMode = GetEmailDeliveryMode();
                 var emailDeliveryTarget = GetEmailDeliveryTarget();
                 return new EmailDispatchStatusResponse
                 {
                     Message = IsPickupDirectoryDelivery(emailDeliveryMode)
-                        ? $"User created successfully. In this Development environment, the welcome email containing the temporary password was written to the local mail-drop folder ({emailDeliveryTarget}) instead of being sent to the user's real inbox."
-                        : "User created successfully and a temporary password was delivered by email.",
+                        ? $"User created successfully. In this Development environment, the welcome email containing the default password was queued for the local mail-drop folder ({emailDeliveryTarget}) instead of being sent to the user's real inbox."
+                        : "User created successfully and the default password email was queued for delivery.",
                     EmailDelivered = true,
                     NotificationDelivered = true,
                     EmailDeliveryMode = emailDeliveryMode,
@@ -113,11 +114,11 @@ namespace BLL.Services
                     adminId,
                     "WelcomeEmailError",
                     user.Id,
-                    $"User {user.Email} was created, but the temporary password email could not be delivered. {ex.Message}");
+                    $"User {user.Email} was created, but the default password email could not be delivered. {ex.Message}");
 
                 return new EmailDispatchStatusResponse
                 {
-                    Message = "User was created, but the temporary password email could not be delivered. Please verify SMTP settings and use Admin reset password to generate a new temporary password.",
+                    Message = "User was created, but the default password email could not be delivered. Please verify SMTP settings and use Admin reset password if you need to issue a new random password.",
                     EmailDelivered = false,
                     NotificationDelivered = true,
                     EmailDeliveryMode = GetEmailDeliveryMode(),
@@ -813,6 +814,9 @@ namespace BLL.Services
             var allUsers = (await _userRepository.GetAllAsync()).ToList();
             var allProjects = (await _projectRepo.GetAllAsync()).ToList();
             var allAssignments = (await _assignmentRepo.GetAllAsync()).ToList();
+            var workerUsers = allUsers
+                .Where(user => !string.Equals(user.Role, UserRoles.Admin, StringComparison.OrdinalIgnoreCase))
+                .ToList();
             var userLookup = allUsers
                 .Where(user => !string.IsNullOrWhiteSpace(user.Id))
                 .ToDictionary(user => user.Id, StringComparer.OrdinalIgnoreCase);
@@ -824,15 +828,16 @@ namespace BLL.Services
             var annotatorProjectMap = BuildAnnotatorProjectMap(allAssignments);
             var reviewerProjectMap = BuildReviewerProjectMap(allAssignments);
 
-            var totalCount = allUsers.Count();
+            var totalCount = workerUsers.Count;
             var stats = new
             {
                 TotalAdmins = allUsers.Count(u => u.Role == UserRoles.Admin),
-                TotalWorkers = allUsers.Count(u => u.Role != UserRoles.Admin)
+                TotalWorkers = workerUsers.Count
             };
 
-            var items = allUsers
-                .OrderByDescending(u => u.Id)
+            var items = workerUsers
+                .OrderByDescending(u => u.LastActivityAt)
+                .ThenByDescending(u => u.Id)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(user => MapUserResponse(
@@ -1332,20 +1337,19 @@ namespace BLL.Services
         public async Task<ImportUserResponse> ImportUsersFromExcelAsync(Stream fileStream, string adminId)
         {
             var response = new ImportUserResponse();
-
-            const int maxRowCount = 1000;
+            var maxRowCount = GetConfiguredUserImportMaxRowCount();
 
             using var workbook = new XLWorkbook(fileStream);
             var worksheet = workbook.Worksheet(1);
             var rows = worksheet.RangeUsed()?.RowsUsed()?.Skip(1).ToList() ?? new List<IXLRangeRow>();
 
-            if (rows.Count > maxRowCount)
+            if (maxRowCount > 0 && rows.Count > maxRowCount)
             {
-                throw new Exception($"BR-ADM-25: Excel file contains {rows.Count} rows, which exceeds the limit of {maxRowCount} rows. Please split the data into multiple files.");
+                throw new Exception($"BR-ADM-25: Excel file contains {rows.Count} rows, which exceeds the configured limit of {maxRowCount} rows. Please adjust UserImport__MaxRows or split the data into multiple files.");
             }
 
             int rowNumber = 1;
-            var createdUsers = new List<(User User, User? Manager, string TemporaryPassword)>();
+            var createdUsers = new List<(User User, User? Manager, string InitialPassword)>();
 
             foreach (var row in rows)
             {
@@ -1390,19 +1394,19 @@ namespace BLL.Services
                     managerIdToAssign = manager.Id;
                 }
 
-                var temporaryPassword = GenerateTemporaryPassword();
+                var initialPassword = DefaultManagedUserPassword;
                 var user = new User
                 {
                     Email = email,
                     FullName = fullName,
                     Role = role,
                     ManagerId = managerIdToAssign,
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword),
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(initialPassword),
                     IsEmailVerified = true
                 };
 
                 await _userRepository.AddAsync(user);
-                createdUsers.Add((user, string.IsNullOrEmpty(managerIdToAssign) ? null : await _userRepository.GetByIdAsync(managerIdToAssign), temporaryPassword));
+                createdUsers.Add((user, string.IsNullOrEmpty(managerIdToAssign) ? null : await _userRepository.GetByIdAsync(managerIdToAssign), initialPassword));
                 response.SuccessCount++;
             }
 
@@ -1410,14 +1414,14 @@ namespace BLL.Services
             {
                 await _userRepository.SaveChangesAsync();
 
-                foreach (var (user, manager, temporaryPassword) in createdUsers)
+                foreach (var (user, manager, initialPassword) in createdUsers)
                 {
                     await RunUserSideEffectSafelyAsync(
                         adminId,
                         "ImportUsersWelcomeEmailError",
                         user.Id,
                         $"Imported user {user.Email}, but the welcome email could not be delivered.",
-                        () => _workflowEmailService.SendWelcomeEmailAsync(user, manager, temporaryPassword));
+                        () => _workflowEmailService.SendWelcomeEmailAsync(user, manager, initialPassword));
                 }
             }
 
@@ -1616,8 +1620,8 @@ namespace BLL.Services
                 return new EmailDispatchStatusResponse
                 {
                     Message = IsPickupDirectoryDelivery(emailDeliveryMode)
-                        ? $"A new temporary password has been generated. In this Development environment, the reset email was written to the local mail-drop folder ({emailDeliveryTarget}) instead of being sent to the user's real inbox."
-                        : "A new temporary password has been generated and the reset email was delivered.",
+                        ? $"A new temporary password has been generated. In this Development environment, the reset email was queued for the local mail-drop folder ({emailDeliveryTarget}) instead of being sent to the user's real inbox."
+                        : "A new temporary password has been generated and the reset email was queued for delivery.",
                     EmailDelivered = true,
                     NotificationDelivered = true,
                     EmailDeliveryMode = emailDeliveryMode,
@@ -1681,6 +1685,16 @@ namespace BLL.Services
                 Path.IsPathRooted(effectivePickupDirectory)
                     ? effectivePickupDirectory
                     : Path.Combine(Directory.GetCurrentDirectory(), effectivePickupDirectory));
+        }
+
+        private int GetConfiguredUserImportMaxRowCount()
+        {
+            if (!int.TryParse(_configuration["UserImport:MaxRows"], out var maxRows))
+            {
+                return 1000;
+            }
+
+            return maxRows;
         }
 
         private static bool IsPickupDirectoryDelivery(string? deliveryMode)

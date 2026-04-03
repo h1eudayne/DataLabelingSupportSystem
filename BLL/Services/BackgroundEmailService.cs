@@ -5,18 +5,22 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Mail;
+using System.Threading.Channels;
 
 namespace BLL.Services
 {
     /// <summary>
-    /// SMTP email sender that validates configuration and propagates delivery errors
-    /// so callers can decide whether to block, warn, or just log the failure.
+    /// Queues SMTP email work so request threads are not blocked on slow or unreachable mail servers.
     /// </summary>
-    public class BackgroundEmailService : IEmailService
+    public class BackgroundEmailService : BackgroundService, IEmailService
     {
+        private const int DefaultTimeoutSeconds = 10;
+        private const int DefaultQueueCapacity = 10000;
+
         private readonly IConfiguration _config;
         private readonly ILogger<BackgroundEmailService> _logger;
         private readonly IHostEnvironment _hostEnvironment;
+        private readonly Channel<QueuedEmailMessage> _queue;
 
         public BackgroundEmailService(
             IConfiguration config,
@@ -26,9 +30,10 @@ namespace BLL.Services
             _config = config;
             _logger = logger;
             _hostEnvironment = hostEnvironment;
+            _queue = CreateQueue();
         }
 
-        public async Task SendEmailAsync(string toEmail, string subject, string htmlBody)
+        public Task SendEmailAsync(string toEmail, string subject, string htmlBody)
         {
             if (string.IsNullOrWhiteSpace(toEmail))
             {
@@ -36,80 +41,149 @@ namespace BLL.Services
             }
 
             var smtpOptions = GetSmtpOptions();
+            var queuedMessage = new QueuedEmailMessage(toEmail, subject, htmlBody, smtpOptions);
 
+            if (!_queue.Writer.TryWrite(queuedMessage))
+            {
+                _logger.LogWarning("Email queue is full. Failed to queue email for {ToEmail}: {Subject}", toEmail, subject);
+                throw new EmailDeliveryException(
+                    $"Email delivery queue is full. Email for {toEmail} could not be scheduled. Increase EmailSettings:QueueCapacity or restore SMTP connectivity.",
+                    failedRecipients: new[] { toEmail });
+            }
+
+            _logger.LogInformation("Email queued for {ToEmail}: {Subject}", toEmail, subject);
+            return Task.CompletedTask;
+        }
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
             try
             {
-                using var client = smtpOptions.UsePickupDirectory
+                while (await _queue.Reader.WaitToReadAsync(stoppingToken))
+                {
+                    while (_queue.Reader.TryRead(out var message))
+                    {
+                        try
+                        {
+                            await SendQueuedEmailAsync(message);
+                        }
+                        catch (EmailDeliveryException ex)
+                        {
+                            _logger.LogError(ex, "Queued email delivery failed for {ToEmail}: {Subject}", message.ToEmail, message.Subject);
+                        }
+                        catch (SmtpException ex)
+                        {
+                            _logger.LogError(
+                                ex,
+                                "SMTP delivery failed for queued email to {ToEmail}: {Subject}. Status: {StatusCode}",
+                                message.ToEmail,
+                                message.Subject,
+                                ex.StatusCode);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Queued email delivery failed unexpectedly for {ToEmail}: {Subject}", message.ToEmail, message.Subject);
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+            }
+        }
+
+        public override async Task StopAsync(CancellationToken cancellationToken)
+        {
+            _queue.Writer.TryComplete();
+            await base.StopAsync(cancellationToken);
+        }
+
+        private async Task SendQueuedEmailAsync(QueuedEmailMessage message)
+        {
+            try
+            {
+                using var client = message.SmtpOptions.UsePickupDirectory
                     ? new SmtpClient
                     {
                         DeliveryMethod = SmtpDeliveryMethod.SpecifiedPickupDirectory,
-                        PickupDirectoryLocation = smtpOptions.PickupDirectoryLocation,
-                        Timeout = smtpOptions.TimeoutMilliseconds
+                        PickupDirectoryLocation = message.SmtpOptions.PickupDirectoryLocation,
+                        Timeout = message.SmtpOptions.TimeoutMilliseconds
                     }
-                    : new SmtpClient(smtpOptions.MailServer, smtpOptions.MailPort)
+                    : new SmtpClient(message.SmtpOptions.MailServer, message.SmtpOptions.MailPort)
                     {
-                        EnableSsl = smtpOptions.EnableSsl,
-                        UseDefaultCredentials = smtpOptions.UseDefaultCredentials,
+                        EnableSsl = message.SmtpOptions.EnableSsl,
+                        UseDefaultCredentials = message.SmtpOptions.UseDefaultCredentials,
                         DeliveryMethod = SmtpDeliveryMethod.Network,
-                        Timeout = smtpOptions.TimeoutMilliseconds
+                        Timeout = message.SmtpOptions.TimeoutMilliseconds
                     };
 
-                if (smtpOptions.UsePickupDirectory && !string.IsNullOrWhiteSpace(smtpOptions.PickupDirectoryLocation))
+                if (message.SmtpOptions.UsePickupDirectory && !string.IsNullOrWhiteSpace(message.SmtpOptions.PickupDirectoryLocation))
                 {
-                    Directory.CreateDirectory(smtpOptions.PickupDirectoryLocation);
+                    Directory.CreateDirectory(message.SmtpOptions.PickupDirectoryLocation);
                 }
 
-                if (!smtpOptions.UsePickupDirectory && !smtpOptions.UseDefaultCredentials)
+                if (!message.SmtpOptions.UsePickupDirectory && !message.SmtpOptions.UseDefaultCredentials)
                 {
                     client.Credentials = new NetworkCredential(
-                        smtpOptions.Username,
-                        smtpOptions.Password);
+                        message.SmtpOptions.Username,
+                        message.SmtpOptions.Password);
                 }
 
                 using var mailMessage = new MailMessage
                 {
-                    From = new MailAddress(smtpOptions.SenderEmail, smtpOptions.SenderName),
-                    Subject = subject,
-                    Body = htmlBody,
+                    From = new MailAddress(message.SmtpOptions.SenderEmail, message.SmtpOptions.SenderName),
+                    Subject = message.Subject,
+                    Body = message.HtmlBody,
                     IsBodyHtml = true
                 };
 
-                mailMessage.To.Add(toEmail);
+                mailMessage.To.Add(message.ToEmail);
 
                 await client.SendMailAsync(mailMessage);
-                if (smtpOptions.UsePickupDirectory)
+                if (message.SmtpOptions.UsePickupDirectory)
                 {
                     _logger.LogInformation(
                         "Email written to pickup directory {PickupDirectory} for {ToEmail}: {Subject}",
-                        smtpOptions.PickupDirectoryLocation,
-                        toEmail,
-                        subject);
+                        message.SmtpOptions.PickupDirectoryLocation,
+                        message.ToEmail,
+                        message.Subject);
                 }
                 else
                 {
-                    _logger.LogInformation("Email sent successfully to {ToEmail}: {Subject}", toEmail, subject);
+                    _logger.LogInformation("Email sent successfully to {ToEmail}: {Subject}", message.ToEmail, message.Subject);
                 }
-            }
-            catch (EmailDeliveryException)
-            {
-                throw;
             }
             catch (SmtpException ex)
             {
-                _logger.LogError(ex, "SMTP delivery failed to {ToEmail}: {Subject}", toEmail, subject);
                 throw new EmailDeliveryException(
-                    $"SMTP delivery failed for {toEmail}. Server response: {ex.StatusCode}. {ex.Message}",
+                    $"SMTP delivery failed for {message.ToEmail}. Server response: {ex.StatusCode}. {ex.Message}",
                     ex,
-                    new[] { toEmail });
+                    new[] { message.ToEmail });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Email delivery failed to {ToEmail}: {Subject}", toEmail, subject);
                 throw new EmailDeliveryException(
-                    $"Email delivery failed for {toEmail}. {ex.Message}",
+                    $"Email delivery failed for {message.ToEmail}. {ex.Message}",
                     ex,
-                    new[] { toEmail });
+                    new[] { message.ToEmail });
             }
+        }
+
+        private Channel<QueuedEmailMessage> CreateQueue()
+        {
+            var queueCapacity = DefaultQueueCapacity;
+            if (int.TryParse(_config["EmailSettings:QueueCapacity"], out var configuredCapacity) && configuredCapacity > 0)
+            {
+                queueCapacity = configuredCapacity;
+            }
+
+            return Channel.CreateBounded<QueuedEmailMessage>(new BoundedChannelOptions(queueCapacity)
+            {
+                SingleReader = true,
+                SingleWriter = false,
+                FullMode = BoundedChannelFullMode.Wait,
+                AllowSynchronousContinuations = false
+            });
         }
 
         private SmtpOptions GetSmtpOptions()
@@ -132,7 +206,7 @@ namespace BLL.Services
 
             if (!int.TryParse(_config["EmailSettings:TimeoutSeconds"], out var timeoutSeconds))
             {
-                timeoutSeconds = 30;
+                timeoutSeconds = DefaultTimeoutSeconds;
             }
 
             if (string.IsNullOrWhiteSpace(senderEmail))
@@ -199,6 +273,12 @@ namespace BLL.Services
                 TimeoutMilliseconds = Math.Max(timeoutSeconds, 1) * 1000
             };
         }
+
+        private sealed record QueuedEmailMessage(
+            string ToEmail,
+            string Subject,
+            string HtmlBody,
+            SmtpOptions SmtpOptions);
 
         private sealed class SmtpOptions
         {

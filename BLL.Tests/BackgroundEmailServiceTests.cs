@@ -72,9 +72,17 @@ namespace BLL.Tests
                 var hostEnvironment = Mock.Of<IHostEnvironment>(env => env.EnvironmentName == Environments.Development);
                 var service = new BackgroundEmailService(configuration, logger, hostEnvironment);
 
+                await service.StartAsync(CancellationToken.None);
                 await service.SendEmailAsync("user@test.com", "Subject", "<p>Body</p>");
 
+                var deadline = DateTime.UtcNow.AddSeconds(5);
+                while (!Directory.GetFiles(pickupDirectory).Any() && DateTime.UtcNow < deadline)
+                {
+                    await Task.Delay(100);
+                }
+
                 Assert.NotEmpty(Directory.GetFiles(pickupDirectory));
+                await service.StopAsync(CancellationToken.None);
             }
             finally
             {

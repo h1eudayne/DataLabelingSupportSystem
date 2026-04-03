@@ -80,6 +80,9 @@ Copy values from `.env.example` and set them in Railway:
 * `EmailSettings__Username` (optional, defaults to sender email)
 * `EmailSettings__Password` (required for `Network` when `UseDefaultCredentials=false`)
 * `EmailSettings__PickupDirectory` (optional, used by `PickupDirectory`)
+* `EmailSettings__QueueCapacity` (`10000` by default, requests fail fast when the in-memory queue is full)
+* `EmailSettings__TimeoutSeconds` (`10` by default, each SMTP attempt times out faster when the mail server is unreachable)
+* `UserImport__MaxRows` (`1000` by default, set `0` or a negative number to remove the row-limit check)
 
 ### Railway setup steps
 1. Create a new Railway service from this repository.
@@ -104,6 +107,7 @@ If you later move this backend into a larger monorepo, then configure Railway to
 * `Database__EnsureCreatedOnStartup` is now only a fallback mode for local or disposable databases.
 * Production admin seeding is opt-in. Set `SeedAdmin__Enabled=true` together with `SeedAdmin__Email` and `SeedAdmin__Password` only when you intentionally want startup to create or reconcile the default admin account.
 * In production, the API now fails fast if `Cors__AllowedOrigins` is missing.
+* Email delivery is now queued in memory and processed by a background worker, so add user, reset password, and similar requests do not wait on slow SMTP round-trips.
 * In local development, email delivery defaults to a file-based pickup directory at `API/mail-drop` so workflow emails can still be verified without a live SMTP password.
 * `/health` returns `200` only when the API can reach the database.
 * `/` returns a simple service status payload that helps confirm the container started.

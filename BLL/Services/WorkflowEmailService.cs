@@ -40,12 +40,12 @@ namespace BLL.Services
                         ("Email", Encode(user.Email)),
                         ("Direct manager", managerSummary),
                         includeTemporaryPassword
-                            ? ("Temporary password", Encode(temporaryPassword!))
+                            ? ("Initial password", Encode(temporaryPassword!))
                             : ("First-time password", "Already set by you"),
                         ("Activated at", FormatUtc(DateTime.UtcNow))
                     })}
                     <p>{(includeTemporaryPassword
-                        ? "Please sign in with this temporary password and change it immediately after your first login."
+                        ? "Please sign in with this password and change it immediately after your first login."
                         : "Please contact your manager or administrator if you need help with first-time access or onboarding.")}</p>");
 
             await TrySendEmailAsync(user.Email, "Welcome to Data Labeling Support System", body, failures);

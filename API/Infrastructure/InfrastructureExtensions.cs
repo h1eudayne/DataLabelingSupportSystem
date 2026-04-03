@@ -1,6 +1,6 @@
-using System.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 
 namespace API.Infrastructure
 {
@@ -99,19 +99,20 @@ namespace API.Infrastructure
                 return;
             }
 
-            var connection = context.Database.GetDbConnection();
-            var shouldCloseConnection = connection.State != ConnectionState.Open;
-
-            if (shouldCloseConnection)
+            var databaseName = context.Database.GetDbConnection().Database;
+            var guardConnectionString = context.Database.GetConnectionString();
+            if (string.IsNullOrWhiteSpace(guardConnectionString))
             {
-                await connection.OpenAsync();
+                return;
             }
 
-            try
-            {
-                var existingTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var existingTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                await using var command = connection.CreateCommand();
+            await using (var guardConnection = new MySqlConnection(guardConnectionString))
+            {
+                await guardConnection.OpenAsync();
+
+                await using var command = guardConnection.CreateCommand();
                 command.CommandText = """
                     SELECT table_name
                     FROM information_schema.tables
@@ -127,81 +128,74 @@ namespace API.Infrastructure
                         existingTables.Add(reader.GetString(0));
                     }
                 }
+            }
 
-                if (existingTables.Count == 0)
-                {
-                    return;
-                }
+            if (existingTables.Count == 0)
+            {
+                return;
+            }
 
-                var overlappingTables = context.Model.GetEntityTypes()
-                    .Select(entityType => entityType.GetTableName())
-                    .Where(tableName => !string.IsNullOrWhiteSpace(tableName))
-                    .Cast<string>()
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .Where(existingTables.Contains)
-                    .OrderBy(tableName => tableName, StringComparer.OrdinalIgnoreCase)
-                    .Take(5)
-                    .ToArray();
+            var overlappingTables = context.Model.GetEntityTypes()
+                .Select(entityType => entityType.GetTableName())
+                .Where(tableName => !string.IsNullOrWhiteSpace(tableName))
+                .Cast<string>()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(existingTables.Contains)
+                .OrderBy(tableName => tableName, StringComparer.OrdinalIgnoreCase)
+                .Take(5)
+                .ToArray();
 
-                if (overlappingTables.Length == 0)
-                {
-                    return;
-                }
+            if (overlappingTables.Length == 0)
+            {
+                return;
+            }
 
-                var availableMigrations = context.Database.GetMigrations()
-                    .ToArray();
-                var appliedMigrations = (await context.Database.GetAppliedMigrationsAsync())
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                var pendingMigrations = availableMigrations
-                    .Where(migration => !appliedMigrations.Contains(migration))
-                    .ToArray();
+            var availableMigrations = context.Database.GetMigrations()
+                .ToArray();
+            var appliedMigrations = (await context.Database.GetAppliedMigrationsAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var pendingMigrations = availableMigrations
+                .Where(migration => !appliedMigrations.Contains(migration))
+                .ToArray();
 
-                if (pendingMigrations.Length == 0)
-                {
-                    return;
-                }
+            if (pendingMigrations.Length == 0)
+            {
+                return;
+            }
 
-                var initialMigrationIsStillPending =
-                    availableMigrations.Length > 0 &&
-                    string.Equals(pendingMigrations[0], availableMigrations[0], StringComparison.OrdinalIgnoreCase);
+            var initialMigrationIsStillPending =
+                availableMigrations.Length > 0 &&
+                string.Equals(pendingMigrations[0], availableMigrations[0], StringComparison.OrdinalIgnoreCase);
 
-                if (!existingTables.Contains("__EFMigrationsHistory") || initialMigrationIsStillPending)
-                {
-                    logger.LogCritical(
-                        "Automatic EF migrations were blocked because database {Database} already contains application tables but migration history is not aligned. Overlapping tables: {Tables}. Applied migrations: {AppliedMigrations}. Pending migrations: {PendingMigrations}",
-                        connection.Database,
-                        string.Join(", ", overlappingTables),
-                        appliedMigrations.Count == 0 ? "(none)" : string.Join(", ", appliedMigrations.OrderBy(migration => migration, StringComparer.OrdinalIgnoreCase)),
-                        string.Join(", ", pendingMigrations));
-
-                    throw new InvalidOperationException(
-                        $"Automatic EF Core migrations were blocked for database '{connection.Database}' because it already contains application tables " +
-                        $"({string.Join(", ", overlappingTables)}) but the migration history is not aligned with the schema. " +
-                        $"Applied migrations: {(appliedMigrations.Count == 0 ? "(none)" : string.Join(", ", appliedMigrations.OrderBy(migration => migration, StringComparer.OrdinalIgnoreCase)))}. " +
-                        $"Pending migrations: {string.Join(", ", pendingMigrations)}. " +
-                        "This usually means the schema was created outside EF migrations, or '__EFMigrationsHistory' exists but is missing the initial baseline entry. " +
-                        "Disable 'Database:ApplyMigrationsOnStartup' for this environment until the database is baselined, or deploy against a fresh empty database.");
-                }
-
+            if (!existingTables.Contains("__EFMigrationsHistory") || initialMigrationIsStillPending)
+            {
                 logger.LogCritical(
-                    "Automatic EF migrations were blocked because database {Database} already contains application tables and pending migrations begin after the initial baseline. Overlapping tables: {Tables}. Applied migrations: {AppliedMigrations}. Pending migrations: {PendingMigrations}",
-                    connection.Database,
+                    "Automatic EF migrations were blocked because database {Database} already contains application tables but migration history is not aligned. Overlapping tables: {Tables}. Applied migrations: {AppliedMigrations}. Pending migrations: {PendingMigrations}",
+                    databaseName,
                     string.Join(", ", overlappingTables),
                     appliedMigrations.Count == 0 ? "(none)" : string.Join(", ", appliedMigrations.OrderBy(migration => migration, StringComparer.OrdinalIgnoreCase)),
                     string.Join(", ", pendingMigrations));
 
                 throw new InvalidOperationException(
-                    $"Automatic EF Core migrations were blocked for database '{connection.Database}' because it already contains application tables " +
-                    $"({string.Join(", ", overlappingTables)}) and there are pending migrations ({string.Join(", ", pendingMigrations)}) even though the initial baseline migration is already recorded. " +
-                    "Review the existing schema and migration history before enabling 'Database:ApplyMigrationsOnStartup' again.");
+                    $"Automatic EF Core migrations were blocked for database '{databaseName}' because it already contains application tables " +
+                    $"({string.Join(", ", overlappingTables)}) but the migration history is not aligned with the schema. " +
+                    $"Applied migrations: {(appliedMigrations.Count == 0 ? "(none)" : string.Join(", ", appliedMigrations.OrderBy(migration => migration, StringComparer.OrdinalIgnoreCase)))}. " +
+                    $"Pending migrations: {string.Join(", ", pendingMigrations)}. " +
+                    "This usually means the schema was created outside EF migrations, or '__EFMigrationsHistory' exists but is missing the initial baseline entry. " +
+                    "Disable 'Database:ApplyMigrationsOnStartup' for this environment until the database is baselined, or deploy against a fresh empty database.");
             }
-            finally
-            {
-                if (shouldCloseConnection)
-                {
-                    await connection.CloseAsync();
-                }
-            }
+
+            logger.LogCritical(
+                "Automatic EF migrations were blocked because database {Database} already contains application tables and pending migrations begin after the initial baseline. Overlapping tables: {Tables}. Applied migrations: {AppliedMigrations}. Pending migrations: {PendingMigrations}",
+                databaseName,
+                string.Join(", ", overlappingTables),
+                appliedMigrations.Count == 0 ? "(none)" : string.Join(", ", appliedMigrations.OrderBy(migration => migration, StringComparer.OrdinalIgnoreCase)),
+                string.Join(", ", pendingMigrations));
+
+            throw new InvalidOperationException(
+                $"Automatic EF Core migrations were blocked for database '{databaseName}' because it already contains application tables " +
+                $"({string.Join(", ", overlappingTables)}) and there are pending migrations ({string.Join(", ", pendingMigrations)}) even though the initial baseline migration is already recorded. " +
+                "Review the existing schema and migration history before enabling 'Database:ApplyMigrationsOnStartup' again.");
         }
     }
 }

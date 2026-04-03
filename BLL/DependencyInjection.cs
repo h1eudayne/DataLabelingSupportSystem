@@ -2,6 +2,7 @@ using BLL.Interfaces;
 using BLL.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using System.Net.Http;
 
 namespace BLL
@@ -19,7 +20,9 @@ namespace BLL
             services.AddScoped<IDisputeService, DisputeService>();
             services.AddScoped<IActivityLogService, ActivityLogService>();
             services.AddScoped<IAppNotificationService, AppNotificationService>();
-            services.AddSingleton<IEmailService, BackgroundEmailService>();
+            services.AddSingleton<BackgroundEmailService>();
+            services.AddSingleton<IEmailService>(serviceProvider => serviceProvider.GetRequiredService<BackgroundEmailService>());
+            services.AddSingleton<IHostedService>(serviceProvider => serviceProvider.GetRequiredService<BackgroundEmailService>());
             services.AddScoped<IWorkflowEmailService, WorkflowEmailService>();
 
             services.AddHttpClient<IAIService, AIService>(client =>
